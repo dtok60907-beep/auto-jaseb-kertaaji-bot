@@ -111,6 +111,25 @@ Penutupan:
 - Rollback note: adapter spike dapat direvert tanpa product/runtime production code.
 - Follow-up units: runner benchmark live kedua kandidat, soak test, dan ADR runtime.
 
+### BEN-001 — Siapkan controlled live benchmark
+
+- Status: VERIFIED
+- Parent: M04
+- Outcome: prerequisites, secret boundary, test assets, scenario order, exit condition, dan decision evidence untuk benchmark live tercatat.
+- Goal trace: angka runtime hanya valid bila workload, machine, account isolation, dan evidence-nya sama.
+- Acceptance criteria:
+  - [x] Dedicated-account requirement dan session isolation didefinisikan.
+  - [x] Environment template tidak memuat secret dan di-ignore Git.
+  - [x] Safe smoke serta controlled behavior/resource/soak phases didefinisikan.
+  - [x] Hard exit condition dan runtime decision evidence didefinisikan.
+- Non-goal: menjalankan benchmark atau memilih runtime tanpa account authority.
+- Dependencies: kedua adapter local verified; `ENGINE_BENCHMARK_PROTOCOL.md`.
+- Risks/failure modes: akun test tidak benar-benar terisolasi; result dari environment berbeda dibandingkan; live send dilakukan tanpa target terkontrol.
+- Test plan: file ignore check; manual cross-reference protocol/runbook; test adapter tetap dijalankan sebelum credential diberikan.
+- Rollback/recovery: dokumen/environment template dapat direvert tanpa product code; `.env` lokal tidak pernah dihapus/dicommit oleh workflow.
+- Expected touch points: runbook dan environment template.
+- Required evidence: Git ignore check, adapter regression tests, explicit user authority untuk asset live.
+
 ## Template penutupan unit
 
 ```markdown
