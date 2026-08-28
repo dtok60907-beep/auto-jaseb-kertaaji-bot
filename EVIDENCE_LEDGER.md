@@ -181,6 +181,17 @@ Penutupan:
 - Rollback note: tidak ada perubahan pada akun Telegram; kedua smoke test selalu disconnect dan tidak mengirim pesan.
 - Follow-up units: connectivity benchmark berulang, behavior suite target terkontrol, resource soak, lalu ADR keputusan runtime.
 
+### BEN-004 — Live connectivity benchmark (10 iterasi)
+
+- Final status: VERIFIED (10/10 hard-gate pass per candidate).
+- Commit/diff: benchmark runner fix `716d560`.
+- Acceptance evidence: Telethon dan Teleproto masing-masing menyelesaikan 10 connect → authorized → disconnect tanpa side effect pesan.
+- Commands/tests: Telethon runner `--runs 10`; Teleproto runner `--runs 10`; parent Node suite 18/18 setelah regression test untuk default performance clock.
+- Result summary: Telethon median 1335.40 ms, p95 3791.63 ms, max 4274.85 ms; Teleproto median 477.07 ms, p95 1329.56 ms, max 1766.15 ms pada mesin/network yang sama.
+- Remaining risk: latency connect bukan representasi throughput/event loop; belum ada behavior suite, send/join/comment, multi-session, atau resource soak.
+- Rollback note: benchmark hanya lifecycle koneksi dan disconnect; tidak mengubah akun atau target Telegram.
+- Follow-up units: controlled behavior suite dengan target yang disediakan operator, lalu resource soak pada 1/10/50 session.
+
 ## Template penutupan unit
 
 ```markdown
