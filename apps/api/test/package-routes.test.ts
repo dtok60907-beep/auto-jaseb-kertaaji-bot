@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createApi } from "../src/app.ts";
 import type { BroadcastSettingsRepository } from "../src/broadcast/repository.ts";
+import type { AutoCommentSettingsRepository } from "../src/auto-comment/repository.ts";
 import { toPublicPackage, type PackageConfig } from "../src/domain/package-catalog.ts";
 import type { CreatePackageInput, PackageRepository, PackageView, PublishPackageInput } from "../src/packages/repository.ts";
 
@@ -56,10 +57,28 @@ class EmptyBroadcastSettings implements BroadcastSettingsRepository {
   async deleteLpmTarget(): Promise<boolean> { return false; }
 }
 
+class EmptyAutoComments implements AutoCommentSettingsRepository {
+  async listSettings() { return { accounts: [], divisions: [], channelTargets: [] } as const; }
+  async createDivision(): Promise<never> { throw new Error("not used"); }
+  async updateDivision(): Promise<null> { return null; }
+  async deleteDivision(): Promise<boolean> { return false; }
+  async createKeyword(): Promise<null> { return null; }
+  async deleteKeyword(): Promise<boolean> { return false; }
+  async createTemplate(): Promise<null> { return null; }
+  async updateTemplate(): Promise<null> { return null; }
+  async deleteTemplate(): Promise<boolean> { return false; }
+  async createChannelTarget(): Promise<never> { throw new Error("not used"); }
+  async updateChannelTarget(): Promise<null> { return null; }
+  async deleteChannelTarget(): Promise<boolean> { return false; }
+  async attachChannel(): Promise<"NOT_FOUND"> { return "NOT_FOUND"; }
+  async detachChannel(): Promise<boolean> { return false; }
+}
+
 function app({ admin = true } = {}) {
   return createApi({
     packages: new FakePackages(),
     broadcasts: new EmptyBroadcastSettings(),
+    autoComments: new EmptyAutoComments(),
     authorizeAdmin: async () => admin ? { id: "00000000-0000-0000-0000-000000000001" } : null,
     authorizeUser: async () => ({ id: "00000000-0000-0000-0000-000000000001" }),
   });

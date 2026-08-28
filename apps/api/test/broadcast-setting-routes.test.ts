@@ -7,11 +7,29 @@ import type {
   BroadcastSettingsRepository,
 } from "../src/broadcast/repository.ts";
 import type { PackageRepository } from "../src/packages/repository.ts";
+import type { AutoCommentSettingsRepository } from "../src/auto-comment/repository.ts";
 
 class EmptyPackages implements PackageRepository {
   async create(): Promise<never> { throw new Error("not used"); }
   async publish(): Promise<null> { return null; }
   async list(): Promise<readonly []> { return []; }
+}
+
+class EmptyAutoComments implements AutoCommentSettingsRepository {
+  async listSettings() { return { accounts: [], divisions: [], channelTargets: [] } as const; }
+  async createDivision(): Promise<never> { throw new Error("not used"); }
+  async updateDivision(): Promise<null> { return null; }
+  async deleteDivision(): Promise<boolean> { return false; }
+  async createKeyword(): Promise<null> { return null; }
+  async deleteKeyword(): Promise<boolean> { return false; }
+  async createTemplate(): Promise<null> { return null; }
+  async updateTemplate(): Promise<null> { return null; }
+  async deleteTemplate(): Promise<boolean> { return false; }
+  async createChannelTarget(): Promise<never> { throw new Error("not used"); }
+  async updateChannelTarget(): Promise<null> { return null; }
+  async deleteChannelTarget(): Promise<boolean> { return false; }
+  async attachChannel(): Promise<"NOT_FOUND"> { return "NOT_FOUND"; }
+  async detachChannel(): Promise<boolean> { return false; }
 }
 
 class FakeBroadcastSettings implements BroadcastSettingsRepository {
@@ -94,15 +112,18 @@ class FakeBroadcastSettings implements BroadcastSettingsRepository {
 
 function app({
   userId = "11111111-1111-1111-1111-111111111111",
+  adminId = "",
   broadcasts = new FakeBroadcastSettings(),
 }: {
   userId?: string;
+  adminId?: string;
   broadcasts?: BroadcastSettingsRepository;
 } = {}) {
   return createApi({
     packages: new EmptyPackages(),
     broadcasts,
-    authorizeAdmin: async () => null,
+    autoComments: new EmptyAutoComments(),
+    authorizeAdmin: async () => adminId ? { id: adminId } : null,
     authorizeUser: async () => userId ? { id: userId } : null,
   });
 }
@@ -173,4 +194,41 @@ test("a different user cannot observe or mutate another user's material", async 
 
   assert.deepEqual(settings.json(), { materials: [], lpmTargets: [] });
   assert.deepEqual(mutate.json(), { code: "MATERIAL_NOT_FOUND" });
+});
+
+test("admin can transparently manage the selected user's broadcast settings", async (t) => {
+  const shared = new FakeBroadcastSettings();
+  const ownerId = "11111111-1111-1111-1111-111111111111";
+  const owner = app({ userId: ownerId, broadcasts: shared });
+  const admin = app({ userId: "", adminId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", broadcasts: shared });
+  t.after(() => owner.close());
+  t.after(() => admin.close());
+
+  const created = await owner.inject({ method: "POST", url: "/v1/broadcast/materials", payload: { kind: "TEXT", text: "wording user" } });
+  const id = created.json().material.id;
+  const viewed = await admin.inject({ method: "GET", url: `/v1/admin/users/${ownerId}/broadcast/settings` });
+  const updated = await admin.inject({
+    method: "PUT",
+    url: `/v1/admin/users/${ownerId}/broadcast/materials/${id}`,
+    payload: { kind: "TEXT", text: "wording dibantu admin", active: true },
+  });
+  const visibleToOwner = await owner.inject({ method: "GET", url: "/v1/broadcast/settings" });
+
+  assert.equal(viewed.statusCode, 200);
+  assert.equal(viewed.json().materials[0].text, "wording user");
+  assert.deepEqual(updated.json().material, { id, kind: "TEXT", text: "wording dibantu admin", active: true });
+  assert.equal(visibleToOwner.json().materials[0].text, "wording dibantu admin");
+});
+
+test("admin setting routes require admin authorization and a valid selected user", async (t) => {
+  const noAdmin = app({ userId: "" });
+  const admin = app({ userId: "", adminId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" });
+  t.after(() => noAdmin.close());
+  t.after(() => admin.close());
+
+  const forbidden = await noAdmin.inject({ method: "GET", url: "/v1/admin/users/11111111-1111-1111-1111-111111111111/broadcast/settings" });
+  const invalidUser = await admin.inject({ method: "GET", url: "/v1/admin/users/bukan-uuid/broadcast/settings" });
+
+  assert.deepEqual(forbidden.json(), { code: "ADMIN_REQUIRED" });
+  assert.deepEqual(invalidUser.json(), { code: "INVALID_USER_ID" });
 });
