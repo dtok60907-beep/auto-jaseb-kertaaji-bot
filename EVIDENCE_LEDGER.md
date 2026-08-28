@@ -195,7 +195,7 @@ Penutupan:
 ### BEN-005 — Live controlled target resolve preflight
 
 - Final status: VERIFIED (3/3 controlled target roles resolved per candidate; read-only operation).
-- Commit/diff: `b25eaf2`.
+- Commit/diff: recorded in the unit commit for this verified change set.
 - Acceptance evidence: `resolve_target`/`resolveTarget` implemented in both adapters; runners emit role-scoped JSONL without target values, sessions, or raw errors; all required `.env` keys are set locally and `.env` remains Git-ignored.
 - Commands/tests: `npm --prefix spikes/telegram-engine test` (22/22); Telethon Python suite (17/17); `node --check behavior-resolve-targets.mjs`; Python `compileall`; `git diff --check`; live Telethon and Teleproto runners; parent summary harness on both JSONL artifacts.
 - Result summary: Telethon resolved `public_group`, `approval_group`, and `discussion_channel` as `Channel` with min/p50/p95/max latency 91.549893/91.901804/92.021945/92.035294 ms. Teleproto resolved the same roles as `Channel` with min/p50/p95/max 78.536020/80.905529/81.069359/81.087562 ms. All four assertions per candidate passed.
