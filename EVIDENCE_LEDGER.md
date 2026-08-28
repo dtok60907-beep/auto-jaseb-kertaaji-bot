@@ -71,7 +71,7 @@ Penutupan:
 Penutupan:
 
 - Final status: VERIFIED (scope adapter lokal saja; bukan runtime selection).
-- Commit/diff: pending checkpoint unit ini.
+- Commit/diff: `07de492`.
 - Acceptance evidence: lifecycle dan error contract ada di `adapter.py`; `SessionConfig` serta `describe()` merahasiakan secret; `smoke.py` hanya connect/authorized/disconnect.
 - Commands/tests: `python3 -m unittest discover -s tests -v` (10/10); `.venv/bin/python -m unittest discover -s tests -v` (10/10); `python3 -m compileall -q adapter.py smoke.py`; package wheel install/import; benchmark harness Node test (5/5).
 - Result summary: package Telethon 1.44.0 dan error surface berhasil diverifikasi pada Python 3.14.6. `requirements.lock` merekam dependency resolusi.
