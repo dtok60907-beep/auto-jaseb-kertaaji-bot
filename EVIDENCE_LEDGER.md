@@ -287,7 +287,18 @@ Penutupan:
 - Commands/tests: `npm test` di `apps/api` (16/16); `npm run typecheck`; `npm run check`; `git diff --check`.
 - Remaining risk: callback Tepat/OOT belum atomik di PostgreSQL, belum ada schema Divisi/channel/kandidat, belum ada notifikasi bot atau executor Telegram. Strategi pemilihan satu template dari beberapa template belum diputuskan dan sengaja tidak diasumsikan.
 - Rollback note: hapus domain contract dan dokumentasi ini; tidak ada data/migrasi/side effect Telegram yang perlu dipulihkan.
-- Follow-up units: DEV-007 migration Divisi, template, channel target, kandidat, decision, dan outbox constraint; lalu DEV-008 API CRUD.
+- Follow-up units: DEV-007 contract materi Jasa Sebar, lalu DEV-008 migration Divisi, materi/target Jasa Sebar, kandidat, decision, dan outbox constraint.
+
+### DEV-007 — Materi Jasa Sebar contract
+
+- Final status: VERIFIED (domain contract only; tanpa database atau Telegram side effect).
+- Commit/diff: pending checkpoint commit for this unit.
+- Outcome: Jasa Sebar menerima wording manual (`TEXT`) atau link post channel publik (`FORWARD`). Forward mempunyai toggle `SHOW_SOURCE`/`HIDE_SOURCE` yang terpisah dari identitas akun pengirim; pengiriman dari userbot maupun worker admin tetap memakai identitas akun yang benar-benar mengirim.
+- Acceptance evidence: link sumber dinormalisasi ke post channel publik; private/invite/malformed link ditolak; payload TEXT dan FORWARD tidak dapat dicampur; attribution memiliki default eksplisit `SHOW_SOURCE`; output immutable.
+- Commands/tests: `npm test` dan `npm run typecheck` di `apps/api`; `git diff --check`.
+- Remaining risk: provider preflight belum membuktikan akun user/worker dapat membaca dan forward sumber, perilaku hide-source belum dibenchmark pada Telethon/Teleproto, dan persistence/snapshot per command belum ada.
+- Rollback note: hapus domain contract dan dokumentasi ini; tidak ada data/migrasi/side effect Telegram yang perlu dipulihkan.
+- Follow-up units: DEV-008 migration untuk Divisi + Jasa Sebar material/Grup LPM + kandidat/decision/outbox constraints, lalu API CRUD.
 
 ## Template penutupan unit
 
