@@ -140,6 +140,36 @@ Penutupan:
 - Rollback note: revert runbook commit tidak mengubah adapter atau product code.
 - Follow-up units: explicit authority untuk asset live, benchmark execution, soak, dan ADR runtime.
 
+### BEN-002 — Runner benchmark connectivity JSONL
+
+- Status: VERIFIED
+- Parent: M04
+- Outcome: kedua kandidat memiliki runner satu skenario yang mengeluarkan metadata, latency sample, dan hard assertion dalam JSONL yang sama.
+- Goal trace: raw benchmark harus dapat diproses harness yang sama dan failure tidak boleh menjadi output ad-hoc.
+- Acceptance criteria:
+  - [x] Runner Telethon dan Teleproto hanya menjalankan connect/authorized/disconnect.
+  - [x] Output sukses dan gagal sesuai record JSONL protocol.
+  - [x] Latency memakai monotonic clock.
+  - [x] Gagal di tengah iterasi menghasilkan hard assertion tanpa raw secret/error.
+  - [x] Runner dapat diuji dengan fake adapter tanpa network/credential.
+- Non-goal: multi-session, send/join/comment, resource soak, atau runtime decision.
+- Dependencies: adapter local verified, common summary harness, BEN-001 runbook.
+- Risks/failure modes: record drift antar bahasa, latency clock tidak konsisten, failure accidentally disembunyikan.
+- Test plan: test fake success/failure per runner, output schema assertion, parent summary consumption untuk Node runner.
+- Rollback/recovery: revert runners tanpa mengubah adapter/product code.
+- Expected touch points: runner/test/documentation di dua adapter spike.
+- Required evidence: unit tests, static check/compile, parent harness result, command documentation.
+
+Penutupan:
+
+- Final status: VERIFIED (scope single-session connectivity runner saja).
+- Commit/diff: pending checkpoint unit ini.
+- Commands/tests: parent Node suite 17/17; Telethon Python suite 13/13 pada system dan pinned virtualenv; `node --check`; `compileall`; empty-environment runner output dikonsumsi parent summary harness.
+- Result summary: dua runner menghasilkan metadata dan hard assertion JSONL yang kompatibel; environment kosong menghasilkan exit code 1 dan tidak membocorkan credential/raw error.
+- Remaining risk: tidak ada connect ke Telegram nyata, multi-session, send, join, comment, resource, atau soak data.
+- Rollback note: revert runner tanpa mengubah adapter/product code.
+- Follow-up units: explicit authority untuk asset live, live connectivity execution, behavior suite, soak, dan ADR runtime.
+
 ## Template penutupan unit
 
 ```markdown

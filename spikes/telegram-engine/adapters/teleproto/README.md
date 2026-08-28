@@ -24,6 +24,15 @@ TELEGRAM_TEST_SESSION=... \
 node smoke.mjs
 ```
 
+Connect benchmark (mengeluarkan JSONL; tidak mengirim pesan):
+
+```bash
+TELEGRAM_TEST_API_ID=... \
+TELEGRAM_TEST_API_HASH=... \
+TELEGRAM_TEST_SESSION=... \
+node benchmark-connect.mjs --runs 10
+```
+
 Gunakan API ID/hash dan StringSession milik akun uji khusus. Jangan memakai akun worker atau user production untuk benchmark.
 
 ## Contract
