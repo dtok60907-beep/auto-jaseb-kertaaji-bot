@@ -1,0 +1,17 @@
+{
+  "name": "jaseb-client-api",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test",
+    "check": "node --experimental-strip-types --check src/domain/package-catalog.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.21",
+    "typescript": "5.9.2"
+  }
+}

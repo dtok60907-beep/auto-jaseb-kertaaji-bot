@@ -223,6 +223,17 @@ Penutupan:
 - Verification: `ENGINE_BENCHMARK_PROTOCOL.md`, `FOUNDATION_SPEC.md`, `LIVE_BENCHMARK_RUNBOOK.md`, and both resolve runners agree on the reduced scope; Node 27/27 and Telethon 22/22 regressions remain green.
 - Follow-up units: controlled text send, discussion comment, receive/catch-up, and resource soak.
 
+### DEV-001 — Backend package catalog domain
+
+- Final status: VERIFIED (first production product-code unit).
+- Commit/diff: recorded in the package-catalog development commit.
+- Outcome: runtime-validated catalog for `JASEB_WORKER` and `USERBOT` packages, including price, duration, features, max LPM targets, max accounts, configurable interval range, display order, and active status.
+- Acceptance evidence: invalid values produce field-level issues; zero price/minimum interval are allowed; interval bounds are enforced; package output and checkout entitlement snapshot are immutable; no frontend hardcode is involved.
+- Commands/tests: `npm test` (4/4); `npm run check`; `npm run typecheck` with pinned TypeScript 5.9.2; `npm audit` (0 vulnerabilities); `git diff --check`.
+- Remaining risk: no persistence, API transport, authorization, or database migration yet; those are separate units and are not implied complete by this domain module.
+- Rollback note: remove `apps/api` package-catalog unit without affecting Telegram benchmark spike.
+- Follow-up units: PostgreSQL schema/migration for packages and entitlement snapshots, then API contract/authorization.
+
 ## Template penutupan unit
 
 ```markdown
