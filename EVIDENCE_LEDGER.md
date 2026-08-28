@@ -311,6 +311,17 @@ Penutupan:
 - Rollback note: additive migration; bila sudah diterapkan, koreksi melalui forward migration dan jangan edit V4 di tempat.
 - Follow-up units: DEV-009 persistence Divisi/Auto Komen candidates dan review decision, lalu API CRUD per domain.
 
+### DEV-009 — Auto Komen Divisi dan review persistence
+
+- Final status: VERIFIED (migration additive; belum diterapkan ke project Supabase).
+- Commit/diff: pending checkpoint commit for this unit.
+- Outcome: menyimpan Divisi, keyword, template, channel target, kandidat post, dan keputusan Tepat/OOT dengan invariant lintas process untuk outbox komentar.
+- Acceptance evidence: Divisi/channel hanya menerima user-owned Userbot; satu channel target dapat dipetakan ke banyak Divisi tetapi unik per akun; kandidat memverifikasi account/channel/template/keyword/mode/discussion snapshot; review Tepat/OOT one-to-one immutable; command approval harus `COMMENT_QUEUED` dan memiliki Tepat; OOT dan kandidat tanpa Tepat ditolak; Auto Send valid tanpa review.
+- Commands/tests: PostgreSQL 16 ephemeral fresh V1→V5 dan upgrade V1→V4→V5, masing-masing menjalankan fixture positive/negative dan RLS `authenticated`; keduanya lulus. Fixture mencakup ownership mismatch, template lintas Divisi, duplicate review, command tanpa Tepat, command OOT, Auto Send, dan owner-versus-user-lain read isolation. `git diff --check` pending final review.
+- Remaining risk: migration belum dijalankan pada Supabase project; API CRUD, template selection strategy, update matcher/deduplication engine, bot callback atomic, command claim, dan Telegram send sengaja belum dibuat.
+- Rollback note: additive migration; koreksi dilakukan dengan forward migration, tidak mengedit migration yang telah diterapkan.
+- Follow-up units: DEV-010 API CRUD Jasa Sebar, lalu DEV-011 API CRUD Divisi/channel/template dan decision transaction.
+
 ## Template penutupan unit
 
 ```markdown

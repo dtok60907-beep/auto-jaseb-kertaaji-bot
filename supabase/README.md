@@ -11,7 +11,9 @@ The initial migration contains:
 - account leases with fencing tokens;
 - broadcast target state and exclusive worker assignments;
 - user-owned Jasa Sebar materials (`TEXT` or public-channel `FORWARD`) and Grup LPM settings;
-- userbot-owned comment rules, incoming post dedupe, and one match per rule/post;
+- userbot-owned Auto Komen Divisi, keyword, template, and one monitored channel target per account;
+- candidate menfess snapshots, one immutable Tepat/OOT decision, and command context guards;
+- legacy comment rules/matches retained during the forward-compatible transition;
 - explicit `SIDE_EFFECT_UNCERTAIN` state for ambiguous Telegram outcomes;
 - RLS policies for user-visible reads, with writes reserved for the server/service role.
 
