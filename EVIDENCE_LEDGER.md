@@ -201,7 +201,7 @@ Penutupan:
 - Result summary: Telethon resolved `public_group`, `approval_group`, and `discussion_channel` as `Channel` with min/p50/p95/max latency 91.549893/91.901804/92.021945/92.035294 ms. Teleproto resolved the same roles as `Channel` with min/p50/p95/max 78.536020/80.905529/81.069359/81.087562 ms. All four assertions per candidate passed.
 - Remaining risk: resolve proves target visibility only; it does not prove join-request state, discussion commenting, send permissions, update delivery, event loss, duplicate side effects, multi-session behavior, or resource soak.
 - Rollback note: no Telegram membership or message changed; operation only resolved entities and disconnected.
-- Follow-up units: explicit approval for the public-join side-effect test, then approval-required join state, controlled text send, discussion comment, receive/catch-up, and resource soak.
+- Follow-up units: explicit approval for the public-join side-effect test, then controlled text send, discussion comment, receive/catch-up, and resource soak.
 
 ### BEN-006 — Live public join behavior
 
@@ -210,9 +210,18 @@ Penutupan:
 - Acceptance evidence: both adapters resolve the target, invoke the provider join operation once, serialize the side effect per session, map `UserAlreadyParticipantError` to safe `ALREADY_MEMBER`, and keep raw target/error/session data out of JSONL.
 - Commands/tests: `npm --prefix spikes/telegram-engine test` (27/27); Telethon Python suite (22/22); syntax/compile checks; live Telethon and Teleproto public-join runners; parent summary harness on both JSONL artifacts.
 - Result summary: Telethon `JOINED` in 192.561701 ms; Teleproto `JOINED` in 712.466637 ms. Each candidate produced one passing hard assertion and disconnected cleanly.
-- Remaining risk: this proves only public join side effect; approval-required joins, send permissions, discussion comments, receive/catch-up, duplicate side effects, multi-session behavior, and resource soak remain unverified.
+- Remaining risk: this proves only public join side effect; send permissions, discussion comments, receive/catch-up, duplicate side effects, multi-session behavior, and resource soak remain unverified. Approval-required is intentionally out of the live product path and covered only by classification tests.
 - Rollback note: accounts remain members of the controlled public target; no automatic leave was performed because leaving is another external side effect requiring a separate explicit action.
-- Follow-up units: approval-required join state, then controlled text send and discussion comment with explicit checkpoints.
+- Follow-up units: controlled text send and discussion comment with explicit checkpoints.
+
+### SCOPE-001 — Approval-required join excluded from live product path
+
+- Final status: VERIFIED.
+- Commit/diff: recorded in the scope-adjustment commit for this change set.
+- Decision: client flow targets public groups without admin approval. No approval-required target is required in `.env`, live benchmark assets, or the behavior sequence.
+- Safety boundary: adapter error mapping for `JOIN_APPROVAL_REQUIRED` remains intact so an unexpected restricted target fails clearly without retry or hidden delay; only stub/classification tests cover it.
+- Verification: `ENGINE_BENCHMARK_PROTOCOL.md`, `FOUNDATION_SPEC.md`, `LIVE_BENCHMARK_RUNBOOK.md`, and both resolve runners agree on the reduced scope; Node 27/27 and Telethon 22/22 regressions remain green.
+- Follow-up units: controlled text send, discussion comment, receive/catch-up, and resource soak.
 
 ## Template penutupan unit
 

@@ -9,7 +9,6 @@ const CANDIDATE = "teleproto";
 const ADAPTER_VERSION = "teleproto@1.228.5";
 export const TARGET_ROLES = Object.freeze({
   public_group: "TELEGRAM_TEST_PUBLIC_TARGET",
-  approval_group: "TELEGRAM_TEST_APPROVAL_TARGET",
   discussion_channel: "TELEGRAM_TEST_DISCUSSION_CHANNEL",
 });
 

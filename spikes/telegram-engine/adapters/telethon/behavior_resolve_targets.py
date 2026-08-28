@@ -21,7 +21,6 @@ CANDIDATE = "telethon"
 ADAPTER_VERSION = "Telethon==1.44.0"
 TARGET_ROLES = {
     "public_group": "TELEGRAM_TEST_PUBLIC_TARGET",
-    "approval_group": "TELEGRAM_TEST_APPROVAL_TARGET",
     "discussion_channel": "TELEGRAM_TEST_DISCUSSION_CHANNEL",
 }
 

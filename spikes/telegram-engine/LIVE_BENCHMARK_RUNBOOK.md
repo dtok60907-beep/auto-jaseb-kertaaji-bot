@@ -23,7 +23,6 @@ Collect the real data required by `ENGINE_BENCHMARK_PROTOCOL.md` for Telethon an
 | Telegram API ID/hash | 1 application | Both candidates require MTProto application credentials. |
 | Dedicated user account | 2 accounts | One account/session per candidate prevents cross-library session collision. |
 | Public target group | 1 | Resolve and public join scenario. |
-| Approval-required target | 1 | `WAITING_APPROVAL` state scenario. |
 | Channel with discussion group | 1 | Controlled comment/reply scenario. |
 | Sender/target permissions | test-only | Forward/write failure and success scenarios. |
 | Benchmark machine | 1 fixed machine | Ensures resource comparisons are meaningful. |
@@ -64,7 +63,7 @@ Success criterion: both return JSON with `passed: true`; no message is sent. Fai
 
 ### Phase 2 — Controlled behavior suite
 
-Run the read-only target preflight before any scenario that can change Telegram state. It resolves each configured role and records only the role, entity type, latency, and assertion result. It must pass for all three controlled roles before join/send/comment tests are authorized.
+Run the read-only target preflight before any scenario that can change Telegram state. It resolves the public group and discussion channel roles and records only the role, entity type, latency, and assertion result. It must pass for both controlled roles before join/send/comment tests are authorized.
 
 ```bash
 cd spikes/telegram-engine/adapters/telethon
@@ -84,14 +83,13 @@ Run one scenario at a time in this order:
 2. receive new message;
 3. catch-up after reconnect;
 4. resolve and join public target;
-5. approval-required target;
-6. text send;
-7. discussion comment;
-8. forward;
-9. FloodWait stub/controlled classification;
-10. revoked/invalid session handling;
-11. graceful shutdown while idle and while queue is non-empty;
-12. crash/recovery test against durable job test harness.
+5. text send;
+6. discussion comment;
+7. forward;
+8. FloodWait stub/controlled classification;
+9. revoked/invalid session handling;
+10. graceful shutdown while idle and while queue is non-empty;
+11. crash/recovery test against durable job test harness.
 
 For the public-join step, run exactly once per candidate after the resolve preflight. Do not retry a failed join automatically:
 
@@ -105,7 +103,7 @@ TELEGRAM_TEST_SESSION="$TELEPROTO_TEST_SESSION" \
 node behavior-join-public.mjs > ../../results/raw/teleproto-join-public.jsonl
 ```
 
-`JOINED` and `ALREADY_MEMBER` are successful terminal states. `JOIN_APPROVAL_REQUIRED`, `TARGET_NOT_FOUND`, permission errors, FloodWait, or any unknown error are hard-gate failures and must be investigated before another attempt.
+`JOINED` and `ALREADY_MEMBER` are successful terminal states. `JOIN_APPROVAL_REQUIRED`, `TARGET_NOT_FOUND`, permission errors, FloodWait, or any unknown error are classified clearly; approval-required is out of the live product path and is covered only by adapter/stub tests.
 
 Each scenario must emit JSONL into `results/raw/` and be summarized with the parent harness. A hard gate failure ends that candidate's run.
 

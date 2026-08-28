@@ -46,7 +46,7 @@ Setiap kandidat wajib menjalankan:
 6. Catch-up pesan setelah reconnect.
 7. Resolve channel dan supergroup publik.
 8. Join target publik.
-9. Join target yang memerlukan approval.
+9. (Opsional, non-gating) Klasifikasi target yang memerlukan approval melalui stub; tidak ada live join-request.
 10. Send text.
 11. Forward dengan dan tanpa attribution bila didukung Telegram.
 12. Comment/reply ke channel discussion.

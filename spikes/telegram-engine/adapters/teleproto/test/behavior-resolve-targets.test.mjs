@@ -32,7 +32,6 @@ test("success emits safe assertions without raw targets", async () => {
     now: () => clocks.shift(),
     targets: {
       public_group: "@public",
-      approval_group: "@approval",
       discussion_channel: "@discussion",
     },
   });
@@ -45,7 +44,7 @@ test("success emits safe assertions without raw targets", async () => {
   assert.equal(result.records.at(-1).passed, true);
   assert.deepEqual(
     result.records.filter((item) => item.type === "assertion" && item.targetRole).map((item) => item.name),
-    ["public_group_resolved", "approval_group_resolved", "discussion_channel_resolved"],
+    ["public_group_resolved", "discussion_channel_resolved"],
   );
   assert.equal(JSON.stringify(result.records).includes("@public"), false);
 });
@@ -57,7 +56,6 @@ test("failure is hard gate without raw error", async () => {
     now: () => 0,
     targets: {
       public_group: "@public",
-      approval_group: "@approval",
       discussion_channel: "@discussion",
     },
   });

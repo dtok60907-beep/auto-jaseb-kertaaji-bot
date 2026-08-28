@@ -36,7 +36,6 @@ class ResolveTargetsRunnerTest(unittest.IsolatedAsyncioTestCase):
             lambda: adapter,
             {
                 "public_group": "@public",
-                "approval_group": "@approval",
                 "discussion_channel": "@discussion",
             },
             clock_ns=lambda: next(clocks),
@@ -50,7 +49,7 @@ class ResolveTargetsRunnerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.records[-1]["passed"], True)
         self.assertEqual(
             [item["name"] for item in result.records if item["type"] == "assertion" and "targetRole" in item],
-            ["public_group_resolved", "approval_group_resolved", "discussion_channel_resolved"],
+            ["public_group_resolved", "discussion_channel_resolved"],
         )
         self.assertNotIn("@public", str(result.records))
         self.assertEqual({item["scenario"] for item in result.records[1:]}, {SCENARIO})
@@ -61,7 +60,6 @@ class ResolveTargetsRunnerTest(unittest.IsolatedAsyncioTestCase):
             lambda: FakeAdapter(error=raw),
             {
                 "public_group": "@public",
-                "approval_group": "@approval",
                 "discussion_channel": "@discussion",
             },
             clock_ns=lambda: 0,
