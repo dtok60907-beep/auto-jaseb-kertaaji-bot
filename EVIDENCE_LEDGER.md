@@ -79,6 +79,38 @@ Penutupan:
 - Rollback note: adapter spike dapat direvert tanpa menyentuh product/runtime production.
 - Follow-up units: adapter Teleproto dengan contract sama, lalu live benchmark kedua kandidat.
 
+### TEL-002 — Teleproto adapter lifecycle dan error contract
+
+- Status: VERIFIED
+- Parent: M04
+- Outcome: adapter TypeScript yang memenuhi contract benchmark setara Telethon.
+- Goal trace: perbandingan runtime tidak valid apabila kandidat memakai lifecycle atau error contract berbeda.
+- Acceptance criteria:
+  - [x] Dependency Teleproto dipin serta package dapat diinstal/import.
+  - [x] Contract lifecycle connect/disconnect/send/receive terdefinisi.
+  - [x] Session tidak pernah masuk diagnostic/result.
+  - [x] FloodWait, revoked session, forbidden, dan unknown error dipetakan eksplisit.
+  - [x] Disconnect dan send serialization diuji tanpa network/credential.
+  - [x] Live smoke test command safe tanpa credential dan terdokumentasi.
+- Non-goal: memilih Teleproto sebagai runtime final; mengubah benchmark score; menjalankan akun Telegram.
+- Dependencies: `ENGINE_BENCHMARK_PROTOCOL.md`, benchmark harness, exact package API Teleproto.
+- Risks/failure modes: API library baru berubah; mapping error tidak sesuai runtime; test mock terlalu longgar.
+- Test plan: Node test dengan fake client; install/import dependency pinned; smoke setup failure; review declaration package.
+- Rollback/recovery: revert adapter spike tanpa product/runtime production code.
+- Expected touch points: `spikes/telegram-engine/adapters/teleproto`.
+- Required evidence: lockfile, test output, import/API surface check, contract review, smoke prerequisites.
+
+Penutupan:
+
+- Final status: VERIFIED (scope adapter lokal saja; bukan runtime selection).
+- Commit/diff: pending checkpoint unit ini.
+- Acceptance evidence: lifecycle/error/redaction contract ada di `adapter.mjs`; direct API import dan error surface Teleproto 1.228.5 diverifikasi; `smoke.mjs` hanya connect/authorized/disconnect.
+- Commands/tests: `npm test` (9/9 adapter); `node --check adapter.mjs smoke.mjs`; import/error surface check; safe smoke setup failure; parent benchmark suite (14/14).
+- Result summary: dependency lockfile dibuat oleh npm; `npm audit` package spike menunjukkan 0 vulnerability; error mapping JS diperbaiki setelah regression test menemukan global Python-style timeout error tidak ada di Node.
+- Remaining risk: MTProto nyata, resource, reconnect, event loss, dan shutdown library belum dibuktikan dengan akun uji; Teleproto belum menjadi pemenang.
+- Rollback note: adapter spike dapat direvert tanpa product/runtime production code.
+- Follow-up units: runner benchmark live kedua kandidat, soak test, dan ADR runtime.
+
 ## Template penutupan unit
 
 ```markdown

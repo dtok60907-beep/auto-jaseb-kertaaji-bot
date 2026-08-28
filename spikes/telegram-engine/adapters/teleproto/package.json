@@ -1,0 +1,14 @@
+{
+  "name": "telegram-engine-teleproto-spike",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "teleproto": "1.228.5"
+  },
+  "scripts": {
+    "test": "node --test"
+  }
+}
