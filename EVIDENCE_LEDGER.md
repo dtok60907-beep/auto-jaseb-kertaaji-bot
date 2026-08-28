@@ -170,6 +170,17 @@ Penutupan:
 - Rollback note: revert runner tanpa mengubah adapter/product code.
 - Follow-up units: explicit authority untuk asset live, live connectivity execution, behavior suite, soak, dan ADR runtime.
 
+### BEN-003 — Live single-session connectivity
+
+- Final status: VERIFIED (connect → authorized → disconnect; tanpa send).
+- Commit/diff: evidence commit `docs: record live Telegram connectivity evidence`.
+- Acceptance evidence: session Telethon dan Teleproto tervalidasi tanpa menampilkan credential; `.env` tetap di-ignore Git.
+- Commands/tests: Telethon `smoke.py` menghasilkan `passed=true`, `state=READY`; Teleproto `smoke.mjs` menghasilkan `passed=true`, `state=READY`.
+- Result summary: kedua kandidat berhasil konek ke Telegram dan mengenali akun sebagai authorized pada environment lokal.
+- Remaining risk: belum ada pengukuran latency berulang, resource soak, multi-session, join, send, comment, atau behavior suite.
+- Rollback note: tidak ada perubahan pada akun Telegram; kedua smoke test selalu disconnect dan tidak mengirim pesan.
+- Follow-up units: connectivity benchmark berulang, behavior suite target terkontrol, resource soak, lalu ADR keputusan runtime.
+
 ## Template penutupan unit
 
 ```markdown
