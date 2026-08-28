@@ -47,6 +47,7 @@ type ChannelRow = {
 class FakeAutoComments implements AutoCommentSettingsRepository {
   private divisions: DivisionRow[] = [];
   private channels: ChannelRow[] = [];
+  private candidates = new Map<string, { userId: string; status: "PENDING_REVIEW" | "COMMENT_QUEUED" | "OOT" }>();
   private counter = 1;
   private readonly accounts = new Map<string, readonly SafeUserbotAccountView[]>([
     [OWNER, [{ id: OWNER_ACCOUNT, label: "Akun utama", status: "READY" }]],
@@ -174,6 +175,20 @@ class FakeAutoComments implements AutoCommentSettingsRepository {
     return true;
   }
 
+  seedCandidate(id: string, userId = OWNER) { this.candidates.set(id, { userId, status: "PENDING_REVIEW" }); }
+
+  async decideCandidate({ userId, candidateId, decision }: Parameters<AutoCommentSettingsRepository["decideCandidate"]>[0]) {
+    const candidate = this.candidates.get(candidateId);
+    if (!candidate || candidate.userId !== userId) return { status: "NOT_FOUND" as const, candidateId, operationId: null, commandId: null };
+    if (candidate.status !== "PENDING_REVIEW") return { status: "ALREADY_DECIDED" as const, candidateId, operationId: null, commandId: null };
+    if (decision === "OOT") {
+      candidate.status = "OOT";
+      return { status: "OOT" as const, candidateId, operationId: null, commandId: null };
+    }
+    candidate.status = "COMMENT_QUEUED";
+    return { status: "COMMENT_QUEUED" as const, candidateId, operationId: this.id(), commandId: this.id() };
+  }
+
   private division(userId: string, id: string) { return this.divisions.find((row) => row.userId === userId && row.id === id) ?? null; }
   private channel(userId: string, id: string) { return this.channels.find((row) => row.userId === userId && row.id === id) ?? null; }
   private assertAccount(userId: string, accountId: string) {
@@ -285,4 +300,24 @@ test("admin Auto Komen routes require explicit admin authority and selected user
 
   assert.deepEqual(forbidden.json(), { code: "ADMIN_REQUIRED" });
   assert.deepEqual(invalid.json(), { code: "INVALID_USER_ID" });
+});
+
+test("Tepat queues one command, OOT queues none, and repeat decision is idempotent", async (t) => {
+  const shared = new FakeAutoComments();
+  const tepatId = "00000000-0000-0000-0000-000000000901";
+  const ootId = "00000000-0000-0000-0000-000000000902";
+  shared.seedCandidate(tepatId);
+  shared.seedCandidate(ootId);
+  const server = app({ autoComments: shared });
+  t.after(() => server.close());
+
+  const tepat = await server.inject({ method: "POST", url: `/v1/auto-comment/candidates/${tepatId}/decision`, payload: { decision: "TEPAT" } });
+  const repeat = await server.inject({ method: "POST", url: `/v1/auto-comment/candidates/${tepatId}/decision`, payload: { decision: "TEPAT" } });
+  const oot = await server.inject({ method: "POST", url: `/v1/auto-comment/candidates/${ootId}/decision`, payload: { decision: "OOT" } });
+
+  assert.equal(tepat.json().decision.status, "COMMENT_QUEUED");
+  assert.equal(typeof tepat.json().decision.commandId, "string");
+  assert.equal(repeat.json().decision.status, "ALREADY_DECIDED");
+  assert.equal(oot.json().decision.status, "OOT");
+  assert.equal(oot.json().decision.commandId, null);
 });

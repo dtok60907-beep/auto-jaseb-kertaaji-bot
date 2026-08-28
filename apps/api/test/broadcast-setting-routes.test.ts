@@ -30,6 +30,7 @@ class EmptyAutoComments implements AutoCommentSettingsRepository {
   async deleteChannelTarget(): Promise<boolean> { return false; }
   async attachChannel(): Promise<"NOT_FOUND"> { return "NOT_FOUND"; }
   async detachChannel(): Promise<boolean> { return false; }
+  async decideCandidate(): Promise<never> { throw new Error("not used"); }
 }
 
 class FakeBroadcastSettings implements BroadcastSettingsRepository {

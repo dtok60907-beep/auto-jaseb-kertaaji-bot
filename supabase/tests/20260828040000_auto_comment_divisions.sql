@@ -268,10 +268,44 @@ begin
 end;
 $$;
 
+insert into public.incoming_channel_posts (id, account_id, source_channel_ref, provider_post_id, content)
+values
+  ('eeeeeeee-eeee-eeee-eeee-eeeeeeeeeee5', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', '@base_menfess', 'post-5', 'cari kos final'),
+  ('eeeeeeee-eeee-eeee-eeee-eeeeeeeeeee6', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', '@base_menfess', 'post-6', 'cari kos oot');
+
+insert into public.auto_comment_candidates (
+  id, division_id, channel_target_id, incoming_post_id, selected_template_id,
+  template_text_snapshot, matched_keywords_snapshot, mode_snapshot,
+  discussion_target_ref_snapshot, status
+)
+values
+  ('ffffffff-ffff-ffff-ffff-fffffffffff5', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1',
+   'dddddddd-dddd-dddd-dddd-ddddddddddd1', 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeee5',
+   'cccccccc-cccc-cccc-cccc-ccccccccccc1', 'Halo, masih cari kos putri?', array['cari kos'],
+   'APPROVAL_REQUIRED', '@base_menfess_discussion', 'PENDING_REVIEW'),
+  ('ffffffff-ffff-ffff-ffff-fffffffffff6', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1',
+   'dddddddd-dddd-dddd-dddd-ddddddddddd1', 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeee6',
+   'cccccccc-cccc-cccc-cccc-ccccccccccc1', 'Halo, masih cari kos putri?', array['cari kos'],
+   'APPROVAL_REQUIRED', '@base_menfess_discussion', 'PENDING_REVIEW');
+
+select 1 / case when (select result_status from public.decide_auto_comment_candidate(
+  'ffffffff-ffff-ffff-ffff-fffffffffff5', '11111111-1111-1111-1111-111111111111', 'TEPAT'
+)) = 'COMMENT_QUEUED' then 1 else 0 end;
+select 1 / case when (select count(*) from public.workflow_commands
+  where auto_comment_candidate_id = 'ffffffff-ffff-ffff-ffff-fffffffffff5') = 1 then 1 else 0 end;
+select 1 / case when (select result_status from public.decide_auto_comment_candidate(
+  'ffffffff-ffff-ffff-ffff-fffffffffff5', '11111111-1111-1111-1111-111111111111', 'TEPAT'
+)) = 'ALREADY_DECIDED' then 1 else 0 end;
+select 1 / case when (select result_status from public.decide_auto_comment_candidate(
+  'ffffffff-ffff-ffff-ffff-fffffffffff6', '11111111-1111-1111-1111-111111111111', 'OOT'
+)) = 'OOT' then 1 else 0 end;
+select 1 / case when (select count(*) from public.workflow_commands
+  where auto_comment_candidate_id = 'ffffffff-ffff-ffff-ffff-fffffffffff6') = 0 then 1 else 0 end;
+
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true);
 select 1 / case when (select count(*) from public.auto_comment_divisions) = 2 then 1 else 0 end;
-select 1 / case when (select count(*) from public.auto_comment_candidates) = 2 then 1 else 0 end;
+select 1 / case when (select count(*) from public.auto_comment_candidates) = 4 then 1 else 0 end;
 
 select set_config('request.jwt.claim.sub', '22222222-2222-2222-2222-222222222222', true);
 select 1 / case when (select count(*) from public.auto_comment_divisions) = 0 then 1 else 0 end;

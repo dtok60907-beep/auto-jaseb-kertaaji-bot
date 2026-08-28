@@ -60,6 +60,13 @@ function validate<T>(reply: FastifyReply, parse: () => T): T | null {
   }
 }
 
+function decision(body: unknown): "TEPAT" | "OOT" | null {
+  if (body === null || typeof body !== "object" || Array.isArray(body)) return null;
+  const value = body as Record<string, unknown>;
+  if (Object.keys(value).length !== 1 || (value.decision !== "TEPAT" && value.decision !== "OOT")) return null;
+  return value.decision;
+}
+
 async function execute<T>(reply: FastifyReply, action: () => Promise<T>): Promise<T | undefined> {
   try {
     return await action();
@@ -236,6 +243,18 @@ export function registerAutoCommentSettingRoutes(app: FastifyInstance, options: 
     return reply.code(204).send(null);
   };
 
+  const decideCandidate = async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = await userSubject(request, reply);
+    if (!userId) return;
+    const candidateId = idParam(request, "id");
+    if (!candidateId) return reply.code(400).send({ code: "INVALID_CANDIDATE_ID" });
+    const selected = decision(request.body);
+    if (!selected) return reply.code(422).send({ code: "INVALID_AUTO_COMMENT_DECISION", issues: [{ field: "decision", code: "MUST_BE_TEPAT_OR_OOT" }] });
+    const result = await options.autoComments.decideCandidate({ userId, candidateId, decision: selected });
+    if (result.status === "NOT_FOUND") return reply.code(404).send({ code: "CANDIDATE_NOT_FOUND" });
+    return { decision: result };
+  };
+
   const register = (prefix: string, resolve: SubjectResolver) => {
     app.get(prefix + "/settings", listSettings(resolve));
     app.post(prefix + "/divisions", createDivision(resolve));
@@ -255,4 +274,5 @@ export function registerAutoCommentSettingRoutes(app: FastifyInstance, options: 
 
   register("/v1/auto-comment", userSubject);
   register("/v1/admin/users/:userId/auto-comment", adminSubject);
+  app.post("/v1/auto-comment/candidates/:id/decision", decideCandidate);
 }

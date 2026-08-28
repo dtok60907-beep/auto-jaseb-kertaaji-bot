@@ -1,5 +1,6 @@
 import type { Sql } from "postgres";
 import type {
+  AutoCommentDecisionResult,
   AutoCommentChannelTargetView,
   AutoCommentDivisionView,
   AutoCommentSettingsRepository,
@@ -308,5 +309,24 @@ export class PostgresAutoCommentSettingsRepository implements AutoCommentSetting
       returning mapping.division_id::text
     `;
     return rows.length === 1;
+  }
+
+  async decideCandidate(input: Parameters<AutoCommentSettingsRepository["decideCandidate"]>[0]): Promise<AutoCommentDecisionResult> {
+    const rows = await this.sql<{
+      result_status: AutoCommentDecisionResult["status"];
+      candidate_id: string;
+      operation_id: string | null;
+      command_id: string | null;
+    }[]>`select * from public.decide_auto_comment_candidate(
+      ${input.candidateId}::uuid, ${input.userId}::uuid, ${input.decision}
+    )`;
+    const row = rows[0];
+    if (!row) throw new Error("auto comment decision did not return a result");
+    return Object.freeze({
+      status: row.result_status,
+      candidateId: row.candidate_id,
+      operationId: row.operation_id,
+      commandId: row.command_id,
+    });
   }
 }

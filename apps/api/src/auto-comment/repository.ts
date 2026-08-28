@@ -45,6 +45,14 @@ export type AutoCommentSettingsView = Readonly<{
   channelTargets: readonly AutoCommentChannelTargetView[];
 }>;
 
+export type AutoCommentDecision = "TEPAT" | "OOT";
+export type AutoCommentDecisionResult = Readonly<{
+  status: "COMMENT_QUEUED" | "OOT" | "ALREADY_DECIDED" | "NOT_AWAITING_REVIEW" | "NOT_FOUND";
+  candidateId: string;
+  operationId: string | null;
+  commandId: string | null;
+}>;
+
 export interface AutoCommentSettingsRepository {
   listSettings(userId: string): Promise<AutoCommentSettingsView>;
   createDivision(input: Readonly<{ userId: string; division: DivisionSettingInput }>): Promise<AutoCommentDivisionView>;
@@ -60,4 +68,5 @@ export interface AutoCommentSettingsRepository {
   deleteChannelTarget(input: Readonly<{ userId: string; id: string }>): Promise<boolean>;
   attachChannel(input: Readonly<{ userId: string; divisionId: string; channelTargetId: string }>): Promise<"ATTACHED" | "NOT_FOUND">;
   detachChannel(input: Readonly<{ userId: string; divisionId: string; channelTargetId: string }>): Promise<boolean>;
+  decideCandidate(input: Readonly<{ userId: string; candidateId: string; decision: AutoCommentDecision }>): Promise<AutoCommentDecisionResult>;
 }
