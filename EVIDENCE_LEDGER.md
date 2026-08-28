@@ -10,7 +10,7 @@ Ledger ini mencatat status berdasarkan bukti. Detail command output yang besar t
 | M01 | Foundation contract | VERIFIED | `FOUNDATION_SPEC.md`, `DELIVERY_GATES.md`, commit `8b1f2b1` | Keputusan produk bertanda belum diputus tidak boleh diasumsikan |
 | M02 | Benchmark harness | VERIFIED | 5/5 Node tests lulus; hard gate event loss dan duplicate tersedia; commit `8b1f2b1` | Adapter belum ada; belum ada angka runtime |
 | M03 | Project operating workflow | VERIFIED | `PROJECT_WORKFLOW.md`; cross-reference check; `git diff --check`; 5/5 regression tests; commit `0fbb93a` | Workflow wajib diterapkan pada seluruh unit berikutnya |
-| M04 | Telegram runtime selection | NOT_STARTED | Belum ada | Telethon + Teleproto adapter, live test account, benchmark, soak, ADR |
+| M04 | Telegram runtime selection | IN_PROGRESS | Telethon adapter contract verified locally; belum ada data live | Teleproto adapter, akun uji, benchmark, soak, ADR |
 
 ## Unit aktif
 
@@ -46,6 +46,38 @@ Penutupan:
 - Remaining risk: efektivitas workflow harus terus dibuktikan pada unit engineering nyata; dokumen saja tidak menjamin disiplin.
 - Rollback note: revert commit workflow tidak mengubah product/runtime code.
 - Follow-up units: adapter Telethon, lalu adapter Teleproto.
+
+### TEL-001 — Telethon adapter lifecycle dan error contract
+
+- Status: VERIFIED
+- Parent: M04
+- Outcome: adapter Python yang dapat diuji tanpa credential dan menjadi dasar skenario benchmark yang seragam.
+- Goal trace: mengukur kandidat Telegram engine berdasarkan behavior dan resource, bukan asumsi bahasa.
+- Acceptance criteria:
+  - [x] Contract lifecycle connect/disconnect/send/receive terdefinisi.
+  - [x] Session tidak pernah ditulis ke log atau result.
+  - [x] FloodWait, revoked session, forbidden, dan unknown error dipetakan eksplisit.
+  - [x] Disconnect idempotent dan tidak meninggalkan task yang dibuat adapter.
+  - [x] Unit test tanpa network/credential lulus.
+  - [x] Live smoke test command terdokumentasi dan safe failure tanpa credential diverifikasi.
+- Non-goal: memilih Telethon sebagai runtime final; membuat worker Jaseb; login akun user.
+- Dependencies: `ENGINE_BENCHMARK_PROTOCOL.md`, benchmark harness.
+- Risks/failure modes: API Telethon berubah; adapter menyembunyikan error; fake test terlalu berbeda dari live behavior.
+- Test plan: Python unit test dengan fake client; static compile; optional live smoke test.
+- Rollback/recovery: hapus adapter spike tanpa menyentuh production code.
+- Expected touch points: `spikes/telegram-engine/adapters/telethon`.
+- Required evidence: test command/output, dependency version, contract review, live-test prerequisites.
+
+Penutupan:
+
+- Final status: VERIFIED (scope adapter lokal saja; bukan runtime selection).
+- Commit/diff: pending checkpoint unit ini.
+- Acceptance evidence: lifecycle dan error contract ada di `adapter.py`; `SessionConfig` serta `describe()` merahasiakan secret; `smoke.py` hanya connect/authorized/disconnect.
+- Commands/tests: `python3 -m unittest discover -s tests -v` (10/10); `.venv/bin/python -m unittest discover -s tests -v` (10/10); `python3 -m compileall -q adapter.py smoke.py`; package wheel install/import; benchmark harness Node test (5/5).
+- Result summary: package Telethon 1.44.0 dan error surface berhasil diverifikasi pada Python 3.14.6. `requirements.lock` merekam dependency resolusi.
+- Remaining risk: perilaku MTProto nyata, resource, reconnect, event loss, dan disconnect task dari library belum dibuktikan tanpa akun uji; Telethon belum menjadi pemenang.
+- Rollback note: adapter spike dapat direvert tanpa menyentuh product/runtime production.
+- Follow-up units: adapter Teleproto dengan contract sama, lalu live benchmark kedua kandidat.
 
 ## Template penutupan unit
 

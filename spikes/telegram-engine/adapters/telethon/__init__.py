@@ -1,0 +1,1 @@
+"""Telethon benchmark adapter package."""

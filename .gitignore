@@ -10,6 +10,8 @@
 node_modules/
 dist/
 coverage/
+build/
+*.egg-info/
 
 # Python
 .venv/
