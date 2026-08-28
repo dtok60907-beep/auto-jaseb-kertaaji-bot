@@ -3,6 +3,7 @@ import { BroadcastMaterialValidationError, validateBroadcastMaterial } from "../
 import { BroadcastTargetValidationError, validateBroadcastLpmTarget } from "../domain/broadcast-target.ts";
 import type { BroadcastSettingsRepository } from "../broadcast/repository.ts";
 import type { AdminAuthorizer } from "./package-routes.ts";
+import type { EntitlementRepository } from "../entitlements/repository.ts";
 
 type UserActor = { id: string };
 export type UserAuthorizer = (request: FastifyRequest) => Promise<UserActor | null>;
@@ -11,6 +12,7 @@ type RouteOptions = {
   broadcasts: BroadcastSettingsRepository;
   authorizeUser: UserAuthorizer;
   authorizeAdmin: AdminAuthorizer;
+  entitlements?: EntitlementRepository;
 };
 
 type ValidationIssue = Readonly<{ field: string; code: string }>;
@@ -82,6 +84,16 @@ function isUniqueViolation(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "23505";
 }
 
+async function assertLpmCapacity(options: RouteOptions, userId: string, reply: FastifyReplyLike): Promise<boolean> {
+  if (!options.entitlements) return true;
+  const entitlement = (await options.entitlements.list(userId)).find((item) => item.status === "ACTIVE" && new Date(item.expiresAt).getTime() > Date.now());
+  if (!entitlement) { reply.code(403).send({ code: "SUBSCRIPTION_REQUIRED" }); return false; }
+  const current = (await options.broadcasts.listLpmTargets(userId)).filter((target) => target.active).length;
+  if (current >= entitlement.maxLpmGroups) { reply.code(409).send({ code: "LPM_GROUP_LIMIT_REACHED", limit: entitlement.maxLpmGroups, current }); return false; }
+  return true;
+}
+type FastifyReplyLike = { code: (status: number) => { send: (payload: unknown) => unknown } };
+
 export function registerBroadcastSettingRoutes(app: FastifyInstance, options: RouteOptions) {
   const userSubject = async (request: FastifyRequest, reply: { code: (status: number) => { send: (payload: unknown) => unknown } }): Promise<string | null> => {
     const actor = await requireUser(request, reply, options.authorizeUser);
@@ -142,6 +154,7 @@ export function registerBroadcastSettingRoutes(app: FastifyInstance, options: Ro
     if (!userId) return;
     const parsed = parseTarget(request.body);
     if ("issues" in parsed) return replyValidation(reply, "INVALID_LPM_TARGET", parsed.issues);
+    if (!await assertLpmCapacity(options, userId, reply)) return;
     try {
       const target = await options.broadcasts.createLpmTarget({ userId, ...parsed });
       return reply.code(201).send({ target });

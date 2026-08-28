@@ -11,11 +11,13 @@ import {
 } from "../domain/auto-comment-settings.ts";
 import type { UserAuthorizer } from "./broadcast-setting-routes.ts";
 import type { AdminAuthorizer } from "./package-routes.ts";
+import type { EntitlementRepository } from "../entitlements/repository.ts";
 
 type RouteOptions = {
   autoComments: AutoCommentSettingsRepository;
   authorizeUser: UserAuthorizer;
   authorizeAdmin: AdminAuthorizer;
+  entitlements?: EntitlementRepository;
 };
 
 type SubjectResolver = (request: FastifyRequest, reply: FastifyReply) => Promise<string | null>;
@@ -192,6 +194,12 @@ export function registerAutoCommentSettingRoutes(app: FastifyInstance, options: 
     if (!userId) return;
     const target = validate(reply, () => validateChannelTarget(request.body));
     if (!target) return;
+    if (options.entitlements) {
+      const entitlement = (await options.entitlements.list(userId)).find((item) => item.status === "ACTIVE" && new Date(item.expiresAt).getTime() > Date.now());
+      if (!entitlement) return reply.code(403).send({ code: "SUBSCRIPTION_REQUIRED" });
+      const current = (await options.autoComments.listSettings(userId)).channelTargets.filter((item) => item.active).length;
+      if (current >= entitlement.maxChannelTargets) return reply.code(409).send({ code: "CHANNEL_TARGET_LIMIT_REACHED", limit: entitlement.maxChannelTargets, current });
+    }
     const created = await execute(reply, () => options.autoComments.createChannelTarget({ userId, target }));
     if (!created) return;
     return reply.code(201).send({ channelTarget: created });
