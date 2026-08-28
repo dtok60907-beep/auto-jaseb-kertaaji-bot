@@ -234,16 +234,16 @@ Penutupan:
 - Rollback note: remove `apps/api` package-catalog unit without affecting Telegram benchmark spike.
 - Follow-up units: PostgreSQL schema/migration for packages and entitlement snapshots, then API contract/authorization.
 
-### DEV-002 — Core broadcast and auto-comment workflow contract
+### DEV-002 — Core broadcast workflow contract
 
-- Final status: VERIFIED (deterministic planner; no live Telegram side effect).
+- Final status: VERIFIED (deterministic broadcast planner; no live Telegram side effect).
 - Commit/diff: recorded in the core-workflow development commit.
-- Outcome: broadcast fan-out creates one ordered idempotent send command per target for both worker and userbot modes; regex-triggered MF comment planning emits no command for no-match, one command for a match, and suppresses duplicate updates by stable rule/channel/post key.
-- Acceptance evidence: duplicate targets, invalid payloads, invalid regex, missing discussion target, ownership fields, and idempotency keys have explicit outcomes; one target/event cannot silently create cross-account commands.
-- Commands/tests: `npm test` in `apps/api` (9/9); `npm run check`; `npm run typecheck`; `git diff --check`.
-- Remaining risk: this unit does not persist commands, execute Telegram side effects, or measure live queue/CPU/RSS. Arbitrary regex execution still requires a bounded/safe regex runtime decision before production exposure.
-- Rollback note: remove `apps/api/src/workflows/core-workflows.ts` and its tests without affecting the package catalog or Telegram spike.
-- Follow-up units: PostgreSQL outbox/idempotency schema, workflow executor with per-account serialization, then controlled multi-session workload benchmark.
+- Outcome: broadcast fan-out creates one ordered idempotent send command per target for both worker and userbot modes.
+- Acceptance evidence: duplicate targets, invalid payloads, ownership fields, and idempotency keys have explicit outcomes; one target cannot silently create cross-account commands.
+- Commands/tests: initial unit `npm test` in `apps/api`; current regression suite is recorded under DEV-006.
+- Remaining risk: this unit does not persist commands, execute Telegram side effects, or measure live queue/CPU/RSS.
+- Rollback note: remove `apps/api/src/workflows/core-workflows.ts` and its tests without affecting the package catalog or Telegram spike. The old direct auto-comment placeholder was removed before any API or engine integration because it contradicted the later product requirement that approval is the default.
+- Follow-up units: auto-comment contract (DEV-006), then its persistence and runtime pipeline.
 
 ### DEV-003 — Supabase PostgreSQL foundation migration
 
@@ -277,6 +277,17 @@ Penutupan:
 - Remaining risk: the authorizer is an injected contract, not production Telegram identity yet; routes are not deployed or connected to the client Supabase project; payment and entitlement issuance remain intentionally out of scope.
 - Rollback note: API route removal is reversible; package history is append-only and a bad publish is corrected by a new version, not mutation of the historical snapshot.
 - Follow-up units: DEV-006 atomic broadcast operation, target records, worker reservation, and outbox command creation.
+
+### DEV-006 — Divisi dan Auto Komen Menfess domain contract
+
+- Final status: VERIFIED (domain contract only; tanpa database atau Telegram side effect).
+- Commit/diff: pending checkpoint commit for this unit.
+- Outcome: Divisi mempunyai mode `APPROVAL_REQUIRED` sebagai default dan `AUTO_SEND` sebagai opsi. Match mode approval hanya menghasilkan kandidat `PENDING_REVIEW`; Tepat menghasilkan tepat satu command komentar; OOT tidak menghasilkan command; Auto Send menghasilkan tepat satu command tanpa review.
+- Acceptance evidence: konfigurasi Divisi tervalidasi dan immutable; kandidat menyimpan snapshot template/keyword; snapshot wajib berasal dari Divisi; duplicate decision menghasilkan `ALREADY_DECIDED` tanpa command kedua; mode Auto Send tidak menerima callback review.
+- Commands/tests: `npm test` di `apps/api` (16/16); `npm run typecheck`; `npm run check`; `git diff --check`.
+- Remaining risk: callback Tepat/OOT belum atomik di PostgreSQL, belum ada schema Divisi/channel/kandidat, belum ada notifikasi bot atau executor Telegram. Strategi pemilihan satu template dari beberapa template belum diputuskan dan sengaja tidak diasumsikan.
+- Rollback note: hapus domain contract dan dokumentasi ini; tidak ada data/migrasi/side effect Telegram yang perlu dipulihkan.
+- Follow-up units: DEV-007 migration Divisi, template, channel target, kandidat, decision, dan outbox constraint; lalu DEV-008 API CRUD.
 
 ## Template penutupan unit
 
