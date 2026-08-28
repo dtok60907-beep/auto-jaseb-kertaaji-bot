@@ -245,6 +245,17 @@ Penutupan:
 - Rollback note: remove `apps/api/src/workflows/core-workflows.ts` and its tests without affecting the package catalog or Telegram spike.
 - Follow-up units: PostgreSQL outbox/idempotency schema, workflow executor with per-account serialization, then controlled multi-session workload benchmark.
 
+### DEV-003 — Supabase PostgreSQL foundation migration
+
+- Final status: VERIFIED (fresh migration and database-level ownership guards).
+- Commit/diff: recorded in the Supabase schema commit.
+- Outcome: Supabase migration defines package catalog, entitlement snapshots, encrypted Telegram account metadata, workflow operations, idempotent outbox commands, account leases/fencing, timestamps, indexes, and RLS read boundaries.
+- Acceptance evidence: package and interval constraints, userbot feature requirement, sensitive payload-key checks, operation-account ownership trigger, command-operation account match trigger, and service-role-only session/lease tables are encoded in SQL.
+- Commands/tests: ephemeral PostgreSQL 16 fresh apply with 6 tables; valid worker/userbot/operation/command inserts; expected ownership violations rejected; `git diff --check`.
+- Remaining risk: Supabase CLI is not installed locally; migration has not yet been applied to the client's Supabase project. RLS behavior with real Supabase JWT claims and backup/restore remain release gates.
+- Rollback note: apply a forward corrective migration or restore the Supabase backup; do not edit an already-applied migration in place.
+- Follow-up units: Supabase project connection/preview migration, then API repository for package CRUD and outbox transaction.
+
 ## Template penutupan unit
 
 ```markdown
