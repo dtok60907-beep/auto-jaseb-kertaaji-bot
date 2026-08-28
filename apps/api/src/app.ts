@@ -5,6 +5,8 @@ import { registerPackageRoutes, type AdminAuthorizer } from "./http/package-rout
 import type { AutoCommentSettingsRepository } from "./auto-comment/repository.ts";
 import type { BroadcastSettingsRepository } from "./broadcast/repository.ts";
 import type { PackageRepository } from "./packages/repository.ts";
+import type { EntitlementRepository } from "./entitlements/repository.ts";
+import { registerEntitlementRoutes } from "./http/entitlement-routes.ts";
 
 export function createApi(options: {
   packages: PackageRepository;
@@ -12,10 +14,12 @@ export function createApi(options: {
   autoComments: AutoCommentSettingsRepository;
   authorizeAdmin: AdminAuthorizer;
   authorizeUser: UserAuthorizer;
+  entitlements?: EntitlementRepository;
 }) {
   const app = Fastify({ logger: false });
   registerPackageRoutes(app, options);
   registerBroadcastSettingRoutes(app, options);
   registerAutoCommentSettingRoutes(app, options);
+  if (options.entitlements) registerEntitlementRoutes(app, options as { entitlements: EntitlementRepository; authorizeAdmin: AdminAuthorizer });
   return app;
 }
