@@ -9,6 +9,9 @@ The initial migration contains:
 - encrypted Telegram account/session metadata;
 - workflow operations and idempotent outbox commands;
 - account leases with fencing tokens;
+- broadcast target state and exclusive worker assignments;
+- userbot-owned comment rules, incoming post dedupe, and one match per rule/post;
+- explicit `SIDE_EFFECT_UNCERTAIN` state for ambiguous Telegram outcomes;
 - RLS policies for user-visible reads, with writes reserved for the server/service role.
 
 `telegram_accounts` and `account_leases` intentionally have no client-facing policies. The API/worker uses the Supabase service role after its own authorization checks.

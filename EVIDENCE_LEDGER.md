@@ -256,6 +256,17 @@ Penutupan:
 - Rollback note: apply a forward corrective migration or restore the Supabase backup; do not edit an already-applied migration in place.
 - Follow-up units: Supabase project connection/preview migration, then API repository for package CRUD and outbox transaction.
 
+### DEV-004 — Broadcast and auto-comment workflow persistence
+
+- Final status: VERIFIED (fresh + upgrade migration with workflow ownership guards).
+- Commit/diff: recorded in the workflow-persistence migration commit.
+- Outcome: broadcast targets preserve per-target interval/preparation/delivery state; worker assignment is exclusive while active; comment rules belong only to their userbot owner; incoming posts and rule matches are deduplicated; each outbox command has exactly one verified workflow context.
+- Acceptance evidence: `SIDE_EFFECT_UNCERTAIN` is explicit and cannot auto-retry by policy; a command must match its broadcast target or comment rule/discussion target; userbot ownership mismatch and target-context mismatch are rejected inside PostgreSQL.
+- Commands/tests: ephemeral PostgreSQL 16 applies base migration then upgrade migration; valid worker broadcast and userbot comment paths insert one target/match/two commands; expected userbot-ownership, command-target, and rule/post-context violations fail; `git diff --check`.
+- Remaining risk: no API transaction, engine claim loop, safe regex runtime, or live Telegram send/comment yet. RLS policy behavior with actual Supabase JWT infrastructure remains to be run against a connected Supabase project.
+- Rollback note: migration is additive except status-check expansion; corrective changes must be a new forward migration, never an edit of an applied migration.
+- Follow-up units: DEV-005 admin package version CRUD, then DEV-006 atomic broadcast operation/outbox creation.
+
 ## Template penutupan unit
 
 ```markdown
