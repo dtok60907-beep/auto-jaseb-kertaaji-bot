@@ -234,6 +234,17 @@ Penutupan:
 - Rollback note: remove `apps/api` package-catalog unit without affecting Telegram benchmark spike.
 - Follow-up units: PostgreSQL schema/migration for packages and entitlement snapshots, then API contract/authorization.
 
+### DEV-002 — Core broadcast and auto-comment workflow contract
+
+- Final status: VERIFIED (deterministic planner; no live Telegram side effect).
+- Commit/diff: recorded in the core-workflow development commit.
+- Outcome: broadcast fan-out creates one ordered idempotent send command per target for both worker and userbot modes; regex-triggered MF comment planning emits no command for no-match, one command for a match, and suppresses duplicate updates by stable rule/channel/post key.
+- Acceptance evidence: duplicate targets, invalid payloads, invalid regex, missing discussion target, ownership fields, and idempotency keys have explicit outcomes; one target/event cannot silently create cross-account commands.
+- Commands/tests: `npm test` in `apps/api` (9/9); `npm run check`; `npm run typecheck`; `git diff --check`.
+- Remaining risk: this unit does not persist commands, execute Telegram side effects, or measure live queue/CPU/RSS. Arbitrary regex execution still requires a bounded/safe regex runtime decision before production exposure.
+- Rollback note: remove `apps/api/src/workflows/core-workflows.ts` and its tests without affecting the package catalog or Telegram spike.
+- Follow-up units: PostgreSQL outbox/idempotency schema, workflow executor with per-account serialization, then controlled multi-session workload benchmark.
+
 ## Template penutupan unit
 
 ```markdown
