@@ -8,6 +8,7 @@ import type {
 } from "../src/broadcast/repository.ts";
 import type { PackageRepository } from "../src/packages/repository.ts";
 import type { AutoCommentSettingsRepository } from "../src/auto-comment/repository.ts";
+import type { EntitlementRepository } from "../src/entitlements/repository.ts";
 
 class EmptyPackages implements PackageRepository {
   async create(): Promise<never> { throw new Error("not used"); }
@@ -32,6 +33,7 @@ class EmptyAutoComments implements AutoCommentSettingsRepository {
   async detachChannel(): Promise<boolean> { return false; }
   async decideCandidate(): Promise<never> { throw new Error("not used"); }
 }
+class EmptyEntitlements implements EntitlementRepository { async grant(): Promise<never> { throw new Error("not used"); } async list() { return [{ id: "00000000-0000-0000-0000-000000000777", userId: "", packageId: "", packageType: "JASEB_WORKER" as const, status: "ACTIVE", startsAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 86400000).toISOString(), maxLpmGroups: 999, maxChannelTargets: 0 }]; } async extend(): Promise<null> { return null; } async revoke(): Promise<boolean> { return false; } }
 
 class FakeBroadcastSettings implements BroadcastSettingsRepository {
   private materialRows: Array<BroadcastMaterialView & { userId: string }> = [];
@@ -124,6 +126,7 @@ function app({
     packages: new EmptyPackages(),
     broadcasts,
     autoComments: new EmptyAutoComments(),
+    entitlements: new EmptyEntitlements(),
     authorizeAdmin: async () => adminId ? { id: adminId } : null,
     authorizeUser: async () => userId ? { id: userId } : null,
   });

@@ -5,6 +5,7 @@ import type { BroadcastSettingsRepository } from "../src/broadcast/repository.ts
 import type { AutoCommentSettingsRepository } from "../src/auto-comment/repository.ts";
 import { toPublicPackage, type PackageConfig } from "../src/domain/package-catalog.ts";
 import type { CreatePackageInput, PackageRepository, PackageView, PublishPackageInput } from "../src/packages/repository.ts";
+import type { EntitlementRepository } from "../src/entitlements/repository.ts";
 
 const config: PackageConfig = {
   name: "Worker Basic",
@@ -74,12 +75,14 @@ class EmptyAutoComments implements AutoCommentSettingsRepository {
   async detachChannel(): Promise<boolean> { return false; }
   async decideCandidate(): Promise<never> { throw new Error("not used"); }
 }
+class EmptyEntitlements implements EntitlementRepository { async grant(): Promise<never> { throw new Error("not used"); } async list(): Promise<readonly []> { return []; } async extend(): Promise<null> { return null; } async revoke(): Promise<boolean> { return false; } }
 
 function app({ admin = true } = {}) {
   return createApi({
     packages: new FakePackages(),
     broadcasts: new EmptyBroadcastSettings(),
     autoComments: new EmptyAutoComments(),
+    entitlements: new EmptyEntitlements(),
     authorizeAdmin: async () => admin ? { id: "00000000-0000-0000-0000-000000000001" } : null,
     authorizeUser: async () => ({ id: "00000000-0000-0000-0000-000000000001" }),
   });

@@ -16,14 +16,14 @@ export function createApi(options: {
   autoComments: AutoCommentSettingsRepository;
   authorizeAdmin: AdminAuthorizer;
   authorizeUser: UserAuthorizer;
-  entitlements?: EntitlementRepository;
+  entitlements: EntitlementRepository;
   userbotProfiles?: UserbotProfileRepository;
 }) {
   const app = Fastify({ logger: false });
   registerPackageRoutes(app, options);
   registerBroadcastSettingRoutes(app, options);
   registerAutoCommentSettingRoutes(app, options);
-  if (options.entitlements) registerEntitlementRoutes(app, options as { entitlements: EntitlementRepository; authorizeAdmin: AdminAuthorizer });
+  registerEntitlementRoutes(app, options);
   if (options.userbotProfiles) registerUserbotProfileRoutes(app, { profiles: options.userbotProfiles, authorizeUser: options.authorizeUser });
   return app;
 }

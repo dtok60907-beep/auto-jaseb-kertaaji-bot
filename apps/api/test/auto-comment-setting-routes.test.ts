@@ -10,6 +10,7 @@ import type {
 } from "../src/auto-comment/repository.ts";
 import type { BroadcastSettingsRepository } from "../src/broadcast/repository.ts";
 import type { PackageRepository } from "../src/packages/repository.ts";
+import type { EntitlementRepository } from "../src/entitlements/repository.ts";
 
 const OWNER = "11111111-1111-1111-1111-111111111111";
 const OTHER = "22222222-2222-2222-2222-222222222222";
@@ -32,6 +33,7 @@ class EmptyBroadcasts implements BroadcastSettingsRepository {
   async updateLpmTarget(): Promise<null> { return null; }
   async deleteLpmTarget(): Promise<boolean> { return false; }
 }
+class EmptyEntitlements implements EntitlementRepository { async grant(): Promise<never> { throw new Error("not used"); } async list() { return [{ id: "00000000-0000-0000-0000-000000000777", userId: "", packageId: "", packageType: "USERBOT" as const, status: "ACTIVE", startsAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 86400000).toISOString(), maxLpmGroups: 999, maxChannelTargets: 999 }]; } async extend(): Promise<null> { return null; } async revoke(): Promise<boolean> { return false; } }
 
 type DivisionRow = {
   id: string; userId: string; accountId: string; name: string; mode: AutoCommentDivisionView["mode"]; active: boolean;
@@ -211,7 +213,7 @@ function app({ userId = OWNER, adminId = "", autoComments = new FakeAutoComments
   autoComments?: AutoCommentSettingsRepository;
 } = {}) {
   return createApi({
-    packages: new EmptyPackages(), broadcasts: new EmptyBroadcasts(), autoComments,
+    packages: new EmptyPackages(), broadcasts: new EmptyBroadcasts(), autoComments, entitlements: new EmptyEntitlements(),
     authorizeUser: async () => userId ? { id: userId } : null,
     authorizeAdmin: async () => adminId ? { id: adminId } : null,
   });
