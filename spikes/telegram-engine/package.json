@@ -1,0 +1,12 @@
+{
+  "name": "telegram-engine-benchmark",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "summarize": "node ./src/cli.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

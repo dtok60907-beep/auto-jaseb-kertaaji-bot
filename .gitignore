@@ -1,0 +1,29 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.session
+*.session-journal
+*.key
+
+# JavaScript
+node_modules/
+dist/
+coverage/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Benchmark output may contain operational metadata; keep raw results local until sanitized.
+spikes/telegram-engine/results/raw/
+spikes/telegram-engine/tmp/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
