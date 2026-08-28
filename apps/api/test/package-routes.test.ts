@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createApi } from "../src/app.ts";
+import type { BroadcastSettingsRepository } from "../src/broadcast/repository.ts";
 import { toPublicPackage, type PackageConfig } from "../src/domain/package-catalog.ts";
 import type { CreatePackageInput, PackageRepository, PackageView, PublishPackageInput } from "../src/packages/repository.ts";
 
@@ -44,10 +45,23 @@ class FakePackages implements PackageRepository {
   }
 }
 
+class EmptyBroadcastSettings implements BroadcastSettingsRepository {
+  async listMaterials(): Promise<readonly []> { return []; }
+  async createMaterial(): Promise<never> { throw new Error("not used"); }
+  async updateMaterial(): Promise<null> { return null; }
+  async deleteMaterial(): Promise<boolean> { return false; }
+  async listLpmTargets(): Promise<readonly []> { return []; }
+  async createLpmTarget(): Promise<never> { throw new Error("not used"); }
+  async updateLpmTarget(): Promise<null> { return null; }
+  async deleteLpmTarget(): Promise<boolean> { return false; }
+}
+
 function app({ admin = true } = {}) {
   return createApi({
     packages: new FakePackages(),
+    broadcasts: new EmptyBroadcastSettings(),
     authorizeAdmin: async () => admin ? { id: "00000000-0000-0000-0000-000000000001" } : null,
+    authorizeUser: async () => ({ id: "00000000-0000-0000-0000-000000000001" }),
   });
 }
 

@@ -322,6 +322,17 @@ Penutupan:
 - Rollback note: additive migration; koreksi dilakukan dengan forward migration, tidak mengedit migration yang telah diterapkan.
 - Follow-up units: DEV-010 API CRUD Jasa Sebar, lalu DEV-011 API CRUD Divisi/channel/template dan decision transaction.
 
+### DEV-010 — API CRUD setting Jasa Sebar
+
+- Final status: VERIFIED (API composition/repository; belum di-deploy dan identity production belum dipasang).
+- Commit/diff: pending checkpoint commit for this unit.
+- Outcome: user terautentikasi dapat membuat, melihat, memperbarui, dan menghapus materi TEXT/FORWARD serta Grup LPM miliknya sendiri melalui API versioned.
+- Acceptance evidence: actor user hanya berasal dari injected authorization adapter; request menolak field tidak didukung, link sumber invalid, payload campuran, dan target invalid; repository selalu memfilter `user_id` pada read/update/delete; resource user lain menjadi not found; duplicate target menjadi `LPM_TARGET_EXISTS`.
+- Commands/tests: `npm test` di `apps/api` (28/28); `npm run typecheck`; `npm run check`; PostgreSQL 16 ephemeral integration memakai migration V1–V4 membuktikan create/list/update/delete TEXT/FORWARD/target, conversion TEXT→FORWARD, duplicate case-insensitive, dan owner lain tidak dapat read/update/delete; `git diff --check` pending final review.
+- Remaining risk: authorizer Telegram production, entitlement limit, operation/outbox, source/target preflight, UI, dan deployment belum ada; material delete belum memiliki policy untuk operation yang kelak sudah memakai material karena operation belum dibuat.
+- Rollback note: route/repository dapat direvert; data setting tetap aman dan tidak ada external side effect.
+- Follow-up units: DEV-011 API CRUD Divisi/channel/template, lalu DEV-012 atomic Tepat/OOT decision dan outbox command transaction.
+
 ## Template penutupan unit
 
 ```markdown
