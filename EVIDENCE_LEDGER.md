@@ -267,6 +267,17 @@ Penutupan:
 - Rollback note: migration is additive except status-check expansion; corrective changes must be a new forward migration, never an edit of an applied migration.
 - Follow-up units: DEV-005 admin package version CRUD, then DEV-006 atomic broadcast operation/outbox creation.
 
+### DEV-005 — Admin package version CRUD
+
+- Final status: VERIFIED (server-only repository plus Fastify route contract).
+- Commit/diff: recorded in the package CRUD commit.
+- Outcome: admin can create a package and publish an updated immutable version; public reads see active packages only; admin reads include inactive packages.
+- Acceptance evidence: runtime validation reuses the package domain contract; duplicate package code, missing package, invalid input, and missing admin authorization have stable API responses; writes call PostgreSQL functions that atomically create a package version and update the catalog projection.
+- Commands/tests: `npm test` in `apps/api` (13/13); strict TypeScript check; direct PostgreSQL repository integration against all Supabase migrations (create → publish version 2 → list); `npm audit --omit=dev` (0 vulnerabilities); `git diff --check`.
+- Remaining risk: the authorizer is an injected contract, not production Telegram identity yet; routes are not deployed or connected to the client Supabase project; payment and entitlement issuance remain intentionally out of scope.
+- Rollback note: API route removal is reversible; package history is append-only and a bad publish is corrected by a new version, not mutation of the historical snapshot.
+- Follow-up units: DEV-006 atomic broadcast operation, target records, worker reservation, and outbox command creation.
+
 ## Template penutupan unit
 
 ```markdown

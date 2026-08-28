@@ -13,5 +13,9 @@
   "devDependencies": {
     "@types/node": "22.15.21",
     "typescript": "5.9.2"
+  },
+  "dependencies": {
+    "fastify": "5.12.1",
+    "postgres": "3.4.9"
   }
 }
