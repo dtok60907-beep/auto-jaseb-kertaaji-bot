@@ -61,3 +61,13 @@ test("failure becomes a hard assertion without raw detail", async () => {
 test("invalid run count is rejected", async () => {
   await assert.rejects(runConnectSamples({ runs: 0, createAdapter: () => new FakeAdapter() }), /runs must be an integer/);
 });
+
+test("default clock works with Node performance binding", async () => {
+  const result = await runConnectSamples({
+    runs: 1,
+    createAdapter: () => new FakeAdapter(),
+  });
+
+  assert.equal(result.passed, true);
+  assert.equal(result.records.at(-1).passed, true);
+});

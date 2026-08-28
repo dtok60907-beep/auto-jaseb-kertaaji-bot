@@ -24,7 +24,7 @@ function failureCode(error) {
   return typeof error?.code === "string" && error.code ? error.code : "BENCHMARK_CONNECT_FAILED";
 }
 
-export async function runConnectSamples({ createAdapter, runs, now = performance.now }) {
+export async function runConnectSamples({ createAdapter, runs, now = () => performance.now() }) {
   if (!Number.isInteger(runs) || runs < 1 || runs > MAX_RUNS) {
     throw new TypeError(`runs must be an integer between 1 and ${MAX_RUNS}`);
   }
