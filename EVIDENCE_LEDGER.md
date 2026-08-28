@@ -163,7 +163,7 @@ Penutupan:
 Penutupan:
 
 - Final status: VERIFIED (scope single-session connectivity runner saja).
-- Commit/diff: pending checkpoint unit ini.
+- Commit/diff: `da672ff`.
 - Commands/tests: parent Node suite 17/17; Telethon Python suite 13/13 pada system dan pinned virtualenv; `node --check`; `compileall`; empty-environment runner output dikonsumsi parent summary harness.
 - Result summary: dua runner menghasilkan metadata dan hard assertion JSONL yang kompatibel; environment kosong menghasilkan exit code 1 dan tidak membocorkan credential/raw error.
 - Remaining risk: tidak ada connect ke Telegram nyata, multi-session, send, join, comment, resource, atau soak data.
