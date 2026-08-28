@@ -53,7 +53,7 @@ set +a
 
 cd spikes/telegram-engine/adapters/telethon
 TELEGRAM_TEST_SESSION="$TELETHON_TEST_SESSION" \
-python3 smoke.py
+.venv/bin/python smoke.py
 
 cd ../teleproto
 TELEGRAM_TEST_SESSION="$TELEPROTO_TEST_SESSION" \
