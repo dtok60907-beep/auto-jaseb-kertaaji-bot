@@ -103,7 +103,7 @@ Penutupan:
 Penutupan:
 
 - Final status: VERIFIED (scope adapter lokal saja; bukan runtime selection).
-- Commit/diff: pending checkpoint unit ini.
+- Commit/diff: `1d8ba8a`.
 - Acceptance evidence: lifecycle/error/redaction contract ada di `adapter.mjs`; direct API import dan error surface Teleproto 1.228.5 diverifikasi; `smoke.mjs` hanya connect/authorized/disconnect.
 - Commands/tests: `npm test` (9/9 adapter); `node --check adapter.mjs smoke.mjs`; import/error surface check; safe smoke setup failure; parent benchmark suite (14/14).
 - Result summary: dependency lockfile dibuat oleh npm; `npm audit` package spike menunjukkan 0 vulnerability; error mapping JS diperbaiki setelah regression test menemukan global Python-style timeout error tidak ada di Node.
