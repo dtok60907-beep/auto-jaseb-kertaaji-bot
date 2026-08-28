@@ -51,6 +51,8 @@ class ClientProtocol(Protocol):
 
     async def get_entity(self, entity: Any) -> Any: ...
 
+    async def __call__(self, request: Any) -> Any: ...
+
     async def send_message(self, entity: Any, message: str, **kwargs: Any) -> Any: ...
 
     def add_event_handler(self, callback: Callable[[Any], Awaitable[None]], event: Any = None) -> Any: ...
@@ -170,12 +172,25 @@ def map_telegram_error(error: Exception) -> TelegramAdapterError:
 MessageHandler = Callable[[Any], Awaitable[None]]
 
 
+def _default_join_request(entity: Any) -> Any:
+    from telethon.tl.functions.channels import JoinChannelRequest
+
+    return JoinChannelRequest(entity)
+
+
 class TelethonAdapter:
     """Serializes lifecycle and send calls around one Telethon client session."""
 
-    def __init__(self, client: ClientProtocol, *, new_message_event: Any = None) -> None:
+    def __init__(
+        self,
+        client: ClientProtocol,
+        *,
+        new_message_event: Any = None,
+        join_request_factory: Callable[[Any], Any] = _default_join_request,
+    ) -> None:
         self._client = client
         self._new_message_event = new_message_event
+        self._join_request_factory = join_request_factory
         self._state = AdapterState.NEW
         self._lock = asyncio.Lock()
 
@@ -264,6 +279,28 @@ class TelethonAdapter:
             except Exception as error:
                 raise map_telegram_error(error) from error
         return {"entityType": type(entity).__name__}
+
+    async def join_public_target(self, target: str) -> dict[str, str]:
+        if not isinstance(target, str) or not target.strip():
+            raise ValueError("target is required")
+        async with self._lock:
+            if self._state is not AdapterState.READY:
+                raise TelegramAdapterError(
+                    "ADAPTER_NOT_READY",
+                    retryable=True,
+                    message="Koneksi Telegram belum siap.",
+                )
+            try:
+                entity = await self._client.get_entity(target)
+                await self._client(self._join_request_factory(entity))
+                return {"state": "JOINED"}
+            except asyncio.CancelledError:
+                self._state = AdapterState.FAILED
+                raise
+            except Exception as error:
+                if "UserAlreadyParticipantError" in _class_names(error):
+                    return {"state": "ALREADY_MEMBER"}
+                raise map_telegram_error(error) from error
 
     def add_new_message_handler(self, handler: MessageHandler) -> Callable[[Any], Awaitable[None]]:
         """Register one async handler without exposing the raw session/client."""

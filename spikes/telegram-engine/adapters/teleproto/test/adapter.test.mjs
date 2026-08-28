@@ -19,6 +19,8 @@ class FakeClient {
   disconnectError = null;
   sendError = null;
   getEntityError = null;
+  joinError = null;
+  joinCalls = [];
   sendGate = null;
   sendStarted = null;
   activeSends = 0;
@@ -57,6 +59,12 @@ class FakeClient {
     return this.entities.get(target) ?? { target };
   }
 
+  async joinChannel(entity) {
+    if (this.joinError) throw this.joinError;
+    this.joinCalls.push(entity);
+    return { joined: true };
+  }
+
   addEventHandler(callback, event) {
     this.handlers.push([callback, event]);
   }
@@ -73,6 +81,7 @@ class SessionRevokedError extends Error {}
 class ChatWriteForbiddenError extends Error {}
 class RPCError extends Error {}
 class TimeoutError extends Error {}
+class UserAlreadyParticipantError extends Error {}
 
 test("connect is idempotent and authorized", async () => {
   const client = new FakeClient();
@@ -172,6 +181,26 @@ test("resolve target maps provider error without raw target", async () => {
     assert.equal(error.message.includes("@missing"), false);
     return true;
   });
+});
+
+test("join public target is ready and returns safe state", async () => {
+  const client = new FakeClient();
+  client.entities.set("@public", { kind: "channel" });
+  const adapter = new TeleprotoAdapter(client);
+
+  await assert.rejects(adapter.joinPublicTarget("@public"), (error) => error.code === "ADAPTER_NOT_READY");
+  await adapter.connect();
+  assert.deepEqual(await adapter.joinPublicTarget("@public"), { state: "JOINED" });
+  assert.deepEqual(client.joinCalls, [{ kind: "channel" }]);
+});
+
+test("join public target treats already-member response as success", async () => {
+  const client = new FakeClient();
+  client.joinError = new UserAlreadyParticipantError();
+  const adapter = new TeleprotoAdapter(client);
+  await adapter.connect();
+
+  assert.deepEqual(await adapter.joinPublicTarget("@public"), { state: "ALREADY_MEMBER" });
 });
 
 test("known errors map to stable public codes", () => {

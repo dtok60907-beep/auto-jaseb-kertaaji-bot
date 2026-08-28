@@ -261,6 +261,27 @@ export class TeleprotoAdapter {
     });
   }
 
+  async joinPublicTarget(target) {
+    if (typeof target !== "string" || target.trim() === "") throw new TypeError("target is required");
+
+    return this.#serialized(async () => {
+      if (this.#state !== AdapterState.READY) {
+        throw new TelegramAdapterError("ADAPTER_NOT_READY", {
+          retryable: true,
+          message: "Koneksi Telegram belum siap.",
+        });
+      }
+      try {
+        const entity = await this.#client.getEntity(target);
+        await this.#client.joinChannel(entity);
+        return { state: "JOINED" };
+      } catch (error) {
+        if (errorNames(error).has("UserAlreadyParticipantError")) return { state: "ALREADY_MEMBER" };
+        throw mapTelegramError(error);
+      }
+    });
+  }
+
   addNewMessageHandler(handler) {
     if (typeof handler !== "function") throw new TypeError("handler must be callable");
     const bridge = async (event) => handler(event);

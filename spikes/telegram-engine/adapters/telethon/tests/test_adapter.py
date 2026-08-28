@@ -29,6 +29,8 @@ class FakeClient:
         self.disconnect_error: Exception | None = None
         self.send_error: Exception | None = None
         self.get_entity_error: Exception | None = None
+        self.join_error: Exception | None = None
+        self.join_calls: list[Any] = []
         self.send_gate: asyncio.Event | None = None
         self.send_started: asyncio.Event | None = None
         self.active_sends = 0
@@ -67,6 +69,12 @@ class FakeClient:
             raise self.get_entity_error
         return self.entities.get(str(target), {"target": target})
 
+    async def __call__(self, request: Any) -> Any:
+        if self.join_error:
+            raise self.join_error
+        self.join_calls.append(request)
+        return {"joined": True}
+
     def add_event_handler(self, callback: Any, event: Any = None) -> None:
         self.handlers.append((callback, event))
 
@@ -85,6 +93,10 @@ class ChatWriteForbiddenError(Exception):
 
 
 class RPCError(Exception):
+    pass
+
+
+class UserAlreadyParticipantError(Exception):
     pass
 
 
@@ -210,6 +222,26 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(caught.exception.code, "TELEGRAM_UNKNOWN")
         self.assertNotIn("@missing", caught.exception.public_dict().values())
+
+    async def test_join_public_target_is_ready_serialized_and_safe(self) -> None:
+        client = FakeClient()
+        adapter = TelethonAdapter(client, join_request_factory=lambda entity: ("join", entity))
+
+        with self.assertRaises(TelegramAdapterError) as caught:
+            await adapter.join_public_target("@public")
+        self.assertEqual(caught.exception.code, "ADAPTER_NOT_READY")
+
+        await adapter.connect()
+        self.assertEqual(await adapter.join_public_target("@public"), {"state": "JOINED"})
+        self.assertEqual(client.join_calls, [("join", {"target": "@public"})])
+
+    async def test_join_public_target_treats_already_member_as_success(self) -> None:
+        client = FakeClient()
+        client.join_error = UserAlreadyParticipantError()
+        adapter = TelethonAdapter(client, join_request_factory=lambda entity: entity)
+        await adapter.connect()
+
+        self.assertEqual(await adapter.join_public_target("@public"), {"state": "ALREADY_MEMBER"})
 
     async def test_cancellation_propagates_and_blocks_future_send(self) -> None:
         client = FakeClient()

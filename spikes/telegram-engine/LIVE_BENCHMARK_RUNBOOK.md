@@ -93,6 +93,20 @@ Run one scenario at a time in this order:
 11. graceful shutdown while idle and while queue is non-empty;
 12. crash/recovery test against durable job test harness.
 
+For the public-join step, run exactly once per candidate after the resolve preflight. Do not retry a failed join automatically:
+
+```bash
+cd spikes/telegram-engine/adapters/telethon
+TELEGRAM_TEST_SESSION="$TELETHON_TEST_SESSION" \
+.venv/bin/python behavior_join_public.py > ../../results/raw/telethon-join-public.jsonl
+
+cd ../teleproto
+TELEGRAM_TEST_SESSION="$TELEPROTO_TEST_SESSION" \
+node behavior-join-public.mjs > ../../results/raw/teleproto-join-public.jsonl
+```
+
+`JOINED` and `ALREADY_MEMBER` are successful terminal states. `JOIN_APPROVAL_REQUIRED`, `TARGET_NOT_FOUND`, permission errors, FloodWait, or any unknown error are hard-gate failures and must be investigated before another attempt.
+
 Each scenario must emit JSONL into `results/raw/` and be summarized with the parent harness. A hard gate failure ends that candidate's run.
 
 ### Phase 3 — Resource and soak
