@@ -49,6 +49,8 @@ class ClientProtocol(Protocol):
 
     async def is_user_authorized(self) -> bool: ...
 
+    async def get_entity(self, entity: Any) -> Any: ...
+
     async def send_message(self, entity: Any, message: str, **kwargs: Any) -> Any: ...
 
     def add_event_handler(self, callback: Callable[[Any], Awaitable[None]], event: Any = None) -> Any: ...
@@ -243,6 +245,25 @@ class TelethonAdapter:
                 raise
             except Exception as error:
                 raise map_telegram_error(error) from error
+
+    async def resolve_target(self, target: str) -> dict[str, str]:
+        if not isinstance(target, str) or not target.strip():
+            raise ValueError("target is required")
+        async with self._lock:
+            if self._state is not AdapterState.READY:
+                raise TelegramAdapterError(
+                    "ADAPTER_NOT_READY",
+                    retryable=True,
+                    message="Koneksi Telegram belum siap.",
+                )
+            try:
+                entity = await self._client.get_entity(target)
+            except asyncio.CancelledError:
+                self._state = AdapterState.FAILED
+                raise
+            except Exception as error:
+                raise map_telegram_error(error) from error
+        return {"entityType": type(entity).__name__}
 
     def add_new_message_handler(self, handler: MessageHandler) -> Callable[[Any], Awaitable[None]]:
         """Register one async handler without exposing the raw session/client."""

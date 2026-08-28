@@ -5,7 +5,7 @@
  * production session storage lives here.
  */
 
-import { TelegramClient, events, sessions } from "teleproto";
+import { Logger, TelegramClient, events, sessions } from "teleproto";
 
 export const AdapterState = Object.freeze({
   NEW: "NEW",
@@ -51,6 +51,7 @@ export class SessionConfig {
         autoReconnect: true,
         sequentialUpdates: true,
         floodSleepThreshold: 0,
+        baseLogger: new Logger("error"),
       },
     );
     return new TeleprotoAdapter(client, { newMessageEvent: new events.NewMessage({}) });
@@ -235,6 +236,25 @@ export class TeleprotoAdapter {
       }
       try {
         return await this.#client.sendMessage(target, { message: text, ...options });
+      } catch (error) {
+        throw mapTelegramError(error);
+      }
+    });
+  }
+
+  async resolveTarget(target) {
+    if (typeof target !== "string" || target.trim() === "") throw new TypeError("target is required");
+
+    return this.#serialized(async () => {
+      if (this.#state !== AdapterState.READY) {
+        throw new TelegramAdapterError("ADAPTER_NOT_READY", {
+          retryable: true,
+          message: "Koneksi Telegram belum siap.",
+        });
+      }
+      try {
+        const entity = await this.#client.getEntity(target);
+        return { entityType: entity?.constructor?.name ?? "Unknown" };
       } catch (error) {
         throw mapTelegramError(error);
       }

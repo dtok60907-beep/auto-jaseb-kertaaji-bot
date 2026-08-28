@@ -192,6 +192,17 @@ Penutupan:
 - Rollback note: benchmark hanya lifecycle koneksi dan disconnect; tidak mengubah akun atau target Telegram.
 - Follow-up units: controlled behavior suite dengan target yang disediakan operator, lalu resource soak pada 1/10/50 session.
 
+### BEN-005 — Live controlled target resolve preflight
+
+- Final status: VERIFIED (3/3 controlled target roles resolved per candidate; read-only operation).
+- Commit/diff: `b25eaf2`.
+- Acceptance evidence: `resolve_target`/`resolveTarget` implemented in both adapters; runners emit role-scoped JSONL without target values, sessions, or raw errors; all required `.env` keys are set locally and `.env` remains Git-ignored.
+- Commands/tests: `npm --prefix spikes/telegram-engine test` (22/22); Telethon Python suite (17/17); `node --check behavior-resolve-targets.mjs`; Python `compileall`; `git diff --check`; live Telethon and Teleproto runners; parent summary harness on both JSONL artifacts.
+- Result summary: Telethon resolved `public_group`, `approval_group`, and `discussion_channel` as `Channel` with min/p50/p95/max latency 91.549893/91.901804/92.021945/92.035294 ms. Teleproto resolved the same roles as `Channel` with min/p50/p95/max 78.536020/80.905529/81.069359/81.087562 ms. All four assertions per candidate passed.
+- Remaining risk: resolve proves target visibility only; it does not prove join-request state, discussion commenting, send permissions, update delivery, event loss, duplicate side effects, multi-session behavior, or resource soak.
+- Rollback note: no Telegram membership or message changed; operation only resolved entities and disconnected.
+- Follow-up units: explicit approval for the public-join side-effect test, then approval-required join state, controlled text send, discussion comment, receive/catch-up, and resource soak.
+
 ## Template penutupan unit
 
 ```markdown

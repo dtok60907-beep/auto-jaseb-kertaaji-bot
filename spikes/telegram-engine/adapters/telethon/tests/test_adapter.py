@@ -24,9 +24,11 @@ class FakeClient:
         self.disconnect_calls = 0
         self.send_calls: list[tuple[Any, str, dict[str, Any]]] = []
         self.handlers: list[tuple[Any, Any]] = []
+        self.entities: dict[str, Any] = {}
         self.connect_error: Exception | None = None
         self.disconnect_error: Exception | None = None
         self.send_error: Exception | None = None
+        self.get_entity_error: Exception | None = None
         self.send_gate: asyncio.Event | None = None
         self.send_started: asyncio.Event | None = None
         self.active_sends = 0
@@ -59,6 +61,11 @@ class FakeClient:
             return {"target": target, "text": text}
         finally:
             self.active_sends -= 1
+
+    async def get_entity(self, target: Any) -> Any:
+        if self.get_entity_error:
+            raise self.get_entity_error
+        return self.entities.get(str(target), {"target": target})
 
     def add_event_handler(self, callback: Any, event: Any = None) -> None:
         self.handlers.append((callback, event))
@@ -176,6 +183,33 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(marker, [{"id": 9}])
         self.assertEqual(client.handlers, [(bridge, "NEW_MESSAGE")])
+
+    async def test_resolve_target_requires_ready_and_returns_safe_type_only(self) -> None:
+        class Channel:
+            pass
+
+        client = FakeClient()
+        client.entities["@target"] = Channel()
+        adapter = TelethonAdapter(client)
+
+        with self.assertRaises(TelegramAdapterError) as caught:
+            await adapter.resolve_target("@target")
+        self.assertEqual(caught.exception.code, "ADAPTER_NOT_READY")
+
+        await adapter.connect()
+        self.assertEqual(await adapter.resolve_target("@target"), {"entityType": "Channel"})
+
+    async def test_resolve_target_maps_error_without_raw_target(self) -> None:
+        client = FakeClient()
+        client.get_entity_error = RuntimeError("raw target detail")
+        adapter = TelethonAdapter(client)
+        await adapter.connect()
+
+        with self.assertRaises(TelegramAdapterError) as caught:
+            await adapter.resolve_target("@missing")
+
+        self.assertEqual(caught.exception.code, "TELEGRAM_UNKNOWN")
+        self.assertNotIn("@missing", caught.exception.public_dict().values())
 
     async def test_cancellation_propagates_and_blocks_future_send(self) -> None:
         client = FakeClient()

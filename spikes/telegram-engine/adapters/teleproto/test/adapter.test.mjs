@@ -14,9 +14,11 @@ class FakeClient {
   disconnectCalls = 0;
   sendCalls = [];
   handlers = [];
+  entities = new Map();
   connectError = null;
   disconnectError = null;
   sendError = null;
+  getEntityError = null;
   sendGate = null;
   sendStarted = null;
   activeSends = 0;
@@ -48,6 +50,11 @@ class FakeClient {
     } finally {
       this.activeSends -= 1;
     }
+  }
+
+  async getEntity(target) {
+    if (this.getEntityError) throw this.getEntityError;
+    return this.entities.get(target) ?? { target };
   }
 
   addEventHandler(callback, event) {
@@ -139,6 +146,32 @@ test("receive handler registration awaits user handler", async () => {
 
   assert.deepEqual(seen, [{ id: 9 }]);
   assert.deepEqual(client.handlers, [[bridge, "NEW_MESSAGE"]]);
+});
+
+test("resolve target requires ready state and returns safe type only", async () => {
+  class Channel {}
+
+  const client = new FakeClient();
+  client.entities.set("@target", new Channel());
+  const adapter = new TeleprotoAdapter(client);
+
+  await assert.rejects(adapter.resolveTarget("@target"), (error) => error.code === "ADAPTER_NOT_READY");
+
+  await adapter.connect();
+  assert.deepEqual(await adapter.resolveTarget("@target"), { entityType: "Channel" });
+});
+
+test("resolve target maps provider error without raw target", async () => {
+  const client = new FakeClient();
+  client.getEntityError = new Error("raw target detail");
+  const adapter = new TeleprotoAdapter(client);
+  await adapter.connect();
+
+  await assert.rejects(adapter.resolveTarget("@missing"), (error) => {
+    assert.equal(error.code, "TELEGRAM_UNKNOWN");
+    assert.equal(error.message.includes("@missing"), false);
+    return true;
+  });
 });
 
 test("known errors map to stable public codes", () => {

@@ -64,6 +64,20 @@ Success criterion: both return JSON with `passed: true`; no message is sent. Fai
 
 ### Phase 2 — Controlled behavior suite
 
+Run the read-only target preflight before any scenario that can change Telegram state. It resolves each configured role and records only the role, entity type, latency, and assertion result. It must pass for all three controlled roles before join/send/comment tests are authorized.
+
+```bash
+cd spikes/telegram-engine/adapters/telethon
+TELEGRAM_TEST_SESSION="$TELETHON_TEST_SESSION" \
+.venv/bin/python behavior_resolve_targets.py > ../../results/raw/telethon-resolve-targets.jsonl
+
+cd ../teleproto
+TELEGRAM_TEST_SESSION="$TELEPROTO_TEST_SESSION" \
+node behavior-resolve-targets.mjs > ../../results/raw/teleproto-resolve-targets.jsonl
+```
+
+The preflight is read-only: it does not join, send, comment, or modify membership. Summarize each JSONL file with the parent harness and stop if any hard assertion fails.
+
 Run one scenario at a time in this order:
 
 1. connect/reconnect;
