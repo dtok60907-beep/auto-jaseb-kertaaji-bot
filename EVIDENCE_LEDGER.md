@@ -300,6 +300,17 @@ Penutupan:
 - Rollback note: hapus domain contract dan dokumentasi ini; tidak ada data/migrasi/side effect Telegram yang perlu dipulihkan.
 - Follow-up units: DEV-008 migration untuk Divisi + Jasa Sebar material/Grup LPM + kandidat/decision/outbox constraints, lalu API CRUD.
 
+### DEV-008 — Jasa Sebar setting persistence
+
+- Final status: VERIFIED (migration additive; belum diterapkan ke project Supabase).
+- Commit/diff: pending checkpoint commit for this unit.
+- Outcome: menyimpan materi `TEXT`/`FORWARD` dan konfigurasi Grup LPM milik user dengan ownership, constraint payload, dan read boundary yang tidak dapat tercampur antar-user.
+- Acceptance evidence: material TEXT/FORWARD eksklusif melalui CHECK constraint; sumber forward hanya menerima username channel publik structural, post ID positif, dan attribution source; target Grup LPM unik case-insensitive per user; target tidak dikunci ke akun/worker sebelum operation; RLS functional test membuktikan owner membaca data sendiri sementara user lain membaca nol baris.
+- Commands/tests: ephemeral PostgreSQL 16 menerapkan fresh V1→V4 lalu fixture, dan upgrade V1→V3→V4 lalu fixture; kedua jalur lulus, termasuk negative payload/dedupe test dan role `authenticated` RLS test; `git diff --check` pending final review.
+- Remaining risk: migration belum dijalankan pada Supabase project; API belum memvalidasi/menulis setting ini; source preflight, album media/photo/video forwarding, target join, worker allocation, dan side effect Telegram sengaja belum dibuat.
+- Rollback note: additive migration; bila sudah diterapkan, koreksi melalui forward migration dan jangan edit V4 di tempat.
+- Follow-up units: DEV-009 persistence Divisi/Auto Komen candidates dan review decision, lalu API CRUD per domain.
+
 ## Template penutupan unit
 
 ```markdown

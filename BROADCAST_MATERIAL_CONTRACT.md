@@ -9,7 +9,7 @@ User mengatur Grup LPM tujuan dan memilih satu atau lebih materi sebar:
 | Jenis | Input user | Cara engine mengirim |
 |---|---|---|
 | `TEXT` | Wording manual | Mengirim teks persis dari snapshot materi. |
-| `FORWARD` | Link post dari channel Telegram publik | Meneruskan post sumber dari channel ke Grup LPM. |
+| `FORWARD` | Link post dari channel Telegram publik | Meneruskan post sumber dari channel ke Grup LPM apa adanya, termasuk teks/caption, foto, video, dan album. |
 
 Link forward hanya menerima bentuk post channel publik:
 `https://t.me/nama_channel/123`. Link private, invite link, dan link tanpa nomor
@@ -34,7 +34,8 @@ benar-benar melakukan pengiriman. Sistem tidak boleh meniru identitas akun lain.
 3. Sebelum command forward dibuat, engine pengirim yang terpilih harus preflight
    bahwa ia dapat membuka sumber publik, membaca post, dan meneruskannya.
 4. Untuk source post yang merupakan album, engine harus resolve semua item album
-   terkait lalu forward sebagai satu batch agar caption/media tidak hilang.
+   terkait lalu forward sebagai satu batch dan urutan asli agar foto/video/caption
+   tidak hilang. Satu link sumber dapat menghasilkan lebih dari satu pesan tujuan.
 5. Setiap command menyimpan snapshot materi dan attribution yang dipilih saat
    command dibuat. Edit materi berikutnya hanya memengaruhi command berikutnya.
 6. Penolakan Telegram terhadap forward atau attribution disimpan sebagai error
