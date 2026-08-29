@@ -19,6 +19,7 @@ export type ProductionHealthPolicy = Readonly<{
   host: string;
   port: number;
   readinessProbeIntervalMilliseconds: number;
+  readinessProbeTimeoutMilliseconds: number;
   readinessFailureThreshold: number;
 }>;
 
@@ -161,6 +162,12 @@ export class ProductionEngineConfig {
     try { sessionKeyRing = TelegramSessionKeyRing.fromEnvironment(env); }
     catch { fail("TELEGRAM_SESSION_KEYS"); }
 
+    const readinessProbeIntervalMilliseconds = integer(env, "ENGINE_READINESS_PROBE_INTERVAL_MS", 100, 300_000);
+    const readinessProbeTimeoutMilliseconds = integer(env, "ENGINE_READINESS_PROBE_TIMEOUT_MS", 1, 120_000);
+    if (readinessProbeTimeoutMilliseconds > readinessProbeIntervalMilliseconds) {
+      fail("ENGINE_READINESS_PROBE_TIMEOUT_MS");
+    }
+
     return new ProductionEngineConfig({
       shard,
       runnerPolicy,
@@ -176,7 +183,8 @@ export class ProductionEngineConfig {
       healthPolicy: Object.freeze({
         host: host(env),
         port: integer(env, "ENGINE_HEALTH_PORT", 1, 65_535),
-        readinessProbeIntervalMilliseconds: integer(env, "ENGINE_READINESS_PROBE_INTERVAL_MS", 100, 300_000),
+        readinessProbeIntervalMilliseconds,
+        readinessProbeTimeoutMilliseconds,
         readinessFailureThreshold: integer(env, "ENGINE_READINESS_FAILURE_THRESHOLD", 1, 100),
       }),
       telegramApiId: integer(env, "TELEGRAM_API_ID", 1, 2_147_483_647),

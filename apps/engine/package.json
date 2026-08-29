@@ -6,6 +6,7 @@
     "node": ">=22.0.0"
   },
   "scripts": {
+    "start:production": "node --experimental-strip-types src/production/main.ts",
     "test": "node --experimental-strip-types --test",
     "typecheck": "tsc --noEmit",
     "smoke:live": "node --experimental-strip-types src/live-delivery-smoke.ts"

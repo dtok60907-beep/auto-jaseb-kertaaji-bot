@@ -728,7 +728,7 @@ Penutupan:
 
 ### DEV-F5-006 — Production engine composition and lifecycle
 
-- Status: IN_PROGRESS
+- Status: VERIFIED
 - Parent: Unit F5 — Jasa Sebar runtime orchestration
 - Outcome: F5.3–F5.5 dapat dijalankan sebagai satu engine production dengan config
   fail-fast, secret redaction, resource ownership jelas, readiness jujur, dan drain
@@ -739,19 +739,19 @@ Penutupan:
   - F5.6b: HTTP live/ready, serial DB readiness monitor, signal/fatal handler,
     executable entrypoint, dan deployment ENV example/runbook minimum.
 - Acceptance criteria:
-  - [ ] Semua capacity/timing production wajib eksplisit di ENV; tidak ada angka
+  - [x] Semua capacity/timing production wajib eksplisit di ENV; tidak ada angka
     concurrency hasil tebakan yang diam-diam menjadi default deployment.
-  - [ ] Database URL, Telegram API hash, dan session key ring tidak muncul pada JSON,
+  - [x] Database URL, Telegram API hash, dan session key ring tidak muncul pada JSON,
     inspect, error publik, structured lifecycle event, atau fixture repository.
-  - [ ] Database diprobe sebelum ready; seluruh repository, F5.4 runner, dan F5.5
+  - [x] Database diprobe sebelum ready; seluruh repository, F5.4 runner, dan F5.5
     supervisor dikomposisikan dengan instance UUID serta shard/policy yang sama.
-  - [ ] Failure pada open/probe/supervisor/health startup menjalankan rollback resource
+  - [x] Failure pada open/probe/supervisor/health startup menjalankan rollback resource
     yang sudah terbuka dan hanya mengembalikan stable error + cleanup codes.
-  - [ ] Readiness menjadi false saat starting, DB gagal melewati threshold, stopping,
+  - [x] Readiness menjadi false saat starting, DB gagal melewati threshold, stopping,
     atau failed; kembali true setelah probe recovery tanpa restart.
-  - [ ] `SIGTERM`/`SIGINT` dan fatal process event memulai satu drain idempotent,
+  - [x] `SIGTERM`/`SIGINT` dan fatal process event memulai satu drain idempotent,
     berhenti menerima work, menunggu runner, menutup health/database, dan melepas handler.
-  - [ ] Entrypoint tidak mencetak secret/raw error dan tidak membuka Telegram/session
+  - [x] Entrypoint tidak mencetak secret/raw error dan tidak membuka Telegram/session
     sebelum config serta database startup gate lulus.
 - Non-goal: menentukan angka production final, load/soak, deployment mutation,
   Auto Komen runtime, frontend, alert backend, atau live Telegram side effect.
@@ -779,8 +779,34 @@ Penutupan:
   - Focused config/core `5/5`, engine typecheck lulus, full engine `70 pass`, `0 fail`,
     `2 skip`, dan full API `52/52`. Dua skip tetap integration test yang memerlukan
     test database URL; unit F5.6a tidak mengubah SQL/repository behavior.
-- F5.6a remaining risk: belum ada HTTP readiness, probe runtime, process signal/fatal
-  drain, executable entrypoint, atau actual Supabase connection; seluruhnya F5.6b.
+- F5.6a checkpoint remaining scope: HTTP readiness, runtime probe, process signal/fatal
+  drain, dan executable entrypoint ditutup oleh F5.6b; actual Supabase tetap release gate.
+- F5.6b status: VERIFIED.
+  - HTTP `/health/live` dan `/health/ready` mempunyai respons/status stabil tanpa
+    membocorkan dependency detail; test membuka listener localhost nyata dan menguji
+    starting, ready, callback failure, method invalid, route invalid, dan close idempotent.
+  - Startup dan runtime database probe mempunyai deadline client-side eksplisit;
+    timeout meminta cancellation Postgres.js dan config menolak timeout yang melebihi
+    interval probe. Readiness turun hanya setelah threshold dan pulih sesudah probe sukses.
+  - `SIGTERM`, `SIGINT`, fatal event, repeated signal, partial handler install, rollback,
+    cleanup failure, dan stop idempotency diuji. Tidak ada `process.exit()` paksa yang
+    dapat memotong runner/account disconnect; cleanup incomplete menghasilkan exit code 1.
+  - Executable `npm run start:production`, placeholder-only `.env.example`, dan runbook
+    Supabase direct/session-mode + health/shutdown/rollback telah tersedia. Transaction
+    pooler tidak dipakai karena wake-up path membutuhkan session-level `LISTEN/NOTIFY`.
+    Default logger menekan wake-up/account-success hot-path dan probe-failure berulang;
+    lifecycle, first failure, readiness transition, recovery, dan failure tetap terlihat.
+  - Focused F5.6b lifecycle `11/11`; engine typecheck lulus; final full engine `81 pass`,
+    `0 fail`, `2 skip`; full API `52/52` plus typecheck/check; npm audit engine dan API
+    masing-masing `0 vulnerabilities`; diff check dilakukan pada final checkpoint.
+- Remaining risk: dua PostgreSQL integration test full-suite memerlukan `F4_DATABASE_URL`/
+  `F5_DATABASE_URL`; repository terkait sudah pernah lulus ephemeral PostgreSQL pada F5.3,
+  tetapi composition ini belum dijalankan terhadap project Supabase client. Signal test
+  memakai process target deterministik, bukan mengirim OS signal ke process dengan DB/
+  Telegram nyata. Angka capacity, drain grace, CPU/RSS, throughput, dan perilaku soak belum
+  diklaim aman—semuanya wajib diukur di F5.7 sebelum deployment production.
+- Follow-up unit: F5.7 benchmark/load/soak dan deployment sizing berbasis hasil ukur,
+  lalu staging dengan Supabase nyata serta release/rollback rehearsal.
 
 ### DEV-001 — Backend package catalog domain
 

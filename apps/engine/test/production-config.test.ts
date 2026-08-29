@@ -66,6 +66,7 @@ test("invalid production environment reports only the stable field name", () => 
     ["key ring rejected", (env) => { env.TELEGRAM_SESSION_KEYS = JSON.stringify({ 1: "secret-key-value" }); }, "TELEGRAM_SESSION_KEYS"],
     ["boolean exact", (env) => { env.ENGINE_DATABASE_PREPARE_STATEMENTS = "FALSE"; }, "ENGINE_DATABASE_PREPARE_STATEMENTS"],
     ["health host", (env) => { env.ENGINE_HEALTH_HOST = "127.0.0.1/path"; }, "ENGINE_HEALTH_HOST"],
+    ["probe timeout exceeds interval", (env) => { env.ENGINE_READINESS_PROBE_TIMEOUT_MS = "1001"; }, "ENGINE_READINESS_PROBE_TIMEOUT_MS"],
   ];
 
   for (const [label, mutate, expectedField] of cases) {

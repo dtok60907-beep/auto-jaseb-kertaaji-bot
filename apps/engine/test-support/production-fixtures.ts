@@ -37,6 +37,7 @@ export function productionEnvironment(): Record<string, string> {
     ENGINE_HEALTH_HOST: "127.0.0.1",
     ENGINE_HEALTH_PORT: "8080",
     ENGINE_READINESS_PROBE_INTERVAL_MS: "1000",
+    ENGINE_READINESS_PROBE_TIMEOUT_MS: "500",
     ENGINE_READINESS_FAILURE_THRESHOLD: "3",
   };
 }

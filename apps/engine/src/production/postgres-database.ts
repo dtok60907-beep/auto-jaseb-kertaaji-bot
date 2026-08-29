@@ -13,18 +13,35 @@ export interface ProductionDatabase {
 class PostgresProductionDatabase implements ProductionDatabase {
   readonly #sql: Sql;
   readonly #closeTimeoutSeconds: number;
+  readonly #probeTimeoutMilliseconds: number;
   #closePromise: Promise<void> | null = null;
 
-  constructor(sql: Sql, closeTimeoutSeconds: number) {
+  constructor(sql: Sql, closeTimeoutSeconds: number, probeTimeoutMilliseconds: number) {
     this.#sql = sql;
     this.#closeTimeoutSeconds = closeTimeoutSeconds;
+    this.#probeTimeoutMilliseconds = probeTimeoutMilliseconds;
     Object.freeze(this);
   }
 
   client(): Sql { return this.#sql; }
 
   async probe(): Promise<void> {
-    await this.#sql`select 1 as engine_database_ready`;
+    const query = this.#sql`select 1 as engine_database_ready`.execute();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      await Promise.race([
+        query,
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => {
+            try { query.cancel(); }
+            catch { /* timeout result remains authoritative */ }
+            reject(new Error("DATABASE_PROBE_TIMEOUT"));
+          }, this.#probeTimeoutMilliseconds);
+        }),
+      ]);
+    } finally {
+      if (timer !== null) clearTimeout(timer);
+    }
   }
 
   close(): Promise<void> {
@@ -48,5 +65,15 @@ export async function openPostgresProductionDatabase(config: ProductionEngineCon
     max_lifetime: policy.maxLifetimeSeconds,
     prepare: policy.prepareStatements,
   });
-  return new PostgresProductionDatabase(sql, policy.closeTimeoutSeconds);
+  return createPostgresProductionDatabase(sql, {
+    closeTimeoutSeconds: policy.closeTimeoutSeconds,
+    probeTimeoutMilliseconds: config.healthPolicy.readinessProbeTimeoutMilliseconds,
+  });
+}
+
+export function createPostgresProductionDatabase(
+  sql: Sql,
+  input: Readonly<{ closeTimeoutSeconds: number; probeTimeoutMilliseconds: number }>,
+): ProductionDatabase {
+  return new PostgresProductionDatabase(sql, input.closeTimeoutSeconds, input.probeTimeoutMilliseconds);
 }
