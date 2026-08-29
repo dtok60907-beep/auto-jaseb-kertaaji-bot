@@ -27,7 +27,7 @@ export function createApi(options: {
   registerBroadcastSettingRoutes(app, options);
   registerAutoCommentSettingRoutes(app, options);
   registerEntitlementRoutes(app, options);
-  if (options.userbotProfiles) registerUserbotProfileRoutes(app, { profiles: options.userbotProfiles, authorizeUser: options.authorizeUser });
+  if (options.userbotProfiles) registerUserbotProfileRoutes(app, { profiles: options.userbotProfiles, authorizeUser: options.authorizeUser, authorizeAdmin: options.authorizeAdmin });
   if (options.workers) registerWorkerAccountRoutes(app, { workers: options.workers, authorizeAdmin: options.authorizeAdmin });
   return app;
 }
