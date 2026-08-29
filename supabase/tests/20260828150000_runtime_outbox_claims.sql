@@ -7,10 +7,10 @@ insert into public.telegram_accounts (id, owner_user_id, account_type, label, en
 values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa61', null, 'JASEB_WORKER', 'Outbox worker', decode('00', 'hex'), 1, 'READY');
 insert into public.workflow_operations (id, user_id, account_id, operation_type, idempotency_key, payload)
 values ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb61', '16161616-1616-1616-1616-161616161616', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa61', 'BROADCAST', 'outbox-operation-0001', '{"material":{"kind":"TEXT","text":"promo"}}');
-insert into public.broadcast_targets (id, operation_id, telegram_target_ref, interval_seconds, sequence_number)
+insert into public.broadcast_targets (id, operation_id, telegram_target_ref, interval_seconds, sequence_number, preparation_status)
 values
-  ('cccccccc-cccc-cccc-cccc-cccccccccc61', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb61', '@lpm_satu', 0, 1),
-  ('cccccccc-cccc-cccc-cccc-cccccccccc62', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb61', '@lpm_dua', 0, 2);
+  ('cccccccc-cccc-cccc-cccc-cccccccccc61', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb61', '@lpm_satu', 0, 1, 'READY'),
+  ('cccccccc-cccc-cccc-cccc-cccccccccc62', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb61', '@lpm_dua', 0, 2, 'READY');
 insert into public.workflow_commands (operation_id, account_id, kind, target_id, idempotency_key, payload, broadcast_target_id)
 values
   ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb61', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa61', 'SEND_TEXT', '@lpm_satu', 'outbox-command-0001', '{"material":{"kind":"TEXT","text":"promo"}}', 'cccccccc-cccc-cccc-cccc-cccccccccc61'),
