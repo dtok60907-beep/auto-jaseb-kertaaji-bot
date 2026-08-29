@@ -11,6 +11,8 @@ import { registerUserbotProfileRoutes } from "./http/userbot-profile-routes.ts";
 import type { UserbotProfileRepository } from "./userbot-profiles/repository.ts";
 import { registerWorkerAccountRoutes } from "./http/worker-account-routes.ts";
 import type { WorkerAccountSettingsRepository } from "./workers/repository.ts";
+import { registerBroadcastOperationRoutes } from "./http/broadcast-operation-routes.ts";
+import type { BroadcastOperationRepository } from "./broadcast-operations/repository.ts";
 
 export function createApi(options: {
   packages: PackageRepository;
@@ -21,6 +23,7 @@ export function createApi(options: {
   entitlements: EntitlementRepository;
   userbotProfiles?: UserbotProfileRepository;
   workers?: WorkerAccountSettingsRepository;
+  broadcastOperations?: BroadcastOperationRepository;
 }) {
   const app = Fastify({ logger: false });
   registerPackageRoutes(app, options);
@@ -29,5 +32,6 @@ export function createApi(options: {
   registerEntitlementRoutes(app, options);
   if (options.userbotProfiles) registerUserbotProfileRoutes(app, { profiles: options.userbotProfiles, authorizeUser: options.authorizeUser, authorizeAdmin: options.authorizeAdmin });
   if (options.workers) registerWorkerAccountRoutes(app, { workers: options.workers, authorizeAdmin: options.authorizeAdmin });
+  if (options.broadcastOperations) registerBroadcastOperationRoutes(app, { operations: options.broadcastOperations, authorizeUser: options.authorizeUser });
   return app;
 }
