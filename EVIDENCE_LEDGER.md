@@ -459,6 +459,68 @@ Penutupan:
 - Follow-up unit: DEV-F5-002 session envelope AES-256-GCM dan versioned key-ring
   contract sebelum engine diperbolehkan membaca ciphertext account dari database.
 
+### DEV-F5-002 — Versioned Telegram session envelope
+
+- Final status: VERIFIED
+- Commit/diff: F5.2 shared crypto package, security ADR, dan focused negative-path
+  suite; tidak ada database/session production yang dibaca atau ditulis.
+- Parent: Unit F5 — Jasa Sebar runtime orchestration
+- Outcome: API/account onboarding dapat mengenkripsi dan engine dapat mendekripsi
+  Telegram StringSession melalui satu AES-256-GCM envelope yang versioned, terikat
+  ke account context, dan mendukung rotasi key.
+- Goal trace: F5 tidak boleh membaca `encrypted_session` sebelum format ciphertext,
+  key selection, authentication failure, dan redaction mempunyai contract tunggal.
+- Acceptance criteria:
+  - [x] AES-256-GCM memakai random IV 96-bit, authentication tag 128-bit eksplisit,
+    dan AAD yang mengikat header + account UUID + account type.
+  - [x] Binary envelope menyimpan magic, format/cipher version, panjang IV/tag, dan
+    key version; parser menolak truncation, trailing/oversize, serta format asing.
+  - [x] Key ring strict menerima beberapa key 256-bit dan satu active version;
+    encryption baru memakai active key sementara ciphertext versi lama tetap dapat
+    didekripsi selama key lama tersedia.
+  - [x] Salah account/type/key version, tamper, unknown key, malformed envelope,
+    session kosong/oversize, dan env invalid menghasilkan error code stabil tanpa
+    membocorkan key atau plaintext.
+  - [x] Object key ring dan error aman untuk stringify/inspection; plaintext buffer
+    sementara dihapus setelah operasi sejauh runtime JavaScript memungkinkan.
+- Non-goal: membaca database, migration, login OTP/2FA, re-encryption background,
+  account discovery, runner, supervisor, KMS/HSM, dan deploy secret production.
+- Dependencies: Node 22 `node:crypto`, kolom `encrypted_session` bytea dan
+  `encryption_key_version` yang sudah ada.
+- Design evidence: Node 22 mendukung AAD dan explicit GCM `authTagLength`; NIST
+  SP 800-38D menetapkan GCM sebagai authenticated encryption dan revisinya tetap
+  mengarahkan IV 96-bit/tag kuat. NEXO memakai IV 12 byte/tag 16 byte tetapi belum
+  memiliki context binding atau key-version envelope.
+- Risks/failure modes: IV reuse, short tag diterima diam-diam, context swap antar
+  account, key rotation memutus session lama, permissive hex parsing, dan error/log
+  menampilkan secret.
+- Test plan: round-trip/randomization; rotation; wrong context/version/key; bit-flip
+  header/IV/tag/ciphertext; truncation/oversize; strict env parser; redaction.
+- Rollback/recovery: package ini belum membaca/menulis production DB. Revert aman;
+  envelope format `1` tidak boleh diubah in-place setelah dipakai—perubahan berikutnya
+  wajib menambah version parser baru.
+- Acceptance evidence:
+  - Dua encryption dari account/session sama menghasilkan ciphertext berbeda;
+    overhead envelope terbukti tetap `40 byte` dan plaintext tidak muncul di output.
+  - Ciphertext key version `1` tetap terbaca setelah active key pindah ke `2`; bila
+    old key dilepas lebih awal hasilnya `SESSION_KEY_NOT_FOUND`, bukan data rusak.
+  - Wrong account UUID/type serta bit flip IV/tag/ciphertext/trailing byte semuanya
+    gagal autentikasi. Magic, format, length, size, dan DB/envelope version mismatch
+    ditolak sebelum plaintext dibuat.
+  - Key memakai `KeyObject` private; temporary key/plaintext/re-encode Buffer dihapus.
+    JSON/string/Node inspection hanya menampilkan marker redacted dan active version.
+- Commands/tests:
+  - Focused security suite: `6/6` lulus di native Node strip-types.
+  - Full engine: `40` lulus + `1` PostgreSQL integration skip tanpa database;
+    `npm run typecheck` lulus.
+  - Full API regression: `52/52`; typecheck dan package check lulus.
+  - Tidak ada dependency runtime baru; `git diff --check` lulus.
+- Remaining risk: JavaScript string input/output tidak dapat di-zero secara andal;
+  runner harus membatasi lifetime referensinya. Key production belum dibuat/deploy,
+  belum ada DB reader/writer, rotasi row background, KMS/HSM, atau live session.
+- Follow-up unit: DEV-F5-003 PostgreSQL runnable-account discovery yang hanya boleh
+  mengambil ciphertext setelah caller membuktikan account lease/fencing aktif.
+
 ### DEV-001 — Backend package catalog domain
 
 - Final status: VERIFIED (first production product-code unit).
