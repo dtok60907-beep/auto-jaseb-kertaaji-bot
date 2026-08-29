@@ -2,7 +2,7 @@ export type ClaimedWorkflowCommand = Readonly<{
   id: string;
   operationId: string;
   accountId: string;
-  kind: "SEND_TEXT" | "FORWARD_MESSAGE" | "COMMENT_TEXT";
+  kind: "COMMENT_TEXT";
   targetId: string;
   payload: Readonly<Record<string, unknown>>;
   fencingToken: bigint;

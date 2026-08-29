@@ -11,6 +11,7 @@
     "smoke:live": "node --experimental-strip-types src/live-delivery-smoke.ts"
   },
   "dependencies": {
+    "postgres": "3.4.9",
     "teleproto": "1.228.5"
   },
   "devDependencies": {

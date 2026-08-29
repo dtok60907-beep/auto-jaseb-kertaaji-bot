@@ -347,6 +347,73 @@ Penutupan:
   account lease + fencing yang sudah ada, serta tidak boleh blind retry ketika
   `sideEffectState=UNKNOWN`.
 
+### DEV-F4-001 — Fenced Jasa Sebar outbox executor
+
+- Final status: VERIFIED
+- Commit/diff: F4 checkpoint commit; satu migration forward-only, executor engine,
+  repository PostgreSQL, fixture fresh/upgrade, dan focused tests.
+- Parent: Unit F4 — Broadcast command execution
+- Outcome: command Jasa Sebar yang targetnya `READY` diklaim dan diselesaikan
+  secara atomic di bawah account lease/fencing, lalu dikirim hanya melalui adapter F3.
+- Goal trace: wording manual dan native forward harus mempunyai hasil per Grup LPM,
+  interval akun yang benar, serta recovery tanpa duplicate side effect.
+- Acceptance criteria:
+  - [x] Assignment akun `JASEB_WORKER` dipakai ulang oleh user yang sama selama
+    langganan aktif; broadcast baru tidak mengambil worker baru dan operation selesai
+    tidak melepas assignment. Expiry melepas assignment tanpa menghapus setting.
+  - [x] Claim hanya mengambil command `SEND_TEXT`/`FORWARD_MESSAGE` dengan target
+    `READY`, account lease/fencing aktif, dan menaikkan `attempt_count` tepat sekali.
+  - [x] Payload command divalidasi sebelum Telegram; payload invalid menjadi final
+    tanpa provider call.
+  - [x] Receipt menyimpan seluruh provider message ID album serta `sentAt`; command,
+    target, operation, dan assignment berubah atomik di PostgreSQL.
+  - [x] Success menjadwalkan target berikutnya memakai snapshot interval worker atau
+    Userbot; interval `0` tetap valid dan tidak ditambah delay buatan.
+  - [x] Error retryable `NOT_SENT` dijadwalkan; FloodWait memakai detik provider.
+    Retry transient dibatasi dan memakai deterministic backoff.
+  - [x] `sideEffectState=UNKNOWN`, crash/takeover, atau fencing loss tidak pernah
+    auto-retry dan terlihat sebagai `SIDE_EFFECT_UNCERTAIN`.
+  - [x] Status per target tetap independen dan status operation diagregasi dengan
+    jelas untuk success, retry, partial final failure, cancel, dan uncertain.
+- Non-goal: event listener/matcher Auto Komen, `COMMENT_TEXT` execution, session
+  decrypt/registry, shard process supervisor, 24-hour soak, dan deployment Supabase.
+- Dependencies: F2 target preparation, F3 provider adapter, E1 account lease,
+  E3 outbox claim, broadcast interval snapshot.
+- Risks/failure modes: lease hilang sesudah Telegram menerima send, receipt album
+  parsial, expiry bersamaan dengan claim, retry storm, dan legacy worker assignment.
+- Test plan: pure executor fake adapter/repository; PostgreSQL fixture untuk claim,
+  finish, interval, receipt array, fencing, uncertainty, expiry, dan worker reuse;
+  fresh seluruh migration serta upgrade rehearsal; full regression/typecheck.
+- Rollback/recovery: migration harus forward-only. Command uncertain tidak boleh
+  dikembalikan ke retry queue tanpa reconciliation yang membuktikan outcome Telegram.
+- Acceptance evidence:
+  - Dua operation worker milik satu user memakai satu assignment/account; expiry
+    melepasnya dan membatalkan command tersisa tanpa menghapus material atau Grup LPM.
+  - Receipt dua message ID tersimpan utuh; FloodWait `100000` detik tidak dipotong;
+    interval worker mengunci akun lintas-operation, sedangkan interval Userbot `0`
+    tetap dapat langsung mengambil target berikutnya.
+  - Integration repository nyata membuktikan partial result
+    `FAILED_FINAL + SUCCEEDED` diagregasi `FAILED_FINAL` beserta error target gagal.
+  - Setelah lease takeover token `1 → 2`, completion pemilik lama ditolak, receipt
+    palsu tidak tersimpan, dan claim pemilik baru merekonsiliasi command/target/
+    operation menjadi `SIDE_EFFECT_UNCERTAIN` tanpa resend.
+- Commands/tests:
+  - Fresh PostgreSQL 16: migration V1–V20 + fixture F4 + integration repository
+    `1/1` lulus.
+  - Upgrade PostgreSQL 16: V1–V19 + dua assignment legacy + V20 menyisakan tepat
+    `1 ACTIVE/RESERVED | 1 RELEASED` tanpa menghapus dua operation.
+  - `apps/engine`: `npm test` 23 lulus + 1 integration skip tanpa database;
+    integration eksplisit `1/1`; `npm run typecheck` lulus.
+  - `apps/api`: regression `62/62`, `npm run typecheck`, dan `npm run check` lulus;
+    `git diff --check` lulus.
+- Remaining risk: migration belum diterapkan ke project Supabase client. F4 belum
+  mempunyai shard runtime supervisor yang acquire/renew lease, decrypt session,
+  menjalankan F2 preparation dan F4 executor sebagai loop, serta shutdown bersih.
+  Live native-forward album dan multi-session soak tetap merupakan gate runtime,
+  bukan sesuatu yang diklaim selesai oleh unit ini.
+- Follow-up unit: F5 composition/runtime supervisor per shard untuk menyatukan account
+  selection, lease heartbeat, session registry, F2 preparation, dan F4 execution.
+
 ### DEV-001 — Backend package catalog domain
 
 - Final status: VERIFIED (first production product-code unit).
