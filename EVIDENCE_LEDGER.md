@@ -810,7 +810,7 @@ Penutupan:
 
 ### DEV-F5-007A — Reproducible supervisor load harness
 
-- Status: IN_PROGRESS
+- Status: VERIFIED
 - Parent: Unit F5.7 — Production engine capacity and soak evidence
 - Outcome: jalur orchestration F5.5 dapat diberi beban akun sintetis secara
   reproducible dan menghasilkan JSONL yang memisahkan correctness hard gate dari
@@ -835,7 +835,7 @@ Penutupan:
     tidak masuk JSONL.
   - [x] Output kompatibel dengan benchmark summarizer yang sudah ada dan CLI memberi
     exit non-zero bila satu hard gate gagal.
-  - [ ] Focused/full regression, typecheck, dependency audit, raw local artifact, dan
+  - [x] Focused/full regression, typecheck, dependency audit, raw local artifact, dan
     reproducible summary tersedia sebelum unit ditutup.
 - Non-goal: mengklaim kapasitas production, mengukur Supabase/network/Telegram,
   memilih angka deployment final, menjalankan live side effect, atau soak 1/24 jam.
@@ -852,7 +852,7 @@ Penutupan:
   local sanitized artifact, summarizer bila kontrak lama terbukti kurang ketat.
 - Required evidence: focused results, local machine metadata, raw JSONL + generated
   summary, explicit orchestration-only label, regression/audit/diff, commit reference.
-- Harness checkpoint status: VERIFIED; local measurement artifact masih pending.
+- Harness checkpoint status: VERIFIED; implementation commit `db100d5`.
   - Focused suite `5/5`, lalu tiga process paralel pada versi sebelum warm-up gate
     correction `12/12`; final typecheck dan focused suite sesudah correction `5/5`.
   - Full engine `86 pass`, `0 fail`, `2 skip`; full API `52/52` plus typecheck/check;
@@ -863,6 +863,26 @@ Penutupan:
   - Adversarial review menemukan warm-up failure sempat tidak memengaruhi eligibility;
     correction sekarang menyimpan failure assertion tanpa metric warm-up dan langsung
     menghentikan benchmark pada hard-gate failure.
+- Local measurement evidence:
+  - Commit bersih `db100d5`; Node `v22.23.2`; Intel i5-7360U 4 logical CPU, RAM 8 GiB;
+    tujuh case `1:1` sampai `100:20`, masing-masing 3 warm-up + 10 measured sample,
+    synthetic runner 10 ms, dan seluruh policy/workload tercatat di metadata.
+  - Raw JSONL 1,891 record tersimpan lokal di ignored directory dengan SHA-256
+    `b490a30d8ac9757a4f7b2acd6cb74d7338a6b7bdd97db39e19d31a44cd4853c0`;
+    sanitized reproducible summary dan interpretation report disimpan di
+    `apps/engine/benchmark-results`.
+  - Summarizer menghasilkan `eligible=true`, hard assertion `560/560`, event loss `0`,
+    duplicate execution proxy `0`, dan tidak ada runner/cleanup/concurrency/drain failure.
+  - Pada synthetic 10 ms runner, throughput median sekitar `97.35 runs/s` untuk
+    `100:1` dan `1,893.67 runs/s` untuk `100:20`; p95 duration masing-masing
+    `1,033.17 ms` dan `54.94 ms`. Ini membuktikan scaling orchestration lokal saja.
+- Final remaining risk: RSS peak sekitar 60–63 MiB adalah whole-process synthetic
+  baseline, bukan memory/session. PostgreSQL, Supabase pool, lease/outbox query,
+  decrypt, Teleproto session, Telegram latency/FloodWait, real drain, network, dan
+  memory growth/soak belum diukur; tidak ada angka F5.7a yang boleh langsung menjadi
+  production capacity atau termination grace.
+- Follow-up unit: F5.7b production repository/lease/outbox load dengan PostgreSQL dan
+  controlled fake provider; setelah itu F5.7c Telegram multi-session + soak.
 
 ### DEV-001 — Backend package catalog domain
 
