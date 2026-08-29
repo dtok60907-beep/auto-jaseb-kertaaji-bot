@@ -521,6 +521,89 @@ Penutupan:
 - Follow-up unit: DEV-F5-003 PostgreSQL runnable-account discovery yang hanya boleh
   mengambil ciphertext setelah caller membuktikan account lease/fencing aktif.
 
+### DEV-F5-003 — Fenced runnable-account discovery
+
+- Final status: VERIFIED
+- Commit/diff: F5.3 PostgreSQL V21, engine repository contract/implementation,
+  SQL fixture, dan PostgreSQL integration suite; belum diterapkan ke Supabase client.
+- Parent: Unit F5 — Jasa Sebar runtime orchestration
+- Outcome: satu shard engine dapat menemukan akun Jasa Sebar yang benar-benar
+  mempunyai pekerjaan eligible, dibangunkan setelah perubahan work commit, lalu
+  membaca ciphertext session hanya sesudah memegang account lease/fencing aktif.
+- Goal trace: supervisor F5 tidak boleh scan/decrypt seluruh akun, menjalankan akun
+  expired/detached, atau membuka session sebelum ownership lintas-process terbukti.
+- Acceptance criteria:
+  - [x] PostgreSQL dan TypeScript memakai mapping UUID full-128-bit ke shard yang
+    identik, dengan validasi `shardCount/shardIndex` yang sama.
+  - [x] Discovery hanya mengembalikan metadata aman untuk akun `READY` dengan
+    entitlement, worker assignment/Userbot profile, FIFO, target preparation atau
+    delivery, account interval, dan runtime retry yang masih eligible.
+  - [x] Satu query juga dapat memberi waktu work berikutnya agar supervisor kelak
+    memakai timer due-driven; perubahan command/target/account mengirim wake-up
+    transaction-safe tanpa membawa session atau payload sensitif.
+  - [x] Ciphertext dan key version hanya dapat dimuat oleh caller dengan lease owner
+    serta fencing token aktif; caller tanpa lease, token lama, atau lease expired
+    ditolak stabil.
+  - [x] Runtime connect/retry/degraded/revoked state hanya dapat ditulis pemilik
+    lease aktif, menyimpan error code stabil tanpa raw Telegram error.
+  - [x] Claim preparation juga menghormati entitlement dan account binding terkini,
+    sehingga discovery bukan satu-satunya correctness guard.
+- Non-goal: decrypt/connect Telegram, account runner, lease heartbeat, supervisor
+  concurrency, executable process, Auto Komen listener, atau live side effect.
+- Dependencies: F5.1 engine ownership, F5.2 session envelope, E1 account lease,
+  F2 preparation, dan F4 broadcast command executor.
+- Risks/failure modes: parity shard SQL/JS meleset, polling akun idle, notification
+  hilang saat reconnect, stale discovery melewati expiry/switch, ciphertext bocor di
+  list query, lease takeover masih dapat menulis runtime state, dan wake-up storm.
+- Test plan: focused contract/repository tests; PostgreSQL 16 fresh V1→V21 fixture;
+  upgrade V1→V20→V21 fixture; repository integration untuk discovery, next due,
+  LISTEN/NOTIFY, leased session load, stale fencing, dan runtime transition; seluruh
+  regression engine/API serta typecheck.
+- Rollback/recovery: migration additive dan fungsi replacement; koreksi production
+  dilakukan lewat forward migration. Trigger wake-up dapat dilepas tanpa kehilangan
+  work karena database tetap source of truth dan supervisor wajib berekonsiliasi.
+- Expected touch points: satu migration + SQL fixture, satu repository contract dan
+  implementasi engine, focused/integration test, Supabase README, serta ledger.
+- Required evidence: fresh/upgrade migration lulus, SQL/JS shard parity terbukti,
+  result discovery tidak memiliki session, lease negatif/expired/takeover ditolak,
+  notification hanya terlihat setelah commit, dan full regression hijau.
+- Acceptance evidence:
+  - SQL dan JavaScript menghasilkan shard yang sama untuk UUID rendah, UUID acak,
+    serta UUID maksimum pada `shardCount 3` dan `257`; input shard invalid ditolak.
+  - Worker dengan runtime retry hanya muncul sebagai future work; Userbot due muncul
+    pada shard tepat. Expired entitlement tidak dapat claim preparation, dan delivery
+    claim juga tidak dapat melewati runtime backoff walaupun lease masih aktif.
+  - List discovery hanya berisi account ID/type/due/flags. Session `deadbeef` tidak
+    muncul di object/JSON; load tanpa lease gagal `ACCOUNT_LEASE_NOT_HELD`, sedangkan
+    exact owner/token menerima salinan ciphertext dan key version yang benar.
+    Role `authenticated` tidak mempunyai SELECT/EXECUTE pada view maupun tiga fungsi
+    runtime server-only tersebut.
+  - Runtime retry menyimpan stable code + due time; raw error ditolak. Lease takeover
+    `1→2` menolak writer lama, dan degraded account tetap mencatat disconnect terakhir
+    tanpa menghapus error root cause.
+  - Stale preparation/delivery ditemukan sebagai recovery work. Stale delivery
+    direkonsiliasi menjadi `SIDE_EFFECT_UNCERTAIN`, bukan dikirim ulang.
+  - LISTEN menerima tepat satu wake-up UUID setelah transaksi multi-write commit,
+    tidak menerima apa pun sebelum commit atau dari rollback, dan test integration
+    dapat dijalankan dua kali berurutan tanpa residue.
+- Commands/tests:
+  - Fresh PostgreSQL 16: V1→V21 + fixture F5.3 lulus; fixture F4 pada schema V21
+    juga lulus setelah claim memakai eligibility projection baru.
+  - Upgrade PostgreSQL 16: V1→V20, row legacy, V21, fixture F5.3 lulus; ciphertext
+    `c0ffee`, key version `4`, account `READY`, dan workflow `QUEUED` tetap utuh.
+  - Full engine dengan F4/F5 database URL: `42/42`, tanpa skip; typecheck lulus.
+  - Full API regression: `52/52`; typecheck dan package check lulus.
+  - `git diff --check` dan staged diff check lulus; PostgreSQL melaporkan `0`
+    koneksi tersisa setelah full integration suite.
+- Remaining risk: V21 belum diterapkan ke Supabase client. Repository belum dipakai
+  runner untuk decrypt/connect Telegram; wake-up tetap hint sehingga supervisor F5.5
+  wajib reconciliation scan setelah start/reconnect. Query discovery belum diuji pada
+  volume besar dan jumlah session paralel belum ditentukan—angka itu milik benchmark
+  F5.7, jadi unit ini tidak membuat klaim kapasitas/RAM/throughput.
+- Follow-up unit: DEV-F5-004 bounded account runner—acquire/heartbeat lease, fenced
+  session load + decrypt, connect Teleproto, recovery/F2/F4 drain, runtime result,
+  disconnect, release, dan zero-reference plaintext pada seluruh exit path.
+
 ### DEV-001 — Backend package catalog domain
 
 - Final status: VERIFIED (first production product-code unit).
