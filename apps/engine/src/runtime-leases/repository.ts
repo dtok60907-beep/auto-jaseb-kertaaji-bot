@@ -1,4 +1,10 @@
-export type AccountLease = Readonly<{ accountId: string; leaseOwner: string; fencingToken: bigint; leaseUntil: string }>;
+export type AccountLease = Readonly<{
+  accountId: string;
+  leaseOwner: string;
+  fencingToken: bigint;
+  leaseUntil: string;
+}>;
+
 export type AccountLeaseAcquisition =
   | Readonly<{ status: "ACQUIRED" | "RENEWED" | "TAKEN_OVER"; lease: AccountLease }>
   | Readonly<{ status: "HELD_BY_OTHER" }>;

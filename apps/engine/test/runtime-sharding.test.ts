@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { accountsForShard, parseShardConfig, shardIndexForAccount, shardOwnsAccount } from "../src/runtime-sharding/shard.ts";
+
+import {
+  accountsForShard,
+  parseShardConfig,
+  shardIndexForAccount,
+  shardOwnsAccount,
+} from "../src/runtime-sharding/shard.ts";
 
 const ACCOUNTS = [
   "00000000-0000-0000-0000-000000000001",
@@ -14,7 +20,10 @@ test("account UUID maps to exactly one stable shard", () => {
   for (const accountId of ACCOUNTS) {
     const first = shardIndexForAccount(accountId, 3);
     assert.equal(shardIndexForAccount(accountId, 3), first);
-    assert.equal([0, 1, 2].filter((index) => shardOwnsAccount(accountId, { shardCount: 3, shardIndex: index })).length, 1);
+    assert.equal(
+      [0, 1, 2].filter((index) => shardOwnsAccount(accountId, { shardCount: 3, shardIndex: index })).length,
+      1,
+    );
   }
 });
 

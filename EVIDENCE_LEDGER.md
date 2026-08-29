@@ -414,6 +414,51 @@ Penutupan:
 - Follow-up unit: F5 composition/runtime supervisor per shard untuk menyatukan account
   selection, lease heartbeat, session registry, F2 preparation, dan F4 execution.
 
+### DEV-F5-001 — Engine runtime ownership consolidation
+
+- Final status: VERIFIED
+- Commit/diff: F5.1 code-only ownership checkpoint; tidak ada migration atau external
+  side effect.
+- Parent: Unit F5 — Jasa Sebar runtime orchestration
+- Outcome: sharding, account-lease repository, dan F2 broadcast preparation dimiliki
+  oleh `apps/engine`; HTTP API tidak lagi menjadi rumah bagi code runtime MTProto.
+- Goal trace: F5 hanya dapat membangun satu supervisor yang terpelihara bila seluruh
+  lifecycle Telegram berada pada satu application boundary tanpa contract duplikat.
+- Acceptance criteria:
+  - [x] Modul shard, lease, dan broadcast preparation beserta focused test berpindah
+    ke engine; API tidak menyisakan import atau salinan runtime tersebut.
+  - [x] F2 tetap memakai `packages/telegram-contract` secara langsung dan seluruh
+    state/error/approval behavior tidak berubah.
+  - [x] PostgreSQL repository dapat dimuat oleh Node 22 strip-types tanpa syntax
+    TypeScript yang membutuhkan transpiler runtime.
+  - [x] Engine focused/full test dan typecheck lulus; API full regression/typecheck
+    tetap lulus setelah pemindahan.
+- Non-goal: session encryption/decryption, runnable-account discovery, lease
+  heartbeat, account runner, supervisor loop, live Telegram call, dan migration.
+- Dependencies: F2 preparation, E1 lease/fencing, F3 adapter, dan F4 executor yang
+  sudah VERIFIED.
+- Risks/failure modes: import path salah, contract Telegram terduplikasi, behavior
+  F2 berubah saat dipindah, atau file API lama tetap menjadi maintenance debt.
+- Test plan: pindahkan focused shard/preparation suites ke engine; import repository
+  PostgreSQL di bawah native strip-types; jalankan seluruh engine dan API regression.
+- Rollback/recovery: code-only move tanpa schema atau external side effect; revert
+  checkpoint F5.1 mengembalikan ownership lama.
+- Acceptance evidence: pencarian source/test API tidak menemukan modul atau import
+  Jasa Sebar runtime yang dipindah; F2 approval, retry, join, final error, dan fencing
+  mempertahankan tujuh test yang sama di engine. Repository PostgreSQL sekarang
+  memakai field constructor eksplisit dan berhasil di-import langsung oleh Node 22.
+- Commands/tests:
+  - Focused engine shard/preparation/repository-load: `11/11` lulus.
+  - Full engine: `34` lulus + `1` integration skip tanpa database; typecheck lulus.
+  - Full API setelah ownership move: `52/52`; typecheck dan package check lulus.
+  - `git diff --check` lulus.
+- Remaining risk: engine belum mempunyai session vault, runnable-account discovery,
+  heartbeat, runner, atau supervisor. Auto Komen preparation/COMMENT_TEXT masih di
+  API dan sengaja tidak dipindah pada unit Jasa Sebar ini; ownership-nya ditangani
+  saat runtime Auto Komen dibangun agar scope F5.1 tidak melebar.
+- Follow-up unit: DEV-F5-002 session envelope AES-256-GCM dan versioned key-ring
+  contract sebelum engine diperbolehkan membaca ciphertext account dari database.
+
 ### DEV-001 — Backend package catalog domain
 
 - Final status: VERIFIED (first production product-code unit).
