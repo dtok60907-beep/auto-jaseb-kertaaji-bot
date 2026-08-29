@@ -281,6 +281,72 @@ Penutupan:
 - Follow-up units: F3 provider adapter/native forward dan controlled Telegram
   approval round-trip test.
 
+### DEV-F3-001 — Production Teleproto delivery adapter
+
+- Final status: VERIFIED for F3 contract and controlled single-post delivery.
+- Commit/diff: recorded in the F3 production Teleproto adapter commit.
+- Parent: Unit F3 — Telegram provider adapter
+- Outcome: satu adapter production per akun menyediakan lifecycle, target/member
+  resolution, linked discussion, join/request approval, text delivery, dan native
+  forward lengkap untuk satu post maupun album.
+- Goal trace: F4/F5 hanya boleh mengeksekusi outbox melalui adapter yang menjaga
+  urutan per session, error taxonomy, attribution, dan receipt provider secara konsisten.
+- Acceptance criteria:
+  - [x] Session config tidak dapat masuk log/JSON dan session unauthorized gagal jelas.
+  - [x] Seluruh operasi satu akun serialized; kegagalan satu adapter tidak memakai
+    state global atau memengaruhi adapter akun lain.
+  - [x] Target group/channel, membership, dan linked discussion dipetakan ke kontrak
+    production tanpa raw provider object bocor.
+  - [x] Join mengembalikan `JOINED`, `ALREADY_MEMBER`, atau `APPROVAL_REQUESTED`.
+  - [x] Text dikirim tanpa link preview dan menghasilkan provider receipt valid.
+  - [x] Source post tunggal diforward lewat tepat satu native forward call.
+  - [x] Source post ber-`groupedId` mengambil semua sibling terurut lalu melakukan
+    tepat satu native forward call; caption/media tidak direkonstruksi.
+  - [x] `SHOW_SOURCE`/`HIDE_SOURCE` dipetakan eksplisit dan tidak memiliki fallback.
+  - [x] Error fatal, FloodWait, target/source hilang, write/forward forbidden, transient,
+    serta outcome side effect tidak pasti dipetakan dan tidak membocorkan raw detail.
+- Non-goal: claim/finish outbox, interval scheduler, monitoring channel, komentar,
+  OTP flow, session encryption/decryption, dan deployment process.
+- Dependencies: F1 contract, F2 preparation, Teleproto 1.228.5 benchmark evidence.
+- Risks/failure modes: nested forward response, album sibling tidak lengkap, linked
+  chat tidak ada di response, provider timeout setelah send, library API drift.
+- Test plan: fake Teleproto client untuk lifecycle/concurrency/error/shape; exact call
+  assertion untuk album/attribution; strict typecheck; pinned lockfile/audit; controlled
+  live smoke hanya bila environment target delivery tersedia.
+- Rollback/recovery: app engine terpisah dapat direvert tanpa schema/data; runtime
+  candidate kembali ke unselected bila hard gate provider atau soak gagal.
+- Expected touch points: `apps/engine`, Telegram contract error taxonomy, runtime ADR,
+  focused tests dan runbook.
+- Required evidence: unit/full tests, typecheck, dependency audit, static import check,
+  optional controlled live output, diff review, commit reference.
+- Acceptance evidence:
+  - Contract provider-neutral dipindah ke `packages/telegram-contract`; engine tidak
+    mengimpor source API dan API tidak memiliki dependency Teleproto.
+  - Teleproto dikunci tepat pada `1.228.5`; satu adapter memegang satu client/account
+    dan seluruh operasinya serialized tanpa state global.
+  - RPC memiliki deadline 30 detik. Deadline memutus client dan memfailkan adapter;
+    preflight forward bernilai `NOT_SENT`, sedangkan timeout native send/forward
+    bernilai `UNKNOWN` agar unit executor berikutnya tidak menggandakan side effect.
+  - Forward album mengambil sibling `groupedId`, mengurutkan message ID, lalu memanggil
+    `forwardMessages` tepat satu kali. Media/caption tidak diunduh, dibentuk ulang,
+    diunggah ulang, atau dipecah berdasarkan tipe.
+- Commands/tests:
+  - `apps/engine`: `npm test` 15/15, `npm run typecheck`, dan
+    `npm audit --omit=dev` menemukan 0 vulnerability.
+  - `apps/api`: regression `npm test` 62/62 dan `npm run typecheck`.
+  - Controlled live smoke: target `SUPERGROUP`, membership sebelum/sesudah `MEMBER`,
+    linked discussion `SUPERGROUP/MEMBER`, text receipt 1, native-forward receipt 1.
+- Remaining risk: live smoke di atas memakai source post tunggal `VadeMecums/204`.
+  Pencarian read-only untuk fixture album nyata dihentikan saat Telegram memberi
+  `FloodWait` dan tidak diulang. Album multi-photo/video/mixed telah lolos exact-call
+  contract test, tetapi live album dan multi-session soak/resource gate belum boleh
+  diklaim; keduanya masuk verifikasi runtime lanjutan.
+- Rollback note: revert aplikasi engine dan shared contract F3; tidak ada schema/data
+  migration pada unit ini.
+- Follow-up unit: F4 executor outbox harus memakai receipt/side-effect state ini,
+  account lease + fencing yang sudah ada, serta tidak boleh blind retry ketika
+  `sideEffectState=UNKNOWN`.
+
 ### DEV-001 — Backend package catalog domain
 
 - Final status: VERIFIED (first production product-code unit).

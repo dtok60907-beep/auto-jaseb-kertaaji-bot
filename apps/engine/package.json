@@ -1,0 +1,20 @@
+{
+  "name": "jaseb-telegram-engine",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test",
+    "typecheck": "tsc --noEmit",
+    "smoke:live": "node --experimental-strip-types src/live-delivery-smoke.ts"
+  },
+  "dependencies": {
+    "teleproto": "1.228.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.21",
+    "typescript": "5.9.2"
+  }
+}
