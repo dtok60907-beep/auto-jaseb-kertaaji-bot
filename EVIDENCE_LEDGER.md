@@ -604,6 +604,65 @@ Penutupan:
   session load + decrypt, connect Teleproto, recovery/F2/F4 drain, runtime result,
   disconnect, release, dan zero-reference plaintext pada seluruh exit path.
 
+### DEV-F5-004 — Bounded fenced account runner
+
+- Final status: VERIFIED (code-only single-account runtime; no live Telegram side effect).
+- Commit/diff: F5.4 account-runner checkpoint with explicit policy, serial heartbeat,
+  Teleproto factory, focused failure-path tests, and no database migration.
+- Parent: Unit F5 — Jasa Sebar runtime orchestration
+- Outcome: satu discovered account dapat dijalankan end-to-end oleh engine dengan
+  lease heartbeat, session decrypt/connect, bounded F2/F4 work, dan cleanup pasti.
+- Goal trace: F5.5 hanya boleh mengatur concurrency akun; seluruh correctness satu
+  akun harus sudah berdiri sendiri dan tidak bergantung pada supervisor happy path.
+- Acceptance criteria:
+  - [x] Runner tidak membaca session atau membuat adapter bila lease dipegang process
+    lain; ciphertext baru dimuat/decrypt setelah exact lease/fencing diperoleh.
+  - [x] Heartbeat serial memperbarui lease tanpa overlap; renew null/error menghentikan
+    work berikutnya dan completion stale tidak dipersist sebagai sukses.
+  - [x] Session envelope didecrypt dengan account ID/type; ciphertext copy dihapus
+    setelah dipakai dan session plaintext reference runner dilepas setelah factory.
+  - [x] Connect sukses mencatat runtime `CONNECTED`; crypto/connect/session error
+    dipetakan ke retry/degraded/revoked dengan stable code tanpa raw provider detail.
+  - [x] Preparation dan delivery dijalankan bergantian, dibatasi policy eksplisit,
+    berhenti pada idle, retry account-level, fatal session, uncertainty, atau fencing.
+  - [x] Disconnect, heartbeat stop, dan lease release dijalankan pada seluruh exit
+    path; cleanup failure tidak menimpa root-cause result dan tetap observable.
+  - [x] Production Teleproto factory menyimpan API hash/session secara private dan
+    object inspection/JSON tetap redacted.
+- Non-goal: memilih max concurrent sessions, shard supervisor/listener loop, process
+  entrypoint, signal shutdown global, Auto Komen runtime, live account, atau load/soak.
+- Dependencies: F5.1 F2/F4 engine ownership, F5.2 key ring, F5.3 runtime repository,
+  E1 lease repository, dan F3 Teleproto adapter.
+- Risks/failure modes: heartbeat overlap, lease hilang ketika side effect berjalan,
+  plaintext bertahan di closure, connect fatal dianggap target error, retry loop cepat,
+  disconnect/release menutupi error utama, serta satu akun memonopoli engine.
+- Test plan: fake repositories/adapter/scheduler untuk held lease, happy drain, idle,
+  max budget, crypto failures, connect retry/revoked/conflict, heartbeat loss saat
+  connect/action, fatal action, retry/uncertainty stop, disconnect/release failure;
+  production scheduler no-overlap; full engine/API regression dan typecheck.
+- Rollback/recovery: code-only engine unit tanpa migration/external side effect;
+  revert aman. Account lease tetap expiry-based bila process crash sebelum cleanup.
+- Expected touch points: runner contract/service, serial heartbeat scheduler,
+  Teleproto adapter factory, focused tests, dan ledger.
+- Required evidence: call ordering membuktikan lease→session→decrypt→connect; stale
+  heartbeat menghentikan work; semua exit cleanup; redaction; focused/full tests hijau.
+- Verification evidence:
+  - Focused account runner: `15/15`; membuktikan held lease tidak membaca session,
+    scheduler failure tetap release lease, non-runnable tidak decrypt, happy F2/F4
+    drain, heartbeat loss saat connect/send, command completion stale ditolak fencing,
+    crypto/session/connect mapping, action budget, retry/uncertainty stop, cleanup
+    observability, serial heartbeat no-overlap, dan secret redaction.
+  - Engine typecheck lulus; full engine `55 pass`, `0 fail`, `2 skip`. Dua skip adalah
+    PostgreSQL integration yang memerlukan test database URL; F5.4 tidak mengubah SQL,
+    sedangkan repository/migration F5.3 terakhir sudah lulus full DB integration.
+  - Full API regression `52/52`; API typecheck dan package syntax check lulus.
+  - `git diff --check` lulus dan tidak ada session/API hash nyata di fixture test.
+- Remaining risk: runner belum dikomposisikan oleh supervisor/process production,
+  belum diuji dengan live account, dan angka concurrency/RSS/throughput belum dipilih.
+  Itu sengaja menjadi F5.5–F5.7; unit ini tidak mengklaim kapasitas multi-account.
+- Follow-up unit: F5.5 shard supervisor yang memakai reconciliation scan + wake-up
+  hint, bounded concurrency, dedupe in-flight account, dan graceful shutdown global.
+
 ### DEV-001 — Backend package catalog domain
 
 - Final status: VERIFIED (first production product-code unit).
