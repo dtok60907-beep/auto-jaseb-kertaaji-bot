@@ -663,6 +663,69 @@ Penutupan:
 - Follow-up unit: F5.5 shard supervisor yang memakai reconciliation scan + wake-up
   hint, bounded concurrency, dedupe in-flight account, dan graceful shutdown global.
 
+### DEV-F5-005 — Shard supervisor and graceful drain
+
+- Final status: VERIFIED (code-only shard orchestration; no live Telegram side effect).
+- Commit/diff: F5.5 supervisor contract/service, focused race/failure tests, dan tanpa
+  database migration atau process deployment change.
+- Parent: Unit F5 — Jasa Sebar runtime orchestration
+- Outcome: satu process engine mengorkestrasi discovered account milik shard-nya ke
+  runner F5.4 tanpa overlap per akun, tanpa concurrency tak terbatas, dan tanpa
+  bergantung pada keandalan notification PostgreSQL.
+- Goal trace: supervisor hanya mengatur scheduling multi-account. Lease, session,
+  Telegram side effect, fencing, dan cleanup satu akun tetap milik runner F5.4.
+- Acceptance criteria:
+  - [x] Initial dan periodic reconciliation memakai `listDue`; wake-up PostgreSQL
+    hanya hint yang coalesced dan notification hilang tidak kehilangan work permanen.
+  - [x] Hanya account milik shard yang diterima; discovery invalid/wrong-shard tidak
+    pernah mencapai runner dan dilaporkan dengan stable event code.
+  - [x] Concurrency dibatasi policy eksplisit dan account ID yang sedang/pending tidak
+    pernah dijalankan overlap walaupun scan/wake-up terjadi berulang.
+  - [x] Account contention/runner failure memiliki deferral koordinasi lokal agar
+    tidak menciptakan hot loop; budget exhaustion tetap dapat melanjutkan backlog.
+  - [x] Scan, subscription, observer, dan runner rejection tidak mematikan loop atau
+    membocorkan raw error; snapshot counters menunjukkan kondisi sebenarnya.
+  - [x] Stop idempotent menutup subscription, berhenti menerima work baru, menunggu
+    seluruh runner aktif selesai, dan mengembalikan summary immutable.
+- Non-goal: memilih angka concurrency production, membuka koneksi process/ENV,
+  signal handler OS, live Telegram, Auto Komen runtime, load/soak, dan autoscaling.
+- Dependencies: F5.3 discovery/wakeup repository, shard parity, dan F5.4 account runner.
+- Risks/failure modes: duplicate wakeups, scan overlap, due in-flight account menutup
+  discovery account lain, runner rejection unhandled, LISTEN outage, busy loop pada
+  lease contention, stop race yang memulai work baru, serta observer merusak runtime.
+- Test plan: fake repository/runner untuk initial reconciliation, concurrency peak,
+  duplicate wakeup/in-flight dedupe, wrong shard/invalid discovery, lost-notify periodic
+  recovery, subscription/scan/runner/observer failure, contention deferral, serta stop
+  ketika runner masih aktif dan stop kedua kalinya.
+- Rollback/recovery: code-only unit tanpa migration atau external side effect; revert
+  supervisor tidak memengaruhi correctness runner/account lease F5.4.
+- Expected touch points: supervisor contract/service, focused tests, dan ledger.
+- Required evidence: focused race/failure tests, full engine/API regression,
+  typecheck, diff check, serta explicit remaining-risk statement.
+- Verification evidence:
+  - Focused supervisor `10/10`: policy/shard fail-fast, concurrency peak, unique
+    account run, duplicate wakeup/in-flight dedupe, lost-notify periodic recovery,
+    wrong-shard/invalid discovery rejection, invalid runner-result redaction,
+    subscription retry, scan/runner/observer isolation, contention deferral, budget
+    continuation, dan idempotent graceful stop saat runner masih aktif.
+  - Focused suite diulang tiga process paralel (`30/30`) untuk memeriksa flakiness
+    timer, coalesced wake-up, contention deferral, dan stop race; seluruhnya lulus.
+  - Subscription startup failure tidak mematikan reconciliation dan dicoba ulang
+    memakai policy eksplisit; shutdown race menutup subscription yang baru tersambung.
+  - Engine typecheck lulus; full engine `65 pass`, `0 fail`, `2 skip`. Dua skip tetap
+    test PostgreSQL yang memerlukan database URL dan tidak terkait perubahan code-only
+    F5.5; repository F5.3 sudah lulus full DB integration pada checkpoint sebelumnya.
+  - Full API regression `52/52`; API typecheck dan package syntax check lulus.
+  - Error/result/event hanya membawa stable code; raw error fake tidak muncul pada
+    observer atau immutable stop summary.
+- Remaining risk: supervisor belum dikomposisikan dengan PostgreSQL/key ring/runner
+  dalam process entrypoint production, belum menerima signal OS, dan belum diuji load
+  atau live Telegram. Nilai concurrency/reconciliation/retry tetap konfigurasi wajib,
+  bukan angka kapasitas yang diklaim aman sebelum benchmark F5.7.
+- Follow-up unit: F5.6 production composition—strict ENV parsing, repository/key-ring/
+  runner/supervisor wiring, process identity, readiness, signal drain, dan startup
+  failure cleanup; setelah itu F5.7 benchmark memilih angka deployment berbasis data.
+
 ### DEV-001 — Backend package catalog domain
 
 - Final status: VERIFIED (first production product-code unit).
