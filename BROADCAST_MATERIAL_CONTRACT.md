@@ -41,6 +41,9 @@ benar-benar melakukan pengiriman. Sistem tidak boleh meniru identitas akun lain.
 6. Penolakan Telegram terhadap forward atau attribution disimpan sebagai error
    per target. Tidak ada fallback diam-diam menjadi teks atau mode attribution lain.
 7. `SIDE_EFFECT_UNCERTAIN` tidak boleh diulang otomatis.
+8. Grup LPM yang meminta persetujuan admin disimpan sebagai non-final
+   `WAITING_APPROVAL`; command target tersebut tetap tertahan sampai membership
+   akun pengirim terverifikasi `MEMBER`.
 
 ## Batas unit ini
 

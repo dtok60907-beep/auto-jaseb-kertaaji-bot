@@ -103,7 +103,11 @@ TELEGRAM_TEST_SESSION="$TELEPROTO_TEST_SESSION" \
 node behavior-join-public.mjs > ../../results/raw/teleproto-join-public.jsonl
 ```
 
-`JOINED` and `ALREADY_MEMBER` are successful terminal states. `JOIN_APPROVAL_REQUIRED`, `TARGET_NOT_FOUND`, permission errors, FloodWait, or any unknown error are classified clearly; approval-required is out of the live product path and is covered only by adapter/stub tests.
+`JOINED` and `ALREADY_MEMBER` are successful terminal states. The spike still
+classifies `JOIN_APPROVAL_REQUIRED` as a provider result; production preparation
+persists it as non-final `WAITING_APPROVAL`. A real approval round trip requires a
+controlled group admin and remains a separate live gate. `TARGET_NOT_FOUND`,
+permission errors, FloodWait, and unknown errors must stay classified clearly.
 
 Each scenario must emit JSONL into `results/raw/` and be summarized with the parent harness. A hard gate failure ends that candidate's run.
 

@@ -210,18 +210,76 @@ Penutupan:
 - Acceptance evidence: both adapters resolve the target, invoke the provider join operation once, serialize the side effect per session, map `UserAlreadyParticipantError` to safe `ALREADY_MEMBER`, and keep raw target/error/session data out of JSONL.
 - Commands/tests: `npm --prefix spikes/telegram-engine test` (27/27); Telethon Python suite (22/22); syntax/compile checks; live Telethon and Teleproto public-join runners; parent summary harness on both JSONL artifacts.
 - Result summary: Telethon `JOINED` in 192.561701 ms; Teleproto `JOINED` in 712.466637 ms. Each candidate produced one passing hard assertion and disconnected cleanly.
-- Remaining risk: this proves only public join side effect; send permissions, discussion comments, receive/catch-up, duplicate side effects, multi-session behavior, and resource soak remain unverified. Approval-required is intentionally out of the live product path and covered only by classification tests.
+- Remaining risk: this proves only public join side effect; approval round trip,
+  send permissions, discussion comments, receive/catch-up, duplicate side effects,
+  multi-session behavior, and resource soak remain unverified.
 - Rollback note: accounts remain members of the controlled public target; no automatic leave was performed because leaving is another external side effect requiring a separate explicit action.
 - Follow-up units: controlled text send and discussion comment with explicit checkpoints.
 
 ### SCOPE-001 — Approval-required join excluded from live product path
 
-- Final status: VERIFIED.
+- Final status: SUPERSEDED oleh `DEV-APPROVAL-001` pada 29 Agustus 2026.
 - Commit/diff: recorded in the scope-adjustment commit for this change set.
-- Decision: client flow targets public groups without admin approval. No approval-required target is required in `.env`, live benchmark assets, or the behavior sequence.
-- Safety boundary: adapter error mapping for `JOIN_APPROVAL_REQUIRED` remains intact so an unexpected restricted target fails clearly without retry or hidden delay; only stub/classification tests cover it.
-- Verification: `ENGINE_BENCHMARK_PROTOCOL.md`, `FOUNDATION_SPEC.md`, `LIVE_BENCHMARK_RUNBOOK.md`, and both resolve runners agree on the reduced scope; Node 27/27 and Telethon 22/22 regressions remain green.
+- Historical decision: client flow originally targeted public groups without admin
+  approval. Product scope changed before F3; this decision must not guide new code.
+- Retained evidence: adapter classification tests remain useful, but production now
+  maps that provider result to durable `WAITING_APPROVAL`.
+- Verification at the time: Node 27/27 and Telethon 22/22 regressions were green.
 - Follow-up units: controlled text send, discussion comment, receive/catch-up, and resource soak.
+
+### DEV-APPROVAL-001 — Persisted join approval untuk Grup LPM dan linked discussion
+
+- Status: VERIFIED
+- Parent: Unit F — Engine Jasa Sebar / Auto Komen preparation
+- Outcome: Grup LPM dan linked discussion yang membutuhkan persetujuan admin
+  tersimpan sebagai `WAITING_APPROVAL`, tidak dianggap gagal, dan otomatis menjadi
+  `READY` setelah akun terverifikasi sebagai member.
+- Goal trace: target valid tidak boleh hilang hanya karena admission policy Telegram;
+  command tetap tertahan sampai akun mempunyai membership yang benar.
+- Acceptance criteria:
+  - [x] Respons provider `APPROVAL_REQUESTED` menghasilkan state non-final
+    `WAITING_APPROVAL` dengan error/status code yang jelas.
+  - [x] Pemeriksaan ulang target yang masih menunggu tidak mengirim request join lagi.
+  - [x] Setelah membership menjadi `MEMBER`, target otomatis berubah menjadi `READY`.
+  - [x] Command broadcast maupun komentar tidak dapat diklaim sebelum preparation
+    target terkait `READY`.
+  - [x] Claim, transition, retry, dan takeover tetap dilindungi account lease serta
+    fencing token.
+- Non-goal: menyetujui request sebagai admin grup, bypass policy Telegram, dan live
+  Telegram side effect pada unit ini.
+- Dependencies: F1 adapter contract, E1 account lease, E3 outbox claim, F2 target preparation.
+- Risks/failure modes: duplicate join call setelah crash tepat di window side effect;
+  approval tidak pernah diberikan; target/link discussion berubah; akun diganti.
+- Test plan: unit state-machine LPM dan discussion; negative/fenced paths; fresh
+  PostgreSQL migration dan fixture; full API regression/typecheck.
+- Rollback/recovery: forward migration mengembalikan target waiting ke queued/final
+  sesuai keputusan operator; migration yang sudah diterapkan tidak diedit.
+- Expected touch points: adapter contract, dua preparation service/repository,
+  additive PostgreSQL migrations, focused tests, product contract.
+- Required evidence: test output, typecheck, migration/fixture result, diff review,
+  commit reference.
+
+Penutupan:
+
+- Final status: VERIFIED untuk state machine, persistence, fencing, dan adapter
+  contract; live Telegram approval round trip tetap menjadi gate F3/provider.
+- Commit/diff: unit commit `feat: support approval-waiting Telegram targets`.
+- Acceptance evidence: Grup LPM dan linked discussion mempunyai durable
+  `WAITING_APPROVAL`; polling tidak memanggil join kembali; membership `MEMBER`
+  mempromosikan target ke `READY`; target inactive, belum ready, atau account-nya
+  tidak cocok tidak dapat melepas command.
+- Commands/tests: `npm run typecheck`; `npm test` (62/62); fresh PostgreSQL seluruh
+  migration dan fixture; `git diff --check`.
+- Result summary: polling 30 detik disimpan melalui `available_at` tanpa timer per
+  target atau lease yang ditahan; FloodWait mempertahankan state approval; stale
+  owner ditolak fencing token.
+- Remaining risk: implementasi provider production untuk linked discussion serta
+  live request → admin approve → membership aktif belum dibuat/diuji; approval
+  yang tidak pernah diberikan tetap menunggu sampai target dinonaktifkan/diedit.
+- Rollback note: gunakan forward corrective migration; jangan edit migration V18/V19
+  yang telah diterapkan.
+- Follow-up units: F3 provider adapter/native forward dan controlled Telegram
+  approval round-trip test.
 
 ### DEV-001 — Backend package catalog domain
 

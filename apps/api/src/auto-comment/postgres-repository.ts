@@ -29,7 +29,7 @@ type ChannelRow = {
   account_id: string;
   source_channel_ref: string;
   discussion_target_ref: string | null;
-  resolution_status: "QUEUED" | "CHECKING" | "READY" | "FAILED_FINAL";
+  resolution_status: "QUEUED" | "CHECKING" | "JOINING" | "WAITING_APPROVAL" | "READY" | "NEEDS_REVALIDATION" | "FAILED_FINAL";
   last_error_code: string | null;
   active: boolean;
 };
@@ -252,7 +252,9 @@ export class PostgresAutoCommentSettingsRepository implements AutoCommentSetting
     const rows = await this.sql<ChannelRow[]>`
       update public.auto_comment_channel_targets
          set source_channel_ref = ${input.patch.sourceChannelRef}, active = ${input.patch.active},
-             discussion_target_ref = null, resolution_status = 'QUEUED', last_error_code = null
+             discussion_target_ref = null, resolution_status = 'QUEUED', last_error_code = null,
+             resolution_available_at = now(), resolution_approval_requested_at = null,
+             resolution_lease_owner = null, resolution_fencing_token = null
        where id = ${input.id}::uuid and user_id = ${input.userId}::uuid
       returning id::text, account_id::text, source_channel_ref, discussion_target_ref,
                 resolution_status, last_error_code, active

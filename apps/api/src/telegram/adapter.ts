@@ -39,6 +39,13 @@ export type TelegramTarget = Readonly<{
   entityType: "GROUP" | "SUPERGROUP" | "CHANNEL";
   membership: "MEMBER" | "NOT_MEMBER" | "UNKNOWN";
 }>;
+export type TelegramJoinResult = Readonly<{
+  state: "JOINED" | "ALREADY_MEMBER" | "APPROVAL_REQUESTED";
+}>;
+export type TelegramLinkedDiscussion = Readonly<{
+  source: TelegramTarget;
+  discussion: TelegramTarget | null;
+}>;
 export type TelegramDeliveryReceipt = Readonly<{ providerMessageIds: readonly string[]; sentAt: string }>;
 export type NativeForwardRequest = Readonly<{
   targetRef: string;
@@ -51,7 +58,8 @@ export interface TelegramDeliveryAdapter {
   connect(): Promise<void>;
   disconnect(): Promise<void>;
   resolveTarget(targetRef: string): Promise<TelegramTarget>;
-  joinPublicTarget(targetRef: string): Promise<Readonly<{ state: "JOINED" | "ALREADY_MEMBER" }>>;
+  resolveLinkedDiscussion(sourceChannelRef: string): Promise<TelegramLinkedDiscussion>;
+  joinPublicTarget(targetRef: string): Promise<TelegramJoinResult>;
   sendText(input: Readonly<{ targetRef: string; text: string }>): Promise<TelegramDeliveryReceipt>;
   /**
    * Resolves the source message and any grouped album siblings, then invokes

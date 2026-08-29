@@ -88,7 +88,11 @@ Error minimum memuat `code`, pesan user, detail admin, retryability, account/wor
 - Sistem tidak menjanjikan bypass limit atau aturan Telegram.
 - Sistem tidak menambahkan delay buatan yang tidak dipilih user.
 - `FLOOD_WAIT` wajib dari Telegram tetap dihormati dan ditampilkan sebagai state jelas.
-- Flow approval admin grup bukan bagian dari jalur produk utama; jika Telegram mengembalikan kondisi ini, sistem tetap mengeluarkan error code yang jelas dan menghentikan aksi tanpa retry otomatis.
+- Grup LPM dan grup diskusi channel yang meminta persetujuan admin masuk ke state
+  `WAITING_APPROVAL`; request join tidak dikirim ulang selama state tersebut dan
+  pekerjaan otomatis lanjut setelah membership terverifikasi.
+- Menunggu persetujuan admin adalah dependency eksternal, bukan kegagalan dan bukan
+  interval pengiriman. Status serta target yang menunggu harus terlihat jelas.
 - Tidak ada AI classifier atau recommendation engine.
 
 ## 5. Arsitektur minimum

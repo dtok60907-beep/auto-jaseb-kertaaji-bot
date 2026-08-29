@@ -30,6 +30,18 @@ dipakai sebagai dasar match.
 Mode `AUTO_SEND` tetap memakai deduplikasi, lease akun, outbox, dan error state
 yang sama. Ia bukan jalur bypass Telegram engine.
 
+## Preparation channel dan grup diskusi
+
+Sebelum monitoring dimulai, engine harus resolve channel target beserta linked
+discussion dan memastikan akun Userbot sudah menjadi member grup diskusinya.
+Jika Telegram meminta persetujuan admin, target masuk `WAITING_APPROVAL` dan
+tidak dianggap gagal. Pemeriksaan membership berikutnya tidak boleh mengirim
+request join baru; setelah disetujui target otomatis menjadi `READY`.
+
+Matcher hanya boleh membuat kandidat dari target aktif berstatus `READY`.
+Outbox komentar juga wajib menahan command jika target dinonaktifkan, kembali
+memerlukan validasi, menunggu persetujuan, atau sudah berpindah ke akun lain.
+
 ## State kandidat
 
 ```text

@@ -33,7 +33,7 @@ export type AutoCommentChannelTargetView = Readonly<{
   accountId: string;
   sourceChannelRef: string;
   discussionTargetRef: string | null;
-  resolutionStatus: "QUEUED" | "CHECKING" | "READY" | "FAILED_FINAL";
+  resolutionStatus: "QUEUED" | "CHECKING" | "JOINING" | "WAITING_APPROVAL" | "READY" | "NEEDS_REVALIDATION" | "FAILED_FINAL";
   lastErrorCode: string | null;
   active: boolean;
   divisionIds: readonly string[];
