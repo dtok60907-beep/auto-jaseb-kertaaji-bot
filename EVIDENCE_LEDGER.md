@@ -726,6 +726,62 @@ Penutupan:
   runner/supervisor wiring, process identity, readiness, signal drain, dan startup
   failure cleanup; setelah itu F5.7 benchmark memilih angka deployment berbasis data.
 
+### DEV-F5-006 — Production engine composition and lifecycle
+
+- Status: IN_PROGRESS
+- Parent: Unit F5 — Jasa Sebar runtime orchestration
+- Outcome: F5.3–F5.5 dapat dijalankan sebagai satu engine production dengan config
+  fail-fast, secret redaction, resource ownership jelas, readiness jujur, dan drain
+  process yang tidak memotong runner aktif.
+- Delivery split:
+  - F5.6a: strict config, PostgreSQL resource, runner/supervisor wiring, process UUID,
+    idempotent core stop, serta rollback bila open/probe/supervisor startup gagal.
+  - F5.6b: HTTP live/ready, serial DB readiness monitor, signal/fatal handler,
+    executable entrypoint, dan deployment ENV example/runbook minimum.
+- Acceptance criteria:
+  - [ ] Semua capacity/timing production wajib eksplisit di ENV; tidak ada angka
+    concurrency hasil tebakan yang diam-diam menjadi default deployment.
+  - [ ] Database URL, Telegram API hash, dan session key ring tidak muncul pada JSON,
+    inspect, error publik, structured lifecycle event, atau fixture repository.
+  - [ ] Database diprobe sebelum ready; seluruh repository, F5.4 runner, dan F5.5
+    supervisor dikomposisikan dengan instance UUID serta shard/policy yang sama.
+  - [ ] Failure pada open/probe/supervisor/health startup menjalankan rollback resource
+    yang sudah terbuka dan hanya mengembalikan stable error + cleanup codes.
+  - [ ] Readiness menjadi false saat starting, DB gagal melewati threshold, stopping,
+    atau failed; kembali true setelah probe recovery tanpa restart.
+  - [ ] `SIGTERM`/`SIGINT` dan fatal process event memulai satu drain idempotent,
+    berhenti menerima work, menunggu runner, menutup health/database, dan melepas handler.
+  - [ ] Entrypoint tidak mencetak secret/raw error dan tidak membuka Telegram/session
+    sebelum config serta database startup gate lulus.
+- Non-goal: menentukan angka production final, load/soak, deployment mutation,
+  Auto Komen runtime, frontend, alert backend, atau live Telegram side effect.
+- Dependencies: F5.2 key ring, F5.3 repositories, F5.4 runner, F5.5 supervisor.
+- Risks/failure modes: silent ENV default, duplicate process identity, URL bocor lewat
+  inspect, lazy DB dianggap sehat, partial-start resource leak, signal handler ganda,
+  readiness tetap hijau saat DB mati, forced exit memotong disconnect, dan stop race.
+- Test plan: table-driven config negative paths/redaction; fake database/supervisor untuk
+  exact wiring, startup failure di setiap boundary, cleanup order, stop idempotency;
+  fake health/signal/clock untuk readiness recovery dan drain; focused/full regression.
+- Rollback/recovery: code-only engine composition dan docs; belum mengubah schema,
+  Supabase, Telegram, atau deployment sehingga revert aman.
+- Required evidence: focused lifecycle tests, redaction assertions, full engine/API,
+  typecheck, dependency audit, diff check, dan remaining-risk statement.
+- F5.6a status: VERIFIED.
+  - Strict config mewajibkan seluruh angka runner/supervisor/database/health dan
+    memvalidasi relasi heartbeat/lease serta command/account lease sebelum resource
+    dibuka; shard `1/0` pun harus ditulis eksplisit pada ENV production.
+  - Database URL, API hash, dan key ring berada di private field; JSON/inspect/string,
+    config error, startup error, core snapshot, dan stop summary sudah diuji redacted.
+  - Composition test membuktikan satu random process UUID menjadi `leaseOwner` runner,
+    serta runtime repository yang sama menghubungkan discovery supervisor dan F5.4.
+  - Open/probe/instance/composition/supervisor failure diuji satu per satu; database
+    yang sudah terbuka selalu dicoba tutup dan cleanup failure memakai stable code.
+  - Focused config/core `5/5`, engine typecheck lulus, full engine `70 pass`, `0 fail`,
+    `2 skip`, dan full API `52/52`. Dua skip tetap integration test yang memerlukan
+    test database URL; unit F5.6a tidak mengubah SQL/repository behavior.
+- F5.6a remaining risk: belum ada HTTP readiness, probe runtime, process signal/fatal
+  drain, executable entrypoint, atau actual Supabase connection; seluruhnya F5.6b.
+
 ### DEV-001 — Backend package catalog domain
 
 - Final status: VERIFIED (first production product-code unit).
