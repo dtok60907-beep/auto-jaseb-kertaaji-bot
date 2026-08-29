@@ -6,6 +6,7 @@
     "node": ">=22.0.0"
   },
   "scripts": {
+    "benchmark:supervisor": "node --experimental-strip-types src/benchmark/run-supervisor-load.ts",
     "start:production": "node --experimental-strip-types src/production/main.ts",
     "test": "node --experimental-strip-types --test",
     "typecheck": "tsc --noEmit",

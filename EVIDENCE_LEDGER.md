@@ -808,6 +808,62 @@ Penutupan:
 - Follow-up unit: F5.7 benchmark/load/soak dan deployment sizing berbasis hasil ukur,
   lalu staging dengan Supabase nyata serta release/rollback rehearsal.
 
+### DEV-F5-007A — Reproducible supervisor load harness
+
+- Status: IN_PROGRESS
+- Parent: Unit F5.7 — Production engine capacity and soak evidence
+- Outcome: jalur orchestration F5.5 dapat diberi beban akun sintetis secara
+  reproducible dan menghasilkan JSONL yang memisahkan correctness hard gate dari
+  CPU/RSS/event-loop/throughput/drain measurement.
+- Goal trace: angka concurrency tidak boleh dipilih dari intuition atau microbenchmark
+  ad-hoc; workload, machine, config, raw sample, dan cara merangkum harus dapat diaudit.
+- Delivery split:
+  - F5.7a: supervisor-only harness dan local baseline tanpa DB/Telegram.
+  - F5.7b: production repository/lease/outbox path dengan PostgreSQL dan provider fake.
+  - F5.7c: controlled multi-session Telegram serta soak 1 jam lalu 24 jam.
+  - F5.7d: capacity envelope, deployment sizing, dan ADR final dari seluruh evidence.
+- Acceptance criteria:
+  - [x] Seluruh workload input eksplisit dan tervalidasi; tidak ada concurrency atau
+    jumlah akun tersembunyi sebagai default benchmark.
+  - [x] Warm-up dipisahkan dari sample; metadata mencatat runtime, platform, CPU,
+    commit, workload, dan scope limitation tanpa secret/environment dump.
+  - [x] Setiap sample memakai supervisor production yang sama dan mengukur duration,
+    throughput, CPU, RSS, heap, event-loop delay, peak concurrency, dan drain duration.
+  - [x] Event loss, duplicate account execution, runner failure, concurrency violation,
+    incomplete drain, dan cleanup error menjadi hard assertion, bukan sekadar metric.
+  - [x] Timeout/invalid input berakhir jelas, resource selalu dihentikan, dan raw error
+    tidak masuk JSONL.
+  - [x] Output kompatibel dengan benchmark summarizer yang sudah ada dan CLI memberi
+    exit non-zero bila satu hard gate gagal.
+  - [ ] Focused/full regression, typecheck, dependency audit, raw local artifact, dan
+    reproducible summary tersedia sebelum unit ditutup.
+- Non-goal: mengklaim kapasitas production, mengukur Supabase/network/Telegram,
+  memilih angka deployment final, menjalankan live side effect, atau soak 1/24 jam.
+- Dependencies: F5.5 supervisor, F5.6 lifecycle evidence, benchmark JSONL protocol.
+- Risks/failure modes: benchmark mengukur fake latency alih-alih orchestration,
+  sample terlalu singkat, GC/noise disalahartikan, output tidak deterministic,
+  timeout meninggalkan supervisor/timer, atau hard failure tertutup percentile bagus.
+- Test plan: table-driven config/CLI validation; deterministic fake repository dan
+  runner untuk exact-once/concurrency; injected loss/failure/timeout; JSONL redaction;
+  existing summarizer consumption; full engine/API regression.
+- Rollback/recovery: code-only benchmark path tanpa migration, DB, Telegram, atau
+  deployment side effect; revert tidak mengubah production engine runtime.
+- Expected touch points: benchmark module/CLI/tests, package script, protocol/runbook,
+  local sanitized artifact, summarizer bila kontrak lama terbukti kurang ketat.
+- Required evidence: focused results, local machine metadata, raw JSONL + generated
+  summary, explicit orchestration-only label, regression/audit/diff, commit reference.
+- Harness checkpoint status: VERIFIED; local measurement artifact masih pending.
+  - Focused suite `5/5`, lalu tiga process paralel pada versi sebelum warm-up gate
+    correction `12/12`; final typecheck dan focused suite sesudah correction `5/5`.
+  - Full engine `86 pass`, `0 fail`, `2 skip`; full API `52/52` plus typecheck/check;
+    npm audit engine/API masing-masing `0 vulnerabilities`.
+  - Smoke JSONL berhasil dikonsumsi summarizer existing dan dinilai `eligible=true`.
+    Percobaan pertama membuktikan banner `npm run` merusak JSONL; runbook sekarang
+    mewajibkan `npm run --silent` saat stdout diarahkan ke artifact.
+  - Adversarial review menemukan warm-up failure sempat tidak memengaruhi eligibility;
+    correction sekarang menyimpan failure assertion tanpa metric warm-up dan langsung
+    menghentikan benchmark pada hard-gate failure.
+
 ### DEV-001 — Backend package catalog domain
 
 - Final status: VERIFIED (first production product-code unit).

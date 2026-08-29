@@ -24,6 +24,7 @@ __pycache__/
 # Benchmark output may contain operational metadata; keep raw results local until sanitized.
 spikes/telegram-engine/results/raw/
 spikes/telegram-engine/tmp/
+apps/engine/benchmark-results/raw/
 
 # Editor / OS
 .DS_Store
