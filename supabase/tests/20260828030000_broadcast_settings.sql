@@ -6,6 +6,15 @@ insert into auth.users (id) values
   ('11111111-1111-1111-1111-111111111111'),
   ('22222222-2222-2222-2222-222222222222');
 
+insert into public.entitlements (
+  user_id, package_snapshot, status, starts_at, expires_at, max_lpm_groups, max_channel_targets
+)
+values (
+  '11111111-1111-1111-1111-111111111111',
+  '{"packageId":"fixture","packageType":"USERBOT","features":["JASEB","AUTO_COMMENT_MF"],"maxTargetsPerMinute":1,"maxAccounts":1,"intervalMinSeconds":0,"intervalMaxSeconds":0}',
+  'ACTIVE', now() - interval '1 minute', now() + interval '1 day', 10, 10
+);
+
 insert into public.broadcast_materials (user_id, kind, text_content)
 values ('11111111-1111-1111-1111-111111111111', 'TEXT', 'Promo kos putri');
 
@@ -68,6 +77,21 @@ begin
   ) then
     raise exception 'broadcast material RLS policy missing';
   end if;
+end;
+$$;
+
+update public.entitlements set max_lpm_groups = 1
+ where user_id = '11111111-1111-1111-1111-111111111111';
+
+do $$
+begin
+  begin
+    insert into public.broadcast_lpm_targets (user_id, telegram_target_ref)
+    values ('11111111-1111-1111-1111-111111111111', '@grup_lpm_lain');
+    raise exception 'LPM target capacity was exceeded';
+  exception when raise_exception then
+    if sqlerrm <> 'LPM_GROUP_LIMIT_REACHED' then raise; end if;
+  end;
 end;
 $$;
 

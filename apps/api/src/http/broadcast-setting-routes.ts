@@ -4,6 +4,7 @@ import { BroadcastTargetValidationError, validateBroadcastLpmTarget } from "../d
 import type { BroadcastSettingsRepository } from "../broadcast/repository.ts";
 import type { AdminAuthorizer } from "./package-routes.ts";
 import type { EntitlementRepository } from "../entitlements/repository.ts";
+import { resolveEntitlementAccess } from "../entitlements/access.ts";
 
 type UserActor = { id: string };
 export type UserAuthorizer = (request: FastifyRequest) => Promise<UserActor | null>;
@@ -12,7 +13,7 @@ type RouteOptions = {
   broadcasts: BroadcastSettingsRepository;
   authorizeUser: UserAuthorizer;
   authorizeAdmin: AdminAuthorizer;
-  entitlements?: EntitlementRepository;
+  entitlements: EntitlementRepository;
 };
 
 type ValidationIssue = Readonly<{ field: string; code: string }>;
@@ -83,13 +84,16 @@ function subjectUserId(request: FastifyRequest): string | null {
 function isUniqueViolation(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "23505";
 }
+function entitlementError(error: unknown): "SUBSCRIPTION_REQUIRED" | "LPM_GROUP_LIMIT_REACHED" | null {
+  const message = error instanceof Error ? error.message : "";
+  return message === "SUBSCRIPTION_REQUIRED" || message === "LPM_GROUP_LIMIT_REACHED" ? message : null;
+}
 
-async function assertLpmCapacity(options: RouteOptions, userId: string, reply: FastifyReplyLike): Promise<boolean> {
-  if (!options.entitlements) return true;
-  const entitlement = (await options.entitlements.list(userId)).find((item) => item.status === "ACTIVE" && new Date(item.expiresAt).getTime() > Date.now());
-  if (!entitlement) { reply.code(403).send({ code: "SUBSCRIPTION_REQUIRED" }); return false; }
-  const current = (await options.broadcasts.listLpmTargets(userId)).filter((target) => target.active).length;
-  if (current >= entitlement.maxLpmGroups) { reply.code(409).send({ code: "LPM_GROUP_LIMIT_REACHED", limit: entitlement.maxLpmGroups, current }); return false; }
+async function assertLpmCapacity(options: RouteOptions, userId: string, reply: FastifyReplyLike, excludingId?: string): Promise<boolean> {
+  const access = resolveEntitlementAccess(await options.entitlements.list(userId), "JASEB");
+  if (!access.ok) { reply.code(403).send({ code: access.code }); return false; }
+  const current = (await options.broadcasts.listLpmTargets(userId)).filter((target) => target.active && target.id !== excludingId).length;
+  if (current >= access.limit) { reply.code(409).send({ code: "LPM_GROUP_LIMIT_REACHED", limit: access.limit, current }); return false; }
   return true;
 }
 type FastifyReplyLike = { code: (status: number) => { send: (payload: unknown) => unknown } };
@@ -154,11 +158,13 @@ export function registerBroadcastSettingRoutes(app: FastifyInstance, options: Ro
     if (!userId) return;
     const parsed = parseTarget(request.body);
     if ("issues" in parsed) return replyValidation(reply, "INVALID_LPM_TARGET", parsed.issues);
-    if (!await assertLpmCapacity(options, userId, reply)) return;
+    if (parsed.target.active && !await assertLpmCapacity(options, userId, reply)) return;
     try {
       const target = await options.broadcasts.createLpmTarget({ userId, ...parsed });
       return reply.code(201).send({ target });
     } catch (error) {
+      const code = entitlementError(error);
+      if (code) return reply.code(code === "SUBSCRIPTION_REQUIRED" ? 403 : 409).send({ code });
       if (isUniqueViolation(error)) return reply.code(409).send({ code: "LPM_TARGET_EXISTS" });
       throw error;
     }
@@ -171,11 +177,18 @@ export function registerBroadcastSettingRoutes(app: FastifyInstance, options: Ro
     if (!id) return reply.code(400).send({ code: "INVALID_LPM_TARGET_ID" });
     const parsed = parseTarget(request.body);
     if ("issues" in parsed) return replyValidation(reply, "INVALID_LPM_TARGET", parsed.issues);
+    if (parsed.target.active) {
+      const existing = (await options.broadcasts.listLpmTargets(userId)).find((target) => target.id === id);
+      if (!existing) return reply.code(404).send({ code: "LPM_TARGET_NOT_FOUND" });
+      if (!existing.active && !await assertLpmCapacity(options, userId, reply, id)) return;
+    }
     try {
       const target = await options.broadcasts.updateLpmTarget({ id, userId, ...parsed });
       if (!target) return reply.code(404).send({ code: "LPM_TARGET_NOT_FOUND" });
       return { target };
     } catch (error) {
+      const code = entitlementError(error);
+      if (code) return reply.code(code === "SUBSCRIPTION_REQUIRED" ? 403 : 409).send({ code });
       if (isUniqueViolation(error)) return reply.code(409).send({ code: "LPM_TARGET_EXISTS" });
       throw error;
     }

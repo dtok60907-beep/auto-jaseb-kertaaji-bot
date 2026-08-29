@@ -7,6 +7,15 @@ insert into auth.users (id) values
   ('11111111-1111-1111-1111-111111111111'),
   ('22222222-2222-2222-2222-222222222222');
 
+insert into public.entitlements (
+  user_id, package_snapshot, status, starts_at, expires_at, max_lpm_groups, max_channel_targets
+)
+values (
+  '11111111-1111-1111-1111-111111111111',
+  '{"packageId":"fixture","packageType":"USERBOT","features":["JASEB","AUTO_COMMENT_MF"],"maxTargetsPerMinute":1,"maxAccounts":1,"intervalMinSeconds":0,"intervalMaxSeconds":0}',
+  'ACTIVE', now() - interval '1 minute', now() + interval '1 day', 10, 10
+);
+
 insert into public.telegram_accounts (
   id, owner_user_id, account_type, label, encrypted_session, encryption_key_version, status
 )
@@ -45,6 +54,21 @@ insert into public.auto_comment_division_channels (division_id, channel_target_i
 values
   ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1', 'dddddddd-dddd-dddd-dddd-ddddddddddd1'),
   ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2', 'dddddddd-dddd-dddd-dddd-ddddddddddd1');
+
+update public.entitlements set max_channel_targets = 1
+ where user_id = '11111111-1111-1111-1111-111111111111';
+
+do $$
+begin
+  begin
+    insert into public.auto_comment_channel_targets (user_id, account_id, source_channel_ref)
+    values ('11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', '@base_menfess_lain');
+    raise exception 'channel target capacity was exceeded';
+  exception when raise_exception then
+    if sqlerrm <> 'CHANNEL_TARGET_LIMIT_REACHED' then raise; end if;
+  end;
+end;
+$$;
 
 insert into public.incoming_channel_posts (
   id, account_id, source_channel_ref, provider_post_id, content

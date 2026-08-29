@@ -12,12 +12,13 @@ import {
 import type { UserAuthorizer } from "./broadcast-setting-routes.ts";
 import type { AdminAuthorizer } from "./package-routes.ts";
 import type { EntitlementRepository } from "../entitlements/repository.ts";
+import { resolveEntitlementAccess } from "../entitlements/access.ts";
 
 type RouteOptions = {
   autoComments: AutoCommentSettingsRepository;
   authorizeUser: UserAuthorizer;
   authorizeAdmin: AdminAuthorizer;
-  entitlements?: EntitlementRepository;
+  entitlements: EntitlementRepository;
 };
 
 type SubjectResolver = (request: FastifyRequest, reply: FastifyReply) => Promise<string | null>;
@@ -42,6 +43,7 @@ function idParam(request: FastifyRequest, field: string): string | null {
 }
 
 function settingError(error: unknown): string | null {
+  if (error instanceof Error && (error.message === "SUBSCRIPTION_REQUIRED" || error.message === "CHANNEL_TARGET_LIMIT_REACHED")) return error.message;
   if (typeof error !== "object" || error === null || !("code" in error)) return null;
   const code = (error as { code?: unknown }).code;
   if (code === "23505") return "DUPLICATE_SETTING";
@@ -74,9 +76,17 @@ async function execute<T>(reply: FastifyReply, action: () => Promise<T>): Promis
     return await action();
   } catch (error) {
     const code = settingError(error);
-    if (code) return reply.code(code === "DUPLICATE_SETTING" ? 409 : 409).send({ code }) as T;
+    if (code) return reply.code(code === "SUBSCRIPTION_REQUIRED" ? 403 : 409).send({ code }) as T;
     throw error;
   }
+}
+
+async function assertChannelCapacity(options: RouteOptions, userId: string, reply: FastifyReply, excludingId?: string): Promise<boolean> {
+  const access = resolveEntitlementAccess(await options.entitlements.list(userId), "AUTO_COMMENT_MF");
+  if (!access.ok) { reply.code(403).send({ code: access.code }); return false; }
+  const current = (await options.autoComments.listSettings(userId)).channelTargets.filter((item) => item.active && item.id !== excludingId).length;
+  if (current >= access.limit) { reply.code(409).send({ code: "CHANNEL_TARGET_LIMIT_REACHED", limit: access.limit, current }); return false; }
+  return true;
 }
 
 export function registerAutoCommentSettingRoutes(app: FastifyInstance, options: RouteOptions) {
@@ -194,12 +204,7 @@ export function registerAutoCommentSettingRoutes(app: FastifyInstance, options: 
     if (!userId) return;
     const target = validate(reply, () => validateChannelTarget(request.body));
     if (!target) return;
-    if (options.entitlements) {
-      const entitlement = (await options.entitlements.list(userId)).find((item) => item.status === "ACTIVE" && new Date(item.expiresAt).getTime() > Date.now());
-      if (!entitlement) return reply.code(403).send({ code: "SUBSCRIPTION_REQUIRED" });
-      const current = (await options.autoComments.listSettings(userId)).channelTargets.filter((item) => item.active).length;
-      if (current >= entitlement.maxChannelTargets) return reply.code(409).send({ code: "CHANNEL_TARGET_LIMIT_REACHED", limit: entitlement.maxChannelTargets, current });
-    }
+    if (target.active && !await assertChannelCapacity(options, userId, reply)) return;
     const created = await execute(reply, () => options.autoComments.createChannelTarget({ userId, target }));
     if (!created) return;
     return reply.code(201).send({ channelTarget: created });
@@ -212,6 +217,11 @@ export function registerAutoCommentSettingRoutes(app: FastifyInstance, options: 
     if (!id) return reply.code(400).send({ code: "INVALID_CHANNEL_TARGET_ID" });
     const patch = validate(reply, () => validateChannelTargetPatch(request.body));
     if (!patch) return;
+    if (patch.active) {
+      const existing = (await options.autoComments.listSettings(userId)).channelTargets.find((target) => target.id === id);
+      if (!existing) return reply.code(404).send({ code: "CHANNEL_TARGET_NOT_FOUND" });
+      if (!existing.active && !await assertChannelCapacity(options, userId, reply, id)) return;
+    }
     const updated = await execute(reply, () => options.autoComments.updateChannelTarget({ userId, id, patch }));
     if (!updated) return reply.code(404).send({ code: "CHANNEL_TARGET_NOT_FOUND" });
     return { channelTarget: updated };
