@@ -9,6 +9,8 @@ import type { EntitlementRepository } from "./entitlements/repository.ts";
 import { registerEntitlementRoutes } from "./http/entitlement-routes.ts";
 import { registerUserbotProfileRoutes } from "./http/userbot-profile-routes.ts";
 import type { UserbotProfileRepository } from "./userbot-profiles/repository.ts";
+import { registerWorkerAccountRoutes } from "./http/worker-account-routes.ts";
+import type { WorkerAccountSettingsRepository } from "./workers/repository.ts";
 
 export function createApi(options: {
   packages: PackageRepository;
@@ -18,6 +20,7 @@ export function createApi(options: {
   authorizeUser: UserAuthorizer;
   entitlements: EntitlementRepository;
   userbotProfiles?: UserbotProfileRepository;
+  workers?: WorkerAccountSettingsRepository;
 }) {
   const app = Fastify({ logger: false });
   registerPackageRoutes(app, options);
@@ -25,5 +28,6 @@ export function createApi(options: {
   registerAutoCommentSettingRoutes(app, options);
   registerEntitlementRoutes(app, options);
   if (options.userbotProfiles) registerUserbotProfileRoutes(app, { profiles: options.userbotProfiles, authorizeUser: options.authorizeUser });
+  if (options.workers) registerWorkerAccountRoutes(app, { workers: options.workers, authorizeAdmin: options.authorizeAdmin });
   return app;
 }
