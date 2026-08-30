@@ -17,6 +17,7 @@ import {
 import { createPostgresTelegramSoakProvisioningStore } from "./telegram-soak-provisioning-store.ts";
 import { createPostgresTelegramSoakStore } from "./telegram-soak-store.ts";
 import { TeleprotoSoakSessionVerifier } from "./teleproto-soak-session-verifier.ts";
+import { TeleprotoSoakDeliveryObserver } from "./telegram-soak-delivery-observer.ts";
 import type { SendLatencySummary, SoakFixtureCounts } from "./telegram-soak.ts";
 
 export class RailwayTelegramSoakConfigError extends Error {
@@ -119,6 +120,7 @@ export type RailwayTelegramSoakReport = Readonly<{
     cleanupSucceeded: boolean;
   }>;
   teardown: TelegramSoakOrchestrationResult["cleanup"];
+  deliveryObservation: TelegramSoakOrchestrationResult["deliveryObservation"];
 }>;
 
 export function summarizeRailwayTelegramSoak(result: TelegramSoakOrchestrationResult): RailwayTelegramSoakReport {
@@ -139,6 +141,7 @@ export function summarizeRailwayTelegramSoak(result: TelegramSoakOrchestrationRe
       cleanupSucceeded: summary.cleanupSucceeded,
     }),
     teardown: result.cleanup,
+    deliveryObservation: result.deliveryObservation,
   });
 }
 
@@ -158,9 +161,14 @@ export async function executeRailwayTelegramSoak(
     prepare: false,
   });
   try {
+    const sessions = config.sessions();
+    const revokedIndex = environment.soakConfig.revokeAccountIndex;
+    const observerIndex = revokedIndex === 1 ? 1 : 0;
+    const observerSession = sessions[observerIndex];
+    if (observerSession === undefined) throw new Error("F57C_OBSERVER_SESSION_UNAVAILABLE");
     return await orchestrateTelegramSoak({
       environment,
-      sessions: config.sessions(),
+      sessions,
       verifier: new TeleprotoSoakSessionVerifier({
         apiId: environment.engineConfig.telegramApiId,
         apiHash: environment.engineConfig.telegramApiHash(),
@@ -169,6 +177,12 @@ export async function executeRailwayTelegramSoak(
       keyRing: environment.engineConfig.sessionKeyRing(),
       provisioningStore: createPostgresTelegramSoakProvisioningStore(sql),
       runStore: createPostgresTelegramSoakStore(sql),
+      deliveryObserver: new TeleprotoSoakDeliveryObserver({
+        apiId: environment.engineConfig.telegramApiId,
+        apiHash: environment.engineConfig.telegramApiHash(),
+        session: observerSession,
+        operationTimeoutMilliseconds: environment.engineConfig.telegramOperationTimeoutMilliseconds,
+      }),
       emit,
     });
   } finally {

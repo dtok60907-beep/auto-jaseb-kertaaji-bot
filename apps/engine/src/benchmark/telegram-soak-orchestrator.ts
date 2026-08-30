@@ -15,17 +15,25 @@ import {
   type TelegramSoakEnvironment,
 } from "./run-telegram-soak.ts";
 import type { TelegramSoakStore } from "./telegram-soak-store.ts";
+import {
+  evaluateTelegramSoakDelivery,
+  type TelegramSoakDeliveryObservation,
+  type TelegramSoakDeliveryObserver,
+} from "./telegram-soak-delivery-observer.ts";
+import { soakAssertion } from "./telegram-soak.ts";
 
 export type TelegramSoakOrchestrationFailureCode =
   | "F57C_PROVISION_FAILED"
   | "F57C_RUN_FAILED"
   | "F57C_HARD_GATE_FAILED"
+  | "F57C_DELIVERY_OBSERVATION_FAILED"
   | "F57C_TEARDOWN_FAILED";
 
 export type TelegramSoakOrchestrationResult = Readonly<{
   passed: boolean;
   provisionedAccounts: number;
   run: SoakRunResult | null;
+  deliveryObservation: TelegramSoakDeliveryObservation | null;
   cleanup: TelegramSoakCleanupResult | null;
   failureCode: TelegramSoakOrchestrationFailureCode | null;
 }>;
@@ -39,6 +47,7 @@ export async function orchestrateTelegramSoak(input: Readonly<{
   keyRing: Pick<TelegramSessionKeyRing, "encrypt">;
   provisioningStore: TelegramSoakProvisioningStore;
   runStore: TelegramSoakStore;
+  deliveryObserver: TelegramSoakDeliveryObserver;
   emit: SoakEmitter;
   run?: SoakRun;
 }>): Promise<TelegramSoakOrchestrationResult> {
@@ -46,6 +55,7 @@ export async function orchestrateTelegramSoak(input: Readonly<{
   let provisionedAccounts = 0;
   let runResult: SoakRunResult | null = null;
   let cleanup: TelegramSoakCleanupResult | null = null;
+  let deliveryObservation: TelegramSoakDeliveryObservation | null = null;
   let failureCode: TelegramSoakOrchestrationFailureCode | null = null;
 
   try {
@@ -63,6 +73,7 @@ export async function orchestrateTelegramSoak(input: Readonly<{
       passed: false,
       provisionedAccounts: 0,
       run: null,
+      deliveryObservation: null,
       cleanup: null,
       failureCode: "F57C_PROVISION_FAILED",
     });
@@ -83,6 +94,22 @@ export async function orchestrateTelegramSoak(input: Readonly<{
       },
     });
     if (!runResult.passed) failureCode = "F57C_HARD_GATE_FAILED";
+    if (runResult.passed) {
+      try {
+        const expected = input.environment.soakConfig.approvedCommandCount;
+        const observed = await input.deliveryObserver.observe({
+          targetRef: input.environment.targetRef,
+          search: `F5.7c ${input.environment.soakConfig.runId}`,
+          limit: expected + 1,
+        });
+        deliveryObservation = evaluateTelegramSoakDelivery(input.environment.soakConfig, observed);
+        input.emit(soakAssertion("telegram_delivery_multiset_exact", deliveryObservation.passed));
+        if (!deliveryObservation.passed) failureCode = "F57C_DELIVERY_OBSERVATION_FAILED";
+      } catch {
+        try { input.emit(soakAssertion("telegram_delivery_multiset_exact", false)); } catch { /* contained */ }
+        failureCode = "F57C_DELIVERY_OBSERVATION_FAILED";
+      }
+    }
   } catch {
     failureCode = "F57C_RUN_FAILED";
   } finally {
@@ -98,9 +125,10 @@ export async function orchestrateTelegramSoak(input: Readonly<{
   }
 
   return Object.freeze({
-    passed: failureCode === null && runResult?.passed === true && cleanup !== null,
+    passed: failureCode === null && runResult?.passed === true && deliveryObservation?.passed === true && cleanup !== null,
     provisionedAccounts,
     run: runResult,
+    deliveryObservation,
     cleanup,
     failureCode,
   });

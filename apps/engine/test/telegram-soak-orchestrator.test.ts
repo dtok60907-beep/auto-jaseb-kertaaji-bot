@@ -69,6 +69,12 @@ function runResult(passed: boolean): SoakRunResult {
 
 const unusedRunStore = Object.freeze({}) as TelegramSoakStore;
 const keyRing = TelegramSessionKeyRing.fromHexKeys({ activeKeyVersion: 1, keys: { 1: "ef".repeat(32) } });
+const exactDeliveryObserver = Object.freeze({
+  observe: async () => Object.freeze([
+    "F5.7c orchestrator-unit burst-1 a1",
+    "F5.7c orchestrator-unit health a1",
+  ]),
+});
 
 test("orchestrator provisions, runs, and proves teardown without exposing credentials", async () => {
   const store = new FakeProvisioningStore();
@@ -79,6 +85,7 @@ test("orchestrator provisions, runs, and proves teardown without exposing creden
     keyRing,
     provisioningStore: store,
     runStore: unusedRunStore,
+    deliveryObserver: exactDeliveryObserver,
     emit: () => undefined,
     run: async () => runResult(true),
   });
@@ -101,6 +108,7 @@ test("hard-gate and thrown run failures still teardown provisioned accounts", as
       environment: environment(), sessions: ["private-session"],
       verifier: { verify: async () => ({ providerUserId: "92001" }) },
       keyRing, provisioningStore: store, runStore: unusedRunStore,
+      deliveryObserver: exactDeliveryObserver,
       emit: () => undefined, run,
     });
     assert.equal(result.passed, false);
@@ -116,6 +124,7 @@ test("provisioning failure writes no teardown claim while teardown failure overr
     environment: environment(), sessions: ["private-session"],
     verifier: { verify: async () => { throw new Error("raw Telegram failure"); } },
     keyRing, provisioningStore: provisionFailureStore, runStore: unusedRunStore,
+    deliveryObserver: exactDeliveryObserver,
     emit: () => undefined, run: async () => runResult(true),
   });
   assert.equal(provisionFailure.failureCode, "F57C_PROVISION_FAILED");
@@ -127,9 +136,30 @@ test("provisioning failure writes no teardown claim while teardown failure overr
     environment: environment(), sessions: ["private-session"],
     verifier: { verify: async () => ({ providerUserId: "93001" }) },
     keyRing, provisioningStore: cleanupFailureStore, runStore: unusedRunStore,
+    deliveryObserver: exactDeliveryObserver,
     emit: () => undefined, run: async () => runResult(true),
   });
   assert.equal(cleanupFailure.passed, false);
   assert.equal(cleanupFailure.failureCode, "F57C_TEARDOWN_FAILED");
   assert.equal(JSON.stringify(cleanupFailure).includes("raw database"), false);
+});
+
+test("delivery observation mismatch is a hard failure and teardown still runs", async () => {
+  const store = new FakeProvisioningStore();
+  const result = await orchestrateTelegramSoak({
+    environment: environment(), sessions: ["private-session"],
+    verifier: { verify: async () => ({ providerUserId: "94001" }) },
+    keyRing, provisioningStore: store, runStore: unusedRunStore,
+    deliveryObserver: { observe: async () => Object.freeze([
+      "F5.7c orchestrator-unit burst-1 a1",
+      "F5.7c orchestrator-unit burst-1 a1",
+    ]) },
+    emit: () => undefined, run: async () => runResult(true),
+  });
+  assert.equal(result.passed, false);
+  assert.equal(result.failureCode, "F57C_DELIVERY_OBSERVATION_FAILED");
+  assert.deepEqual(result.deliveryObservation, {
+    passed: false, expected: 2, observed: 2, missing: 1, duplicate: 1, unexpected: 0,
+  });
+  assert.equal(store.cleanupCalls, 1);
 });

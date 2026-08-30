@@ -23,6 +23,7 @@ import {
 import {
   createPostgresTelegramSoakStore,
   type SoakAccountIdentity,
+  type SoakBurstAccount,
   type SoakPerAccountState,
   type TelegramSoakStore,
 } from "./telegram-soak-store.ts";
@@ -309,6 +310,10 @@ export async function runTelegramSoak(input: Readonly<{
     if (!gate("provisioned_accounts_present", accounts.length === soak.expectedAccounts)) {
       return finish();
     }
+    const indexedAccounts: readonly SoakBurstAccount[] = Object.freeze(accounts.map((account, index) => Object.freeze({
+      ...account,
+      accountIndex: index + 1,
+    })));
 
     const chaos = createSoakChaos();
     const starter = input.startEngine ?? startProductionEngineCore;
@@ -371,7 +376,7 @@ export async function runTelegramSoak(input: Readonly<{
 
       if (current >= nextBurstAt) {
         burstsAttempted += 1;
-        const activeAccounts = accounts.filter((account) => !revokedAccountIds.has(account.accountId));
+        const activeAccounts = indexedAccounts.filter((account) => !revokedAccountIds.has(account.accountId));
         try {
           commandsEnqueued += await store.enqueueBurst({
             runId: soak.runId,
@@ -416,7 +421,7 @@ export async function runTelegramSoak(input: Readonly<{
     // §7 health phase: one final burst per account; every survivor must deliver.
     const healthBurstIso = new Date(now()).toISOString();
     burstsAttempted += 1;
-    const survivorAccounts = accounts.filter((account) => !revokedAccountIds.has(account.accountId));
+    const survivorAccounts = indexedAccounts.filter((account) => !revokedAccountIds.has(account.accountId));
     try {
       commandsEnqueued += await store.enqueueBurst({
         runId: soak.runId,

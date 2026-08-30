@@ -2,10 +2,11 @@ import { randomUUID } from "node:crypto";
 
 import type { Sql } from "postgres";
 
-import type { SendLatencySummary, SoakFixtureCounts } from "./telegram-soak.ts";
+import { telegramSoakDeliveryMarker, type SendLatencySummary, type SoakFixtureCounts } from "./telegram-soak.ts";
 
 export type SoakPrefixes = Readonly<{ commandPrefix: string; accountPrefix: string }>;
 export type SoakAccountIdentity = Readonly<{ accountId: string; userId: string }>;
+export type SoakBurstAccount = SoakAccountIdentity & Readonly<{ accountIndex: number }>;
 export type SoakPerAccountState = Readonly<{
   accountId: string;
   accountStatus: string;
@@ -23,7 +24,7 @@ export interface TelegramSoakStore {
   enqueueBurst(input: Readonly<{
     runId: string;
     burstIndex: number;
-    accounts: readonly SoakAccountIdentity[];
+    accounts: readonly SoakBurstAccount[];
     targetRef: string;
     sendIntervalSeconds: number;
     label: string;
@@ -63,11 +64,11 @@ export function createPostgresTelegramSoakStore(sql: Sql): TelegramSoakStore {
       const operationIds = input.accounts.map(() => randomUUID());
       const targetIds = input.accounts.map(() => randomUUID());
       const commandIds = input.accounts.map(() => randomUUID());
-      const operationKeys = input.accounts.map((_account, index) => `f57c-${input.runId}-b${input.burstIndex}-a${index + 1}`);
+      const operationKeys = input.accounts.map((account) => `f57c-${input.runId}-b${input.burstIndex}-a${account.accountIndex}`);
       const commandKeys = operationKeys.map((key) => `${key}-cmd`);
       const accountIds = input.accounts.map((account) => account.accountId);
       const userIds = input.accounts.map((account) => account.userId);
-      const text = `F5.7c soak ${input.runId} ${input.label}`;
+      const markers = input.accounts.map((account) => telegramSoakDeliveryMarker(input.runId, input.label, account.accountIndex));
 
       await sql.begin(async (transaction) => {
         await transaction`
@@ -75,13 +76,15 @@ export function createPostgresTelegramSoakStore(sql: Sql): TelegramSoakStore {
             id, user_id, account_id, operation_type, status, idempotency_key, payload
           )
           select operation_id, user_id, account_id, 'BROADCAST', 'READY', operation_key,
-                 ${transaction.json({ accountMode: "JASEB_WORKER", material: { kind: "TEXT", text } })}
+                 jsonb_build_object('accountMode', 'JASEB_WORKER', 'material',
+                   jsonb_build_object('kind', 'TEXT', 'text', marker))
             from unnest(
               ${transaction.array(operationIds)}::uuid[],
               ${transaction.array(userIds)}::uuid[],
               ${transaction.array(accountIds)}::uuid[],
-              ${transaction.array(operationKeys)}::text[]
-            ) fixture(operation_id, user_id, account_id, operation_key)
+              ${transaction.array(operationKeys)}::text[],
+              ${transaction.array(markers)}::text[]
+            ) fixture(operation_id, user_id, account_id, operation_key, marker)
         `;
         await transaction`
           insert into public.broadcast_targets (
@@ -100,14 +103,15 @@ export function createPostgresTelegramSoakStore(sql: Sql): TelegramSoakStore {
             payload, broadcast_target_id
           )
           select command_id, operation_id, account_id, 'SEND_TEXT', ${input.targetRef}, command_key,
-                 ${transaction.json({ material: { kind: "TEXT", text } })}, target_id
+                 jsonb_build_object('material', jsonb_build_object('kind', 'TEXT', 'text', marker)), target_id
             from unnest(
               ${transaction.array(commandIds)}::uuid[],
               ${transaction.array(operationIds)}::uuid[],
               ${transaction.array(accountIds)}::uuid[],
               ${transaction.array(commandKeys)}::text[],
+              ${transaction.array(markers)}::text[],
               ${transaction.array(targetIds)}::uuid[]
-            ) fixture(command_id, operation_id, account_id, command_key, target_id)
+            ) fixture(command_id, operation_id, account_id, command_key, marker, target_id)
         `;
       });
       return input.accounts.length;

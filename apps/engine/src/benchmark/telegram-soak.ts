@@ -66,6 +66,32 @@ export function plannedTelegramSoakCommandCount(input: Readonly<{
     + ((regularBursts - burstsBeforeRevocation + 1) * survivorCount);
 }
 
+export function telegramSoakDeliveryMarker(runId: string, label: string, accountIndex: number): string {
+  if (!RUN_ID.test(runId) || !/^(burst-[1-9][0-9]*|health)$/.test(label)
+    || !Number.isSafeInteger(accountIndex) || accountIndex < 1 || accountIndex > 50) {
+    throw new TelegramSoakConfigError("deliveryMarker");
+  }
+  return `F5.7c ${runId} ${label} a${accountIndex}`;
+}
+
+export function expectedTelegramSoakDeliveryMarkers(config: TelegramSoakConfig): readonly string[] {
+  const regularBursts = Math.ceil((config.soakDurationMinutes * 60) / config.burstIntervalSeconds);
+  const revokeAtSeconds = config.revokeAfterMinute === null ? null : config.revokeAfterMinute * 60;
+  const markers: string[] = [];
+  for (let offset = 0; offset < regularBursts; offset += 1) {
+    const burstAtSeconds = offset * config.burstIntervalSeconds;
+    for (let accountIndex = 1; accountIndex <= config.expectedAccounts; accountIndex += 1) {
+      if (revokeAtSeconds !== null && burstAtSeconds >= revokeAtSeconds && accountIndex === config.revokeAccountIndex) continue;
+      markers.push(telegramSoakDeliveryMarker(config.runId, `burst-${offset + 1}`, accountIndex));
+    }
+  }
+  for (let accountIndex = 1; accountIndex <= config.expectedAccounts; accountIndex += 1) {
+    if (accountIndex === config.revokeAccountIndex) continue;
+    markers.push(telegramSoakDeliveryMarker(config.runId, "health", accountIndex));
+  }
+  return Object.freeze(markers);
+}
+
 export function validateTelegramSoakConfig(input: TelegramSoakConfig): TelegramSoakConfig {
   if (!input.databaseUrl.trim()) fail("databaseUrl");
   if (!COMMIT.test(input.commit)) fail("commit");

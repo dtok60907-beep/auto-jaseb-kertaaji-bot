@@ -14,8 +14,9 @@ variables to the production engine or the old F5.7b database-only service.
   arguments, artifacts, screenshots, or chat.
 - The number of sessions must exactly equal `F57C_EXPECTED_ACCOUNTS`.
 - `F57C_APPROVED_COMMAND_COUNT` must exactly match the validated workload.
-- The exact Telegram delivery-multiset observer must be merged before claiming
-  F5.7c complete. Provider receipt cardinality alone is not duplicate proof.
+- The exact Telegram delivery-multiset observer is mandatory. A provider receipt
+  alone is not duplicate proof; every unique marker must appear exactly once in
+  target-group history.
 - Supabase must contain zero F5.7c accounts, operations, entitlements, and leases
   before and after each run.
 
@@ -70,8 +71,8 @@ marker exclude the revoked account.
 2. Query Supabase and prove the fixture counts are zero.
 3. Add the test sessions only through Railway secret variables.
 4. Deploy once and observe `/health/live` plus structured logs.
-5. Treat `/health/ready = 200` and `passed = true` as necessary but not sufficient
-   until the Telegram delivery observer gate is present.
+5. Require `/health/ready = 200`, `passed = true`, and a passing
+   `deliveryObservation` with zero missing, duplicate, and unexpected markers.
 6. Save the safe summary and Railway resource metrics.
 7. Query Supabase again and prove accounts, operations, entitlements, and leases
    are zero.

@@ -12,6 +12,7 @@ import {
   TelegramSoakProvisioningError,
 } from "../src/benchmark/telegram-soak-provisioning.ts";
 import { createPostgresTelegramSoakProvisioningStore } from "../src/benchmark/telegram-soak-provisioning-store.ts";
+import { createPostgresTelegramSoakStore } from "../src/benchmark/telegram-soak-store.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -38,6 +39,31 @@ test("PostgreSQL soak provisioning is atomic, encrypted, unique, and revocable",
     });
     userIds = result.accounts.map((account) => account.userId);
     accountIds = result.accounts.map((account) => account.accountId);
+
+    const runStore = createPostgresTelegramSoakStore(sql);
+    assert.equal(await runStore.enqueueBurst({
+      runId,
+      burstIndex: 1,
+      accounts: result.accounts.map((account) => Object.freeze({
+        accountId: account.accountId,
+        userId: account.userId,
+        accountIndex: account.accountIndex,
+      })),
+      targetRef: "@f57c_integration_target",
+      sendIntervalSeconds: 0,
+      label: "burst-1",
+    }), 2);
+    const markerRows = await sql<{ marker: string }[]>`
+      select command.payload->'material'->>'text' as marker
+        from public.workflow_commands command
+        join public.workflow_operations operation on operation.id = command.operation_id
+       where operation.idempotency_key like ${`f57c-${runId}-b%`}
+       order by marker
+    `;
+    assert.deepEqual(markerRows.map((row) => row.marker), [
+      `F5.7c ${runId} burst-1 a1`,
+      `F5.7c ${runId} burst-1 a2`,
+    ]);
 
     const rows = await sql<{
       account_id: string;

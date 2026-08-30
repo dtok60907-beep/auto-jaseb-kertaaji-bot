@@ -40,6 +40,9 @@ function result(passed = true): TelegramSoakOrchestrationResult {
     passed,
     provisionedAccounts: 1,
     failureCode: passed ? null : "F57C_HARD_GATE_FAILED",
+    deliveryObservation: passed ? Object.freeze({
+      passed: true, expected: 2, observed: 2, missing: 0, duplicate: 0, unexpected: 0,
+    }) : null,
     cleanup: Object.freeze({
       deletedAccounts: 1, deletedUsers: 1, deletedOperations: 2,
       remainingAccounts: 0, remainingOperations: 0, remainingLeases: 0,

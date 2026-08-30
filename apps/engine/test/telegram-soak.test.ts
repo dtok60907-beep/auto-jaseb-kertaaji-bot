@@ -11,6 +11,7 @@ import type {
 import type { TelegramRuntimeAdapterFactory } from "../src/account-runner/contracts.ts";
 import {
   createSoakChaos,
+  expectedTelegramSoakDeliveryMarkers,
   TelegramSoakConfigError,
   soakMetadata,
   validateTelegramSoakConfig,
@@ -70,6 +71,17 @@ test("Telegram soak metadata contains the controlled workload but never the data
   assert.equal(serialized.includes("secret"), false);
   assert.equal(serialized.includes("CONTROLLED_TELEGRAM_SOAK"), true);
   assert.equal(serialized.includes("controlled-run-1"), true);
+});
+
+test("delivery markers are unique and exactly follow the approved revocation workload", () => {
+  const parsed = validateTelegramSoakConfig(config());
+  const markers = expectedTelegramSoakDeliveryMarkers(parsed);
+  assert.equal(markers.length, parsed.approvedCommandCount);
+  assert.equal(new Set(markers).size, markers.length);
+  assert.equal(markers.includes("F5.7c controlled-run-1 burst-3 a1"), true);
+  assert.equal(markers.includes("F5.7c controlled-run-1 burst-4 a1"), false);
+  assert.equal(markers.includes("F5.7c controlled-run-1 health a1"), false);
+  assert.equal(markers.includes("F5.7c controlled-run-1 health a2"), true);
 });
 
 class FakeAdapter implements TelegramDeliveryAdapter {
