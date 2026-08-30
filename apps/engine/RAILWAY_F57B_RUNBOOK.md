@@ -39,10 +39,10 @@ session.
 - Health timeout: 900 seconds
 - Sleep: disabled
 - Restart policy: `NEVER`, so a failed run is inspected instead of silently repeated
-- Watch paths: `.dockerignore`, `apps/engine/Dockerfile`, both engine package
-  manifests, `apps/engine/src/**`, `packages/telegram-contract/src/**`, and
-  `packages/telegram-session-crypto/src/**`. Benchmark reports and runbook-only
-  changes must not start another measured run.
+- Watch path after the gate is closed: `.railway/manual-f57b-rerun` only. The marker
+  is intentionally absent, so ordinary engine commits cannot repeat a measured
+  database load. An operator reruns F5.7b-R explicitly by updating `F57B_COMMIT`
+  without deploying and re-attaching the GitHub source at the intended commit.
 
 ## Deployment and evidence
 
