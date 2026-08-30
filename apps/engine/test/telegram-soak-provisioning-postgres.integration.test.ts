@@ -140,7 +140,7 @@ test("PostgreSQL soak provisioning is atomic, encrypted, unique, and revocable",
         await sql.begin(async (transaction) => {
           await transaction`delete from public.workflow_operations where user_id = any(${transaction.array([...userIds])}::uuid[])`;
           await transaction`delete from public.telegram_accounts where id = any(${transaction.array([...accountIds])}::uuid[])`;
-          await transaction`delete from auth.users where id = any(${transaction.array([...userIds])}::uuid[])`;
+          await transaction`delete from public.app_users where id = any(${transaction.array([...userIds])}::uuid[])`;
         });
       }
     } finally {

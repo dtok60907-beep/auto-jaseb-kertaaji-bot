@@ -21,11 +21,11 @@ test("PostgreSQL claim → adapter → aggregation and fencing-safe completion",
   const leaseOwner = "34343434-3434-3434-3434-343434343434";
   const cleanup = () => sql.begin(async (transaction) => {
     await transaction`delete from public.workflow_operations where user_id = ${userId}::uuid`;
-    await transaction`delete from auth.users where id = ${userId}::uuid`;
+    await transaction`delete from public.app_users where id = ${userId}::uuid`;
   });
   await cleanup();
   try {
-    await sql`insert into auth.users (id) values (${userId}::uuid)`;
+    await sql`insert into public.app_users (id) values (${userId}::uuid)`;
     await sql`
       insert into public.entitlements (
         user_id, package_snapshot, status, starts_at, expires_at,

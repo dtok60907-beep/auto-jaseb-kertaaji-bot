@@ -1102,6 +1102,46 @@ Penutupan:
 - Follow-up units: R1-002 session exchange dan Fastify identity wiring, lalu
   R1-003 admin role serta ownership boundary.
 
+### R1-002A — Canonical Telegram application user
+
+- Status: IN_PROGRESS
+- Parent: R1 — Production API & identity
+- Outcome: satu Telegram user tervalidasi selalu dipetakan secara atomik ke satu
+  UUID user internal tanpa email/nomor telepon sintetis dan tanpa bergantung pada
+  Telegram session account yang menjalankan fitur.
+- Goal trace: subscription, setting, ownership, serta pergantian akun Telegram
+  harus tetap mengikuti identitas Mini App user dan tidak berubah ketika session
+  worker/userbot dilepas atau diganti.
+- Acceptance criteria:
+  - [ ] `app_users` menjadi parent UUID canonical bagi seluruh foreign key user
+    pada schema bisnis.
+  - [ ] Telegram user ID positif, muat dalam batas 52-bit Telegram, dan unik.
+  - [ ] Upsert identitas bersifat atomic dan idempotent pada login bersamaan;
+    perubahan nama/username hanya memperbarui profile snapshot, bukan UUID.
+  - [ ] Migrasi upgrade membackfill UUID legacy sebelum foreign key dialihkan dan
+    tidak menghapus setting atau operation.
+  - [ ] Tabel serta function identitas tidak dapat dipanggil role browser
+    `anon`/`authenticated`; hanya backend database role yang mengaksesnya.
+  - [ ] Fresh migration, upgrade migration, focused repository test, seluruh API
+    test, typecheck, dan diff check lulus.
+- Non-goal: menerbitkan bearer session API, replay consumption, role admin,
+  canary allowlist, entitlement, dan wiring authorizer Fastify.
+- Dependencies: R1-001; PostgreSQL; keputusan API-only business boundary.
+- Risks/failure modes: duplicate first login lintas process, UUID berubah saat
+  profile Telegram berubah, data legacy kehilangan parent, atau direct browser
+  access membuka data identitas.
+- Test plan: migration fixture fresh dan upgrade; concurrent upsert Telegram ID
+  yang sama; upsert profile berubah; ID invalid; FK legacy dan FK baru; privilege
+  checks; fake-SQL repository mapping; regression API penuh.
+- Rollback/recovery: sebelum deploy, revert migration/code. Setelah migration
+  diterapkan, rollback memakai forward migration yang mengembalikan foreign key
+  hanya jika parent `auth.users` untuk semua UUID telah dipulihkan; data
+  `app_users` tidak dihapus pada rollback darurat.
+- Expected touch points: satu migration, identity repository, focused test, dan
+  ledger.
+- Required evidence: command/result migration fresh+upgrade, concurrency result,
+  privilege result, test counts, diff, dan commit.
+
 ## Template penutupan unit
 
 ```markdown

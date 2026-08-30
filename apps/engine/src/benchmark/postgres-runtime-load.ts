@@ -91,7 +91,7 @@ async function seedFixture(sql: Sql, accounts: number): Promise<Fixture> {
 
   await sql.begin(async (transaction) => {
     await transaction`
-      insert into auth.users (id)
+      insert into public.app_users (id)
       select user_id from unnest(${transaction.array(userIds)}::uuid[]) fixture(user_id)
     `;
     await transaction`
@@ -171,7 +171,7 @@ async function cleanupFixture(sql: Sql, fixture: Fixture): Promise<void> {
   await sql.begin(async (transaction) => {
     await transaction`delete from public.workflow_operations where user_id = any(${transaction.array([...fixture.userIds])}::uuid[])`;
     await transaction`delete from public.telegram_accounts where id = any(${transaction.array([...fixture.accountIds])}::uuid[])`;
-    await transaction`delete from auth.users where id = any(${transaction.array([...fixture.userIds])}::uuid[])`;
+    await transaction`delete from public.app_users where id = any(${transaction.array([...fixture.userIds])}::uuid[])`;
   });
 }
 

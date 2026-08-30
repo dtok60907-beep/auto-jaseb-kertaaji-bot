@@ -14,7 +14,7 @@ export function createPostgresTelegramSoakProvisioningStore(sql: Sql): TelegramS
 
       await sql.begin(async (transaction) => {
         await transaction`
-          insert into auth.users (id)
+          insert into public.app_users (id)
           select user_id from unnest(${transaction.array(userIds)}::uuid[]) fixture(user_id)
         `;
 
@@ -162,7 +162,7 @@ export function createPostgresTelegramSoakProvisioningStore(sql: Sql): TelegramS
           returning id::text
         `;
         const deletedUsers = userIds.length === 0 ? [] : await transaction<{ id: string }[]>`
-          delete from auth.users
+          delete from public.app_users
            where id = any(${transaction.array(userIds)}::uuid[])
           returning id::text
         `;
