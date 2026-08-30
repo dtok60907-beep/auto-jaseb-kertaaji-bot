@@ -39,6 +39,8 @@ session.
 - Health timeout: 900 seconds
 - Sleep: disabled
 - Restart policy: `NEVER`, so a failed run is inspected instead of silently repeated
+- Watch paths: `apps/engine/**`, `packages/telegram-contract/**`, and
+  `packages/telegram-session-crypto/**`
 
 ## Deployment and evidence
 
