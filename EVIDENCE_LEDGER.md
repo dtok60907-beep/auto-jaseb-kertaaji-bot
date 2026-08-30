@@ -1346,25 +1346,25 @@ Penutupan:
 
 ### R1-003 — Database-backed admin authorization
 
-- Status: IN_PROGRESS
+- Status: VERIFIED
 - Parent: R1 — Production API dan identity boundary
 - Outcome: endpoint admin hanya dapat dipakai app user dengan session aktif dan
   grant admin aktif yang disimpan backend-only.
 - Goal trace: owner/admin harus dapat mengatur paket, entitlement, worker, dan
   setting user tanpa memberi hak tersebut kepada semua user Mini App.
 - Acceptance criteria:
-  - [ ] Tabel grant admin mengacu ke `app_users`, mempertahankan revocation state,
+  - [x] Tabel grant admin mengacu ke `app_users`, mempertahankan revocation state,
     memakai RLS deny-by-default, dan tidak dapat dibaca role browser.
-  - [ ] Tidak ada self-promotion HTTP; bootstrap/grant owner merupakan operasi
+  - [x] Tidak ada self-promotion HTTP; bootstrap/grant owner merupakan operasi
     database deployment terkontrol.
-  - [ ] Satu lookup terindeks memverifikasi hash bearer, session aktif, serta grant
+  - [x] Satu lookup terindeks memverifikasi hash bearer, session aktif, serta grant
     admin aktif dan mengembalikan canonical actor ID.
-  - [ ] User biasa, admin revoked, session unknown/revoked/expired, dan malformed
+  - [x] User biasa, admin revoked, session unknown/revoked/expired, dan malformed
     header ditolak sebelum handler admin menjalankan repository bisnis.
-  - [ ] Dependency failure menghasilkan 503 aman tanpa token/query detail.
-  - [ ] Composition production mewajibkan user-session dan admin-access repository
+  - [x] Dependency failure menghasilkan 503 aman tanpa token/query detail.
+  - [x] Composition production mewajibkan user-session dan admin-access repository
     bersama; injected authorizer hanya tersedia pada mode legacy/test.
-  - [ ] SQL fixture, repository/route test, full regression, typecheck, dan remote
+  - [x] SQL fixture, repository/route test, full regression, typecheck, dan remote
     Supabase proof lulus sebelum status VERIFIED.
 - Non-goal: UI pengelolaan admin, multi-role/RBAC generik, canary allowlist, audit
   perubahan setting, subscription/payment, dan frontend.
@@ -1380,6 +1380,40 @@ Penutupan:
   `createApi`, focused integration test, ledger.
 - Required evidence: query count/hash, route response, SQL assertions, test counts,
   remote migration/proof/advisor, diff, dan commit.
+- Commit/diff: `dcd642d` (`feat: enforce database-backed admin access`).
+- Acceptance evidence:
+  - `app_admins.user_id` adalah PK/FK ke `app_users`, menyimpan `granted_at` dan
+    revocation boundary yang tervalidasi;
+  - RLS aktif, privilege `anon`/`authenticated` dicabut, dan tidak ada policy atau
+    endpoint self-promotion;
+  - repository memakai satu join `api_sessions` + `app_admins`, token hash unique
+    index dan admin PK, serta memfilter kedua revocation dan expiry session;
+  - route proof: admin aktif 200 dan business repository dipanggil; lookup null 403
+    tanpa business access; malformed header 403 tanpa lookup;
+  - repository outage 503 `AUTH_TEMPORARILY_UNAVAILABLE` + `no-store`, tanpa raw
+    token, password marker, atau query detail;
+  - production composition mewajibkan pasangan `apiSessions` + `adminAccess`, dan
+    melarang injected user/admin authorizer pada branch type yang sama.
+- Commands/tests:
+  - focused user/admin authorizer: 9/9 pass;
+  - full API: 80 pass, 0 fail, 3 PostgreSQL integration opt-in skip;
+  - ephemeral PostgreSQL fresh/upgrade/RLS proof: seluruh marker APP_USERS,
+    API_SESSIONS, dan APP_ADMINS pass; API integration 3/3 dan engine 2/2 pass;
+  - `npm run typecheck`, `npm run check`, dan `git diff --check`: pass.
+- Remote evidence: Supabase migration `app_admins` berhasil dan tercatat. Remote
+  transaction membuktikan session+grant resolve, revoke langsung menolak, RLS aktif,
+  browser roles denied, token-hash index ada, dan rollback menyisakan 0 proof row.
+  Security advisor hanya memberi INFO RLS-no-policy yang disengaja untuk tabel
+  backend deny-all; performance advisor hanya unused-index INFO pada database kosong.
+- Result summary: user biasa dan admin kini memakai bearer session yang sama, tetapi
+  hak admin ditentukan grant database terpisah dan dapat dicabut tanpa logout user.
+- Remaining risk: owner pertama belum di-bootstrap karena belum ada login production;
+  grant harus dilakukan sesudah owner menghasilkan `app_users` row. Belum ada audit
+  log role, UI role management, atau session revoke/logout endpoint.
+- Rollback note: source authorizer dapat direvert, tetapi tabel/grant remote additive
+  dipertahankan agar state admin tidak hilang; rollback proof tidak meninggalkan data.
+- Follow-up units: R2 canary allowlist maksimal 15 user, termasuk bootstrap owner
+  yang eksplisit dan admission gate sebelum fitur production dibuka.
 
 ## Template penutupan unit
 
