@@ -1,3 +1,4 @@
+import { writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 import {
@@ -20,13 +21,15 @@ const REQUIRED = Object.freeze([
   "account-lease-seconds",
   "command-lease-seconds",
   "commit",
+  "output",
 ]);
 
 const USAGE = `usage: npm run benchmark:postgres -- \\
   --cases 1:1,10:5 --samples N --warmup N \\
   --db-max-connections N --db-connect-timeout-seconds N \\
   --provider-latency-ms N --monitor-interval-ms N --timeout-ms N \\
-  --account-lease-seconds N --command-lease-seconds N --commit GIT_SHA`;
+  --account-lease-seconds N --command-lease-seconds N --commit GIT_SHA \\
+  --output benchmark-results/raw/result.jsonl`;
 
 function fail(field: string): never { throw new PostgresLoadConfigError(field); }
 
@@ -47,7 +50,9 @@ function parseCases(value: string | undefined): readonly PostgresLoadCase[] {
   }));
 }
 
-export function parsePostgresLoadArguments(argv: readonly string[], databaseUrl: string): PostgresLoadConfig {
+export type PostgresLoadInvocation = Readonly<{ config: PostgresLoadConfig; outputPath: string }>;
+
+export function parsePostgresLoadArguments(argv: readonly string[], databaseUrl: string): PostgresLoadInvocation {
   const values = new Map<string, string>();
   if (argv.length % 2 !== 0) fail("arguments");
   for (let index = 0; index < argv.length; index += 2) {
@@ -59,7 +64,9 @@ export function parsePostgresLoadArguments(argv: readonly string[], databaseUrl:
     values.set(name, value);
   }
   for (const field of REQUIRED) if (!values.has(field)) fail(field);
-  return validatePostgresLoadConfig({
+  const outputPath = values.get("output")!;
+  if (outputPath.length > 1_024 || !outputPath.endsWith(".jsonl") || outputPath.includes("\0")) fail("output");
+  const config = validatePostgresLoadConfig({
     databaseUrl,
     commit: values.get("commit")!,
     cases: parseCases(values.get("cases")),
@@ -73,11 +80,13 @@ export function parsePostgresLoadArguments(argv: readonly string[], databaseUrl:
     accountLeaseSeconds: integer(values, "account-lease-seconds"),
     commandLeaseSeconds: integer(values, "command-lease-seconds"),
   });
+  return Object.freeze({ config, outputPath });
 }
 
 export async function runPostgresLoadCli(input: Readonly<{
   argv: readonly string[];
   databaseUrl: string;
+  writeArtifact: (path: string, value: string) => Promise<void>;
   stdout: (value: string) => void;
   stderr: (value: string) => void;
 }>): Promise<0 | 1 | 2> {
@@ -86,8 +95,11 @@ export async function runPostgresLoadCli(input: Readonly<{
     return 0;
   }
   try {
-    const result = await runPostgresRuntimeLoad(parsePostgresLoadArguments(input.argv, input.databaseUrl));
-    input.stdout(`${result.records.map((record) => JSON.stringify(record)).join("\n")}\n`);
+    const invocation = parsePostgresLoadArguments(input.argv, input.databaseUrl);
+    const result = await runPostgresRuntimeLoad(invocation.config);
+    const jsonl = `${result.records.map((record) => JSON.stringify(record)).join("\n")}\n`;
+    await input.writeArtifact(invocation.outputPath, jsonl);
+    input.stdout(`${JSON.stringify({ code: "POSTGRES_LOAD_COMPLETE", records: result.records.length })}\n`);
     return result.passed ? 0 : 1;
   } catch (error) {
     if (error instanceof PostgresLoadConfigError) input.stderr(`${JSON.stringify(error.publicData())}\n`);
@@ -100,6 +112,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   void runPostgresLoadCli({
     argv: process.argv.slice(2),
     databaseUrl: process.env.F5_DATABASE_URL ?? "",
+    writeArtifact: async (path, value) => { await writeFile(path, value, { encoding: "utf8", flag: "wx" }); },
     stdout: (value) => { process.stdout.write(value); },
     stderr: (value) => { process.stderr.write(value); },
   }).then((exitCode) => { process.exitCode = exitCode; });

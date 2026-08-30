@@ -48,12 +48,14 @@ npm run --silent benchmark:postgres -- \
   --account-lease-seconds 60 \
   --command-lease-seconds 60 \
   --commit COMMIT_SHA \
-  > benchmark-results/raw/f5.7b-postgres-runtime.jsonl
+  --output benchmark-results/raw/f5.7b-postgres-runtime.jsonl
 ```
 
-`--silent` is required when redirecting stdout. Warm-up assertions are still hard
-gates but warm-up metrics are excluded. Fixture setup, executor duration, and cleanup
-duration are recorded separately so WAN/cold-pool cost is visible rather than hidden.
+The harness creates the output with no-overwrite semantics only after the complete run;
+stdout contains a small completion record rather than raw JSONL. Warm-up assertions
+are still hard gates but warm-up metrics are excluded. Fixture setup, executor
+duration, and cleanup duration are recorded separately so WAN/cold-pool cost is
+visible rather than hidden.
 
 Generate a summary from the repository root:
 

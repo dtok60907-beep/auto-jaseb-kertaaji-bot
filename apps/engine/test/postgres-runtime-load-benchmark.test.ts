@@ -36,6 +36,7 @@ function argumentsFor(overrides: Readonly<Record<string, string>> = {}): string[
     "account-lease-seconds": "60",
     "command-lease-seconds": "60",
     commit: "1234567",
+    output: "benchmark-results/raw/test.jsonl",
     ...overrides,
   };
   return Object.entries(values).flatMap(([name, value]) => [`--${name}`, value]);
@@ -71,14 +72,16 @@ test("PostgreSQL load config rejects unsafe or ambiguous workload values", () =>
 
 test("PostgreSQL load CLI parser requires explicit known arguments and a database URL", () => {
   const parsed = parsePostgresLoadArguments(argumentsFor({ cases: "1:1,10:2" }), "postgresql://redacted");
-  assert.deepEqual(parsed.cases, [{ accounts: 1, concurrency: 1 }, { accounts: 10, concurrency: 2 }]);
+  assert.deepEqual(parsed.config.cases, [{ accounts: 1, concurrency: 1 }, { accounts: 10, concurrency: 2 }]);
+  assert.equal(parsed.outputPath, "benchmark-results/raw/test.jsonl");
   assert.equal(Object.isFrozen(parsed), true);
 
   const invalid: Array<readonly [() => unknown, string]> = [
-    [() => parsePostgresLoadArguments(argumentsFor().slice(0, -2), "postgresql://redacted"), "commit"],
+    [() => parsePostgresLoadArguments(argumentsFor().slice(0, -2), "postgresql://redacted"), "output"],
     [() => parsePostgresLoadArguments([...argumentsFor(), "--mystery", "1"], "postgresql://redacted"), "mystery"],
     [() => parsePostgresLoadArguments(argumentsFor(), ""), "databaseUrl"],
     [() => parsePostgresLoadArguments(argumentsFor({ commit: "raw-secret-value" }), "postgresql://redacted"), "commit"],
+    [() => parsePostgresLoadArguments(argumentsFor({ output: ".env" }), "postgresql://redacted"), "output"],
   ];
   for (const [operation, field] of invalid) {
     assert.throws(operation, (error: unknown) => {
@@ -95,6 +98,7 @@ test("PostgreSQL load CLI emits only stable configuration failure data", async (
   const exitCode = await runPostgresLoadCli({
     argv: argumentsFor({ commit: "raw-secret-value" }),
     databaseUrl: "postgresql://credential-that-must-not-print",
+    writeArtifact: async () => { throw new Error("must not write"); },
     stdout: (value) => { output.push(value); },
     stderr: (value) => { errors.push(value); },
   });
