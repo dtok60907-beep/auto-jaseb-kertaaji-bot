@@ -8,6 +8,7 @@ import { TelegramSessionKeyRing } from "../../../packages/telegram-session-crypt
 import {
   provisionTelegramSoakAccounts,
   revokeTelegramSoakAccount,
+  cleanupTelegramSoakRun,
   TelegramSoakProvisioningError,
 } from "../src/benchmark/telegram-soak-provisioning.ts";
 import { createPostgresTelegramSoakProvisioningStore } from "../src/benchmark/telegram-soak-provisioning-store.ts";
@@ -100,6 +101,13 @@ test("PostgreSQL soak provisioning is atomic, encrypted, unique, and revocable",
       assignment_status: "RELEASED",
       entitlement_status: "REVOKED",
     });
+    const cleaned = await cleanupTelegramSoakRun({ runId, store });
+    assert.equal(cleaned.deletedAccounts, 2);
+    assert.equal(cleaned.deletedUsers, 2);
+    assert.equal(cleaned.remainingAccounts, 0);
+    assert.equal(cleaned.remainingOperations, 0);
+    userIds = [];
+    accountIds = [];
   } finally {
     try {
       if (userIds.length > 0) {

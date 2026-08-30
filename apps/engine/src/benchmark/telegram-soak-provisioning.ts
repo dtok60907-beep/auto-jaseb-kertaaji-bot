@@ -12,7 +12,8 @@ export type TelegramSoakProvisioningErrorCode =
   | "PROVISIONING_SESSION_VERIFY_FAILED"
   | "PROVISIONING_PROVIDER_ID_DUPLICATE"
   | "PROVISIONING_PERSIST_FAILED"
-  | "PROVISIONING_REVOKE_FAILED";
+  | "PROVISIONING_REVOKE_FAILED"
+  | "PROVISIONING_CLEANUP_FAILED";
 
 export class TelegramSoakProvisioningError extends Error {
   readonly code: TelegramSoakProvisioningErrorCode;
@@ -74,7 +75,17 @@ export interface TelegramSoakProvisioningStore {
     accounts: readonly TelegramSoakProvisionedAccount[];
   }>): Promise<void>;
   revokeAccount(input: Readonly<{ runId: string; accountId: string; firedAtIso: string }>): Promise<boolean>;
+  cleanupRun(runId: string): Promise<TelegramSoakCleanupResult>;
 }
+
+export type TelegramSoakCleanupResult = Readonly<{
+  deletedAccounts: number;
+  deletedUsers: number;
+  deletedOperations: number;
+  remainingAccounts: number;
+  remainingOperations: number;
+  remainingLeases: number;
+}>;
 
 export type TelegramSoakProvisioningResult = Readonly<{
   runId: string;
@@ -172,4 +183,18 @@ export async function revokeTelegramSoakAccount(input: Readonly<{
     throw new TelegramSoakProvisioningError("PROVISIONING_REVOKE_FAILED");
   }
   if (!revoked) throw new TelegramSoakProvisioningError("PROVISIONING_REVOKE_FAILED");
+}
+
+export async function cleanupTelegramSoakRun(input: Readonly<{
+  runId: string;
+  store: TelegramSoakProvisioningStore;
+}>): Promise<TelegramSoakCleanupResult> {
+  if (!RUN_ID.test(input.runId)) invalid("runId");
+  let result: TelegramSoakCleanupResult;
+  try { result = await input.store.cleanupRun(input.runId); }
+  catch { throw new TelegramSoakProvisioningError("PROVISIONING_CLEANUP_FAILED"); }
+  if (result.remainingAccounts !== 0 || result.remainingOperations !== 0 || result.remainingLeases !== 0) {
+    throw new TelegramSoakProvisioningError("PROVISIONING_CLEANUP_FAILED");
+  }
+  return result;
 }

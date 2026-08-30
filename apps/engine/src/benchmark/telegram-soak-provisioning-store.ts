@@ -132,6 +132,64 @@ export function createPostgresTelegramSoakProvisioningStore(sql: Sql): TelegramS
         return true;
       });
     },
+
+    async cleanupRun(runId) {
+      return sql.begin(async (transaction) => {
+        const seedPrefix = `f57c-soak-${runId}-seed`;
+        const burstPrefix = `f57c-${runId}-b`;
+        const fixtureRows = await transaction<{ account_id: string; user_id: string }[]>`
+          select operation.account_id::text as account_id, operation.user_id::text as user_id
+            from public.workflow_operations operation
+           where operation.idempotency_key like ${seedPrefix + "%"}
+           order by account_id
+             for update of operation
+        `;
+        const accountIds = fixtureRows.map((row) => row.account_id);
+        const userIds = [...new Set(fixtureRows.map((row) => row.user_id))];
+
+        const deletedOperationRows = await transaction<{ id: string }[]>`
+          delete from public.workflow_operations
+           where idempotency_key like ${seedPrefix + "%"}
+              or idempotency_key like ${burstPrefix + "%"}
+          returning id::text
+        `;
+        if (accountIds.length > 0) {
+          await transaction`delete from public.account_leases where account_id = any(${transaction.array(accountIds)}::uuid[])`;
+        }
+        const deletedAccounts = accountIds.length === 0 ? [] : await transaction<{ id: string }[]>`
+          delete from public.telegram_accounts
+           where id = any(${transaction.array(accountIds)}::uuid[])
+          returning id::text
+        `;
+        const deletedUsers = userIds.length === 0 ? [] : await transaction<{ id: string }[]>`
+          delete from auth.users
+           where id = any(${transaction.array(userIds)}::uuid[])
+          returning id::text
+        `;
+
+        const remainingOperations = await transaction<{ count: number }[]>`
+          select count(*)::int as count from public.workflow_operations
+           where idempotency_key like ${seedPrefix + "%"}
+              or idempotency_key like ${burstPrefix + "%"}
+        `;
+        const remainingAccounts = accountIds.length === 0 ? [{ count: 0 }] : await transaction<{ count: number }[]>`
+          select count(*)::int as count from public.telegram_accounts
+           where id = any(${transaction.array(accountIds)}::uuid[])
+        `;
+        const remainingLeases = accountIds.length === 0 ? [{ count: 0 }] : await transaction<{ count: number }[]>`
+          select count(*)::int as count from public.account_leases
+           where account_id = any(${transaction.array(accountIds)}::uuid[])
+        `;
+        return Object.freeze({
+          deletedAccounts: deletedAccounts.length,
+          deletedUsers: deletedUsers.length,
+          deletedOperations: deletedOperationRows.length,
+          remainingAccounts: remainingAccounts[0]?.count ?? 0,
+          remainingOperations: remainingOperations[0]?.count ?? 0,
+          remainingLeases: remainingLeases[0]?.count ?? 0,
+        });
+      });
+    },
   };
   return Object.freeze(store);
 }

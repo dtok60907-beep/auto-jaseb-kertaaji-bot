@@ -5,8 +5,10 @@ import { TelegramSessionKeyRing } from "../../../packages/telegram-session-crypt
 import {
   provisionTelegramSoakAccounts,
   revokeTelegramSoakAccount,
+  cleanupTelegramSoakRun,
   TelegramSoakProvisioningError,
   type TelegramSoakProvisionedAccount,
+  type TelegramSoakCleanupResult,
   type TelegramSoakProvisioningStore,
 } from "../src/benchmark/telegram-soak-provisioning.ts";
 
@@ -24,6 +26,7 @@ class FakeStore implements TelegramSoakProvisioningStore {
   persistedCiphertexts: Buffer[] = [];
   persistError: Error | null = null;
   revokeResult = true;
+  cleanupResult: TelegramSoakCleanupResult = Object.freeze({ deletedAccounts: 1, deletedUsers: 1, deletedOperations: 2, remainingAccounts: 0, remainingOperations: 0, remainingLeases: 0 });
 
   async provisionBatch(input: Readonly<{ runId: string; intervalSeconds: number; accounts: readonly TelegramSoakProvisionedAccount[] }>): Promise<void> {
     this.provisionCalls += 1;
@@ -35,6 +38,8 @@ class FakeStore implements TelegramSoakProvisioningStore {
     this.revokeCalls += 1;
     return this.revokeResult;
   }
+
+  async cleanupRun() { return this.cleanupResult; }
 }
 
 function ids() {
@@ -128,4 +133,14 @@ test("persistence and revoke failures expose stable codes only", async () => {
     store,
   }), (error: unknown) => error instanceof TelegramSoakProvisioningError && error.code === "PROVISIONING_REVOKE_FAILED");
   assert.equal(store.revokeCalls, 1);
+});
+
+test("cleanup succeeds only when accounts, operations, and leases are proven absent", async () => {
+  const store = new FakeStore();
+  assert.deepEqual(await cleanupTelegramSoakRun({ runId: "provision-unit", store }), store.cleanupResult);
+  store.cleanupResult = Object.freeze({ ...store.cleanupResult, remainingLeases: 1 });
+  await assert.rejects(
+    () => cleanupTelegramSoakRun({ runId: "provision-unit", store }),
+    (error: unknown) => error instanceof TelegramSoakProvisioningError && error.code === "PROVISIONING_CLEANUP_FAILED",
+  );
 });
