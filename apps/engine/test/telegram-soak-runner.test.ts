@@ -19,6 +19,7 @@ import type {
 import {
   validateTelegramSoakConfig,
   type SoakFixtureCounts,
+  type TelegramSoakConfig,
 } from "../src/benchmark/telegram-soak.ts";
 import { productionEnvironment, supervisorSnapshot, supervisorSummary } from "../test-support/production-fixtures.ts";
 
@@ -63,18 +64,25 @@ const emptyCounts = (): SoakFixtureCounts => Object.freeze({
   commandsFailedRetryable: 0,
   commandsFailedFinal: 0,
   commandsUncertain: 0,
+  commandsCancelled: 0,
   activeLeases: 0,
 });
 
 class FakeStore implements TelegramSoakStore {
-  readonly accounts: readonly SoakAccountIdentity[] = Object.freeze([
-    Object.freeze({ accountId: ACCOUNT_ID, userId: USER_ID }),
-  ]);
+  readonly accounts: readonly SoakAccountIdentity[];
+  readonly revokedAccountIds = new Set<string>();
   commandsCreated = 0;
   commandsSucceeded = 0;
   cleanupCalls = 0;
   remainingOperations = 0;
   cleanupError: Error | null = null;
+
+  constructor(accountCount = 1) {
+    this.accounts = Object.freeze(Array.from({ length: accountCount }, (_value, index) => Object.freeze({
+      accountId: index === 0 ? ACCOUNT_ID : `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      userId: index === 0 ? USER_ID : `00000000-0000-4000-9000-${String(index + 1).padStart(12, "0")}`,
+    })));
+  }
 
   async listAccounts(): Promise<readonly SoakAccountIdentity[]> { return this.accounts; }
 
@@ -88,26 +96,32 @@ class FakeStore implements TelegramSoakStore {
   async readCounts(): Promise<SoakFixtureCounts> {
     return Object.freeze({
       ...emptyCounts(),
+      accountsReady: this.accounts.length - this.revokedAccountIds.size,
+      accountsRevoked: this.revokedAccountIds.size,
       commandsCreated: this.commandsCreated,
       commandsSucceeded: this.commandsSucceeded,
     });
   }
 
   async readPerAccount(): Promise<readonly SoakPerAccountState[]> {
-    return Object.freeze([Object.freeze({
-      accountId: ACCOUNT_ID,
-      accountStatus: "READY",
+    return Object.freeze(this.accounts.map((account) => Object.freeze({
+      accountId: account.accountId,
+      accountStatus: this.revokedAccountIds.has(account.accountId) ? "REVOKED" : "READY",
       succeeded: this.commandsSucceeded,
       pending: 0,
       inFlight: 0,
       failedRetryable: 0,
       failedFinal: 0,
       uncertain: 0,
-    })]);
+      cancelled: 0,
+    })));
   }
 
   async readSucceededPerAccountAfter(): Promise<readonly Readonly<{ accountId: string; succeededAfter: number }>[]> {
-    return Object.freeze([Object.freeze({ accountId: ACCOUNT_ID, succeededAfter: 1 })]);
+    return Object.freeze(this.accounts.map((account) => Object.freeze({
+      accountId: account.accountId,
+      succeededAfter: this.revokedAccountIds.has(account.accountId) ? 0 : 1,
+    })));
   }
 
   async readSendLatencies() {
@@ -128,7 +142,7 @@ class FakeStore implements TelegramSoakStore {
   async countBurstOperations(): Promise<number> { return this.remainingOperations; }
 }
 
-function environment(): TelegramSoakEnvironment {
+function environment(overrides: Partial<TelegramSoakConfig> = {}): TelegramSoakEnvironment {
   return Object.freeze({
     engineConfig: ProductionEngineConfig.fromEnvironment(productionEnvironment()),
     soakConfig: validateTelegramSoakConfig({
@@ -147,6 +161,7 @@ function environment(): TelegramSoakEnvironment {
       healthTimeoutMilliseconds: 1_000,
       databaseMaxConnections: 1,
       databaseConnectTimeoutSeconds: 1,
+      ...overrides,
     }),
     targetRef: "telegram-target",
   });
@@ -215,4 +230,37 @@ test("soak runner still cleans fixtures when engine startup fails", async () => 
   assert.equal(result.summary.cleanupDeletedOperations, 3);
   assert.equal(result.summary.remainingBurstOperations, 0);
   assert.equal(store.cleanupCalls, 1);
+});
+
+test("soak runner revokes the selected account and only enqueues the exact survivor workload", async () => {
+  const store = new FakeStore(2);
+  const core = new FakeCore();
+  let clock = 0;
+  const revocations: string[] = [];
+
+  const result = await runTelegramSoak({
+    environment: environment({
+      soakDurationMinutes: 2,
+      burstIntervalSeconds: 60,
+      expectedAccounts: 2,
+      approvedCommandCount: 4,
+      revokeAccountIndex: 1,
+      revokeAfterMinute: 1,
+    }),
+    store,
+    emit: () => undefined,
+    startEngine: async () => core,
+    revokeAccount: async ({ account }) => {
+      revocations.push(account.accountId);
+      store.revokedAccountIds.add(account.accountId);
+    },
+    now: () => clock,
+    pause: async (milliseconds) => { clock += milliseconds; },
+  });
+
+  assert.equal(result.passed, true);
+  assert.deepEqual(revocations, [ACCOUNT_ID]);
+  assert.equal(result.summary.commandsEnqueued, 4);
+  assert.equal(result.summary.finalCounts.accountsRevoked, 1);
+  assert.equal(result.summary.cleanupSucceeded, true);
 });

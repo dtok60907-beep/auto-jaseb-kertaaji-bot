@@ -15,6 +15,7 @@ export type SoakPerAccountState = Readonly<{
   failedRetryable: number;
   failedFinal: number;
   uncertain: number;
+  cancelled: number;
 }>;
 
 export interface TelegramSoakStore {
@@ -135,6 +136,7 @@ export function createPostgresTelegramSoakStore(sql: Sql): TelegramSoakStore {
           'commands_failed_retryable', (select count(*) from fixture_commands where status = 'FAILED_RETRYABLE'),
           'commands_failed_final', (select count(*) from fixture_commands where status = 'FAILED_FINAL'),
           'commands_uncertain', (select count(*) from fixture_commands where status = 'SIDE_EFFECT_UNCERTAIN'),
+          'commands_cancelled', (select count(*) from fixture_commands where status = 'CANCELLED'),
           'active_leases', (select count(*) from public.account_leases lease
             where lease.account_id in (select id from fixture_accounts) and lease.lease_until > now())
         ) metrics
@@ -151,6 +153,7 @@ export function createPostgresTelegramSoakStore(sql: Sql): TelegramSoakStore {
         commandsFailedRetryable: Number(metrics.commands_failed_retryable ?? 0),
         commandsFailedFinal: Number(metrics.commands_failed_final ?? 0),
         commandsUncertain: Number(metrics.commands_uncertain ?? 0),
+        commandsCancelled: Number(metrics.commands_cancelled ?? 0),
         activeLeases: Number(metrics.active_leases ?? 0),
       });
     },
@@ -158,7 +161,7 @@ export function createPostgresTelegramSoakStore(sql: Sql): TelegramSoakStore {
     async readPerAccount(prefixes) {
       const rows = await sql<{
         account_id: string; account_status: string; succeeded: number; pending: number;
-        in_flight: number; failed_retryable: number; failed_final: number; uncertain: number;
+        in_flight: number; failed_retryable: number; failed_final: number; uncertain: number; cancelled: number;
       }[]>`
         with fixture_accounts as (
           select account.id, account.status
@@ -180,7 +183,8 @@ export function createPostgresTelegramSoakStore(sql: Sql): TelegramSoakStore {
                count(commands.status) filter (where commands.status in ('CLAIMED', 'SENDING'))::int as in_flight,
                count(commands.status) filter (where commands.status = 'FAILED_RETRYABLE')::int as failed_retryable,
                count(commands.status) filter (where commands.status = 'FAILED_FINAL')::int as failed_final,
-               count(commands.status) filter (where commands.status = 'SIDE_EFFECT_UNCERTAIN')::int as uncertain
+               count(commands.status) filter (where commands.status = 'SIDE_EFFECT_UNCERTAIN')::int as uncertain,
+               count(commands.status) filter (where commands.status = 'CANCELLED')::int as cancelled
           from fixture_accounts accounts
           left join burst_commands commands on commands.account_id = accounts.id
          group by accounts.id, accounts.status
@@ -195,6 +199,7 @@ export function createPostgresTelegramSoakStore(sql: Sql): TelegramSoakStore {
         failedRetryable: Number(row.failed_retryable ?? 0),
         failedFinal: Number(row.failed_final ?? 0),
         uncertain: Number(row.uncertain ?? 0),
+        cancelled: Number(row.cancelled ?? 0),
       })));
     },
 

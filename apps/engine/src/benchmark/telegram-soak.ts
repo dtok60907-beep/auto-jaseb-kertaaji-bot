@@ -272,6 +272,7 @@ export type SoakFixtureCounts = Readonly<{
   commandsFailedRetryable: number;
   commandsFailedFinal: number;
   commandsUncertain: number;
+  commandsCancelled: number;
   activeLeases: number;
 }>;
 

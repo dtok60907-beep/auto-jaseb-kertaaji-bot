@@ -139,6 +139,7 @@ const EMPTY_COUNTS: SoakFixtureCounts = Object.freeze({
   commandsFailedRetryable: 0,
   commandsFailedFinal: 0,
   commandsUncertain: 0,
+  commandsCancelled: 0,
   activeLeases: 0,
 });
 
@@ -446,7 +447,8 @@ export async function runTelegramSoak(input: Readonly<{
 
     if (!gate("all_commands_accounted", finalCounts.commandsCreated
       === finalCounts.commandsSucceeded + finalCounts.commandsPending + finalCounts.commandsInFlight
-        + finalCounts.commandsFailedRetryable + finalCounts.commandsFailedFinal + finalCounts.commandsUncertain)) {
+        + finalCounts.commandsFailedRetryable + finalCounts.commandsFailedFinal + finalCounts.commandsUncertain
+        + finalCounts.commandsCancelled)) {
       return finish();
     }
     if (!gate("event_loss_zero", finalCounts.commandsInFlight === 0
