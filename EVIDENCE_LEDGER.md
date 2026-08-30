@@ -1283,6 +1283,42 @@ Penutupan:
 - Follow-up units: R1-002C Bearer authorizer untuk route bisnis, lalu R1-003 role
   admin yang terpisah dari identitas user.
 
+### R1-002C — API-session Bearer authorizer
+
+- Status: IN_PROGRESS
+- Parent: R1-002 — Canonical Mini App identity dan API session
+- Outcome: seluruh route bisnis user dapat memakai bearer token hasil exchange
+  sebagai `app_users.id`, tanpa bergantung pada Telegram runtime session.
+- Goal trace: subscription dan setting harus melekat ke identitas Mini App user,
+  sehingga pergantian akun Telegram worker/userbot tidak mengubah data bisnis.
+- Acceptance criteria:
+  - [ ] Authorization hanya menerima satu bearer token dengan format session
+    internal `jas_` yang tepat; malformed input ditolak sebelum query database.
+  - [ ] Token hanya di-hash SHA-256; raw token tidak diteruskan ke repository,
+    response, atau error.
+  - [ ] Session aktif menghasilkan actor `app_users.id`; unknown, revoked, dan
+    expired session menghasilkan kontrak 401 route existing.
+  - [ ] Dependency failure menghasilkan 503 `AUTH_TEMPORARILY_UNAVAILABLE`, bukan
+    401 palsu atau error database mentah.
+  - [ ] `createApi` memakai repository session sebagai authorizer user production,
+    sedangkan injected authorizer legacy/test tetap tersedia secara mutually
+    exclusive.
+  - [ ] Focused test, full API regression, typecheck, syntax, dan diff check lulus.
+- Non-goal: admin role, canary allowlist, refresh/logout/revoke HTTP endpoint, rate
+  control, package enforcement, dan frontend.
+- Dependencies: R1-002B1 dan R1-002B2.
+- Risks/failure modes: token longgar diterima, raw token masuk log/error, revoked
+  session lolos, outage DB disamarkan sebagai logout, atau dummy authorizer menang
+  atas repository production.
+- Test plan: valid token/hash/actor; malformed scheme/token tanpa DB call; unknown
+  session; repository throw; createApi production precedence dan legacy mode.
+- Rollback/recovery: authorizer dan composition additive; legacy/test path tetap
+  tersedia tanpa mengubah schema/session existing.
+- Expected touch points: auth authorizer, `createApi` composition/error mapping,
+  focused tests, dan ledger.
+- Required evidence: exact hash assertion, route status/body, test counts, diff,
+  dan commit.
+
 ## Template penutupan unit
 
 ```markdown
