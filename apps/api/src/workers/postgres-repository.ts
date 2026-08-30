@@ -7,7 +7,8 @@ function view(row: Row): WorkerAccountView {
   return Object.freeze({ id: row.id, label: row.label, accountStatus: row.account_status, intervalSeconds: row.interval_seconds, active: row.active, availability });
 }
 export class PostgresWorkerAccountSettingsRepository implements WorkerAccountSettingsRepository {
-  constructor(readonly sql: Sql) {}
+  readonly sql: Sql;
+  constructor(sql: Sql) { this.sql = sql; }
   async list(): Promise<readonly WorkerAccountView[]> { return Object.freeze((await this.rows()).map(view)); }
   async update(input: Readonly<{ accountId: string; intervalSeconds: number; active: boolean }>): Promise<WorkerAccountView | null> {
     const rows = await this.sql<Row[]>`

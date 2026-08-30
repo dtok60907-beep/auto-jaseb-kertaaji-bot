@@ -12,7 +12,8 @@ function view(row: OperationRow, targets: readonly TargetRow[]): BroadcastOperat
   return Object.freeze({ id: row.id, accountId: row.account_id, accountMode: payload.accountMode, status: row.status, intervalSeconds: payload.intervalSeconds, material: Object.freeze(payload.material), targets: Object.freeze(targets.map(target)) });
 }
 export class PostgresBroadcastOperationRepository implements BroadcastOperationRepository {
-  constructor(readonly sql: Sql) {}
+  readonly sql: Sql;
+  constructor(sql: Sql) { this.sql = sql; }
   async create(input: Parameters<BroadcastOperationRepository["create"]>[0]) {
     const rows = await this.sql<{ result_status: "CREATED" | "IDEMPOTENT"; operation_id: string }[]>`
       select result_status, operation_id::text

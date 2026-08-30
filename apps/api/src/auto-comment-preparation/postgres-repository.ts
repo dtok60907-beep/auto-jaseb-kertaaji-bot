@@ -9,7 +9,8 @@ type ClaimRow = {
 };
 
 export class PostgresAutoCommentPreparationRepository implements AutoCommentPreparationRepository {
-  constructor(readonly sql: Sql) {}
+  readonly sql: Sql;
+  constructor(sql: Sql) { this.sql = sql; }
   async claimNext(input: Parameters<AutoCommentPreparationRepository["claimNext"]>[0]): Promise<ClaimedAutoCommentPreparation | null> {
     const rows = await this.sql<ClaimRow[]>`
       select channel_target_id::text, source_channel_ref, discussion_target_ref, previous_status

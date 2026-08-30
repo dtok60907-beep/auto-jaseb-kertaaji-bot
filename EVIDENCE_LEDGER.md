@@ -1666,6 +1666,40 @@ Penutupan:
 - Follow-up units: R1-004B production repository/auth composition, lalu R1-004C
   health/readiness/lifecycle/Railway start contract.
 
+### R1-004B — Production API dependency composition
+
+- Status: IN_PROGRESS
+- Parent: R1-004 — Production API entrypoint
+- Outcome: satu composition path memasang seluruh repository PostgreSQL, Telegram
+  Mini App verifier/session issuer, dan user/admin session authorizer ke API.
+- Goal trace: production tidak boleh menjalankan fake/legacy authorizer atau lupa
+  memasang route fitur yang sudah dibangun/test terpisah.
+- Acceptance criteria:
+  - [ ] PostgreSQL client memakai seluruh database policy config termasuk explicit
+    prepared-statement mode dan bounded pool.
+  - [ ] Package, entitlement, broadcast setting/operation, Auto Komen, userbot profile,
+    worker, API session, dan admin access memakai Postgres repository production.
+  - [ ] Telegram verifier/issuer memakai secret + freshness/TTL config yang sama
+    dengan HTTP exchange.
+  - [ ] Production composition hanya memakai `apiSessions` + `adminAccess`, tidak
+    injected fake user/admin authorizer.
+  - [ ] PostgreSQL integration membuktikan public route, denied canary login,
+    admitted login, bearer user route, dan bearer admin route dalam satu app.
+  - [ ] Full regression, typecheck, syntax, dan diff check lulus.
+- Non-goal: listen/health/readiness/shutdown, logging, CORS, payment, owner nyata,
+  Railway deploy, dan frontend.
+- Dependencies: R1-004A dan R2-002.
+- Risks/failure modes: satu repository tidak di-wire, auth config berbeda dari
+  config validator, prepared statements salah untuk pooler, atau legacy authorizer
+  masuk production.
+- Test plan: ephemeral PostgreSQL compose; package 200; denied 403 no row; admit
+  exchange 200; bearer user 200; DB admin grant then admin 200; cleanup.
+- Rollback/recovery: composition additive dan belum menjadi executable startup.
+- Expected touch points: production database/composition, integration test/runner,
+  ledger.
+- Required evidence: real route statuses/data ownership, repository path, test counts,
+  diff, commit.
+
 ## Template penutupan unit
 
 ```markdown

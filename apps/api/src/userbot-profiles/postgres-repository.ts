@@ -3,7 +3,8 @@ import type { UserbotProfileRepository, UserbotProfileView } from "./repository.
 type Row = { id: string; status: UserbotProfileView["status"]; broadcast_interval_seconds: number; account_id: string | null; label: string | null; account_status: string | null };
 function view(row: Row): UserbotProfileView { return Object.freeze({ id: row.id, status: row.status, broadcastIntervalSeconds: row.broadcast_interval_seconds, activeAccount: row.account_id && row.label && row.account_status ? Object.freeze({ id: row.account_id, label: row.label, status: row.account_status }) : null }); }
 export class PostgresUserbotProfileRepository implements UserbotProfileRepository {
-  constructor(readonly sql: Sql) {}
+  readonly sql: Sql;
+  constructor(sql: Sql) { this.sql = sql; }
   async get(userId: string) { const rows = await this.rows(userId); return rows[0] ? view(rows[0]) : null; }
   async updateBroadcastInterval(userId: string, intervalSeconds: number) {
     const rows = await this.sql<Row[]>`
