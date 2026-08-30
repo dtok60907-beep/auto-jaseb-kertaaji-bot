@@ -119,9 +119,11 @@ PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
   cd "${PROJECT_ROOT}/apps/api"
   API_DATABASE_URL="postgresql://postgres@127.0.0.1:${PG_TEST_PORT}/app_users_fresh" \
     node --experimental-strip-types --test \
+      --test-concurrency=1 \
       test/application-user-postgres.integration.test.ts \
       test/api-session-postgres.integration.test.ts \
-      test/admin-access-postgres.integration.test.ts
+      test/admin-access-postgres.integration.test.ts \
+      test/canary-operator-postgres.integration.test.ts
 )
 
 (

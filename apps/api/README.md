@@ -14,3 +14,7 @@ Run the unit tests from this directory:
 npm test
 npm run check
 ```
+
+Controlled owner/tester admission is documented in
+[`CANARY_BOOTSTRAP_RUNBOOK.md`](./CANARY_BOOTSTRAP_RUNBOOK.md). The operator is a
+deployment tool, not a public API or Mini App feature.

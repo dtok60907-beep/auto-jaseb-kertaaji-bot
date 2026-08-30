@@ -1548,6 +1548,40 @@ Penutupan:
 - Follow-up units: R2-003 owner bootstrap + admission runbook, lalu production API
   composition/entrypoint sebelum fitur canary dijalankan.
 
+### R2-003A — Canary/operator bootstrap tooling
+
+- Status: IN_PROGRESS
+- Parent: R2 — Canary maksimal 15 Mini App users
+- Outcome: operator dapat admit/revoke/list canary dan grant/revoke admin melalui
+  CLI terverifikasi tanpa menyalin SQL atau mengekspos credential/session.
+- Goal trace: owner dan 1–2 tester awal harus bisa dibootstrap repeatably sebelum
+  API production dinyalakan, lalu admission dinaikkan perlahan hingga maksimal 15.
+- Acceptance criteria:
+  - [ ] CLI hanya menerima Telegram numeric user ID canonical dan command eksplisit;
+    database URL hanya dari environment dan tidak pernah dicetak.
+  - [ ] admit/revoke memakai function hard-cap R2-001; grant admin gagal jelas bila
+    owner belum pernah login/memiliki `app_users` row.
+  - [ ] list hanya menampilkan operational admission/admin state, tanpa nama user,
+    bearer, initData, Telegram account session, atau database detail.
+  - [ ] Semua failure eksternal dipetakan ke stable operator code dan exit non-zero,
+    bukan raw PostgreSQL error.
+  - [ ] Runbook menetapkan urutan admit owner → first login → grant admin → admit
+    tester 1–2, verifikasi, revoke, dan larangan melewati 15.
+  - [ ] Unit/integration test, regression, typecheck, dan diff check lulus.
+- Non-goal: public/admin HTTP endpoint, dashboard UI, actual owner ID admission,
+  production API deploy, dan subscription publik.
+- Dependencies: R2-002.
+- Risks/failure modes: admin digrant sebelum identity ada, CLI membocorkan DATABASE_URL,
+  operator melewati hard cap via SQL, atau revoke canary menghapus setting.
+- Test plan: command parsing; admit/list; grant-before-login; grant/revoke admin;
+  revoke admission/session; sanitized failure; runbook command syntax.
+- Rollback/recovery: CLI/runbook additive dapat direvert; database state hanya berubah
+  saat operator menjalankan command eksplisit.
+- Expected touch points: operator repository/service/CLI/tests, package script,
+  API runbook/README, ledger.
+- Required evidence: CLI outputs/statuses, integration state, no-secret assertions,
+  test counts, diff, commit.
+
 ## Template penutupan unit
 
 ```markdown
