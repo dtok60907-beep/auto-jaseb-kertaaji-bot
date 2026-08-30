@@ -1285,25 +1285,25 @@ Penutupan:
 
 ### R1-002C — API-session Bearer authorizer
 
-- Status: IN_PROGRESS
+- Status: VERIFIED
 - Parent: R1-002 — Canonical Mini App identity dan API session
 - Outcome: seluruh route bisnis user dapat memakai bearer token hasil exchange
   sebagai `app_users.id`, tanpa bergantung pada Telegram runtime session.
 - Goal trace: subscription dan setting harus melekat ke identitas Mini App user,
   sehingga pergantian akun Telegram worker/userbot tidak mengubah data bisnis.
 - Acceptance criteria:
-  - [ ] Authorization hanya menerima satu bearer token dengan format session
+  - [x] Authorization hanya menerima satu bearer token dengan format session
     internal `jas_` yang tepat; malformed input ditolak sebelum query database.
-  - [ ] Token hanya di-hash SHA-256; raw token tidak diteruskan ke repository,
+  - [x] Token hanya di-hash SHA-256; raw token tidak diteruskan ke repository,
     response, atau error.
-  - [ ] Session aktif menghasilkan actor `app_users.id`; unknown, revoked, dan
+  - [x] Session aktif menghasilkan actor `app_users.id`; unknown, revoked, dan
     expired session menghasilkan kontrak 401 route existing.
-  - [ ] Dependency failure menghasilkan 503 `AUTH_TEMPORARILY_UNAVAILABLE`, bukan
+  - [x] Dependency failure menghasilkan 503 `AUTH_TEMPORARILY_UNAVAILABLE`, bukan
     401 palsu atau error database mentah.
-  - [ ] `createApi` memakai repository session sebagai authorizer user production,
+  - [x] `createApi` memakai repository session sebagai authorizer user production,
     sedangkan injected authorizer legacy/test tetap tersedia secara mutually
     exclusive.
-  - [ ] Focused test, full API regression, typecheck, syntax, dan diff check lulus.
+  - [x] Focused test, full API regression, typecheck, syntax, dan diff check lulus.
 - Non-goal: admin role, canary allowlist, refresh/logout/revoke HTTP endpoint, rate
   control, package enforcement, dan frontend.
 - Dependencies: R1-002B1 dan R1-002B2.
@@ -1318,6 +1318,31 @@ Penutupan:
   focused tests, dan ledger.
 - Required evidence: exact hash assertion, route status/body, test counts, diff,
   dan commit.
+- Commit/diff: `ab742dd` (`feat: authorize API sessions on user routes`).
+- Acceptance evidence:
+  - parser hanya menerima `Bearer jas_` dengan payload base64url 43 karakter;
+  - sembilan bentuk header malformed menghasilkan 401 tanpa satu pun query session;
+  - repository menerima SHA-256 32-byte yang identik dengan hash expected dan tidak
+    pernah menerima raw bearer token;
+  - session aktif mengalirkan canonical user UUID ke kedua query broadcast setting;
+  - lookup null (unknown/revoked/expired) menghasilkan 401 `USER_REQUIRED`;
+  - repository failure menghasilkan 503 `AUTH_TEMPORARILY_UNAVAILABLE`, `no-store`,
+    tanpa token, password marker, atau query detail;
+  - type union `createApi` memisahkan `apiSessions` production dari injected
+    `authorizeUser` legacy/test.
+- Commands/tests:
+  - focused authorizer/composition: 5/5 pass;
+  - full API: 76 pass, 0 fail, 2 PostgreSQL integration opt-in skip;
+  - `npm run typecheck`, `npm run check`, dan `git diff --check`: pass.
+- Result summary: bearer session kini dapat mengautentikasi seluruh route bisnis
+  user yang terdaftar melalui `createApi`; admin authorization tetap jalur terpisah.
+- Remaining risk: belum ada HTTP revoke/logout, cleanup session kedaluwarsa, rate
+  control endpoint login, maupun role admin. Production entrypoint lengkap juga
+  belum dirangkai; unit ini baru menyediakan composition yang fail-closed.
+- Rollback note: revert authorizer/composition mengembalikan injected authorizer;
+  schema, `app_users`, dan session existing tidak berubah.
+- Follow-up units: R1-003 role/admin authorization, lalu R2 canary allowlist maksimal
+  15 user sebelum membuka integrasi fitur production.
 
 ## Template penutupan unit
 
