@@ -1061,6 +1061,47 @@ Penutupan:
 - Rollback note: route/repository dapat direvert; data setting tetap aman dan tidak ada external side effect.
 - Follow-up units: DEV-011 API CRUD Divisi/channel/template, lalu DEV-012 atomic Tepat/OOT decision dan outbox command transaction.
 
+### R1-001 — Verifikasi Telegram Mini App initData
+
+- Final status: VERIFIED
+- Parent: R1 — Production API & identity
+- Outcome: backend dapat membuktikan identitas Telegram Mini App dari raw
+  `initData` sebelum data user dipakai oleh route bisnis.
+- Goal trace: canary, ownership, admin role, entitlement, dan subscription harus
+  terikat pada identitas Telegram yang tervalidasi, bukan header/user ID buatan
+  client.
+- Acceptance criteria:
+  - [x] HMAC-SHA-256 mengikuti algoritma resmi Telegram dengan perbandingan
+    constant-time.
+  - [x] `hash`, `auth_date`, dan `user` wajib ada serta hanya boleh muncul sekali.
+  - [x] Encoding rusak, duplicate field, signature salah, data kedaluwarsa, dan
+    timestamp terlalu jauh di masa depan ditolak dengan error code stabil.
+  - [x] Telegram user ID dipertahankan sebagai string agar tidak kehilangan
+    presisi pada boundary berikutnya.
+  - [x] Field Telegram baru yang sah tidak ditolak hanya karena belum dikenal
+    aplikasi.
+  - [x] Bot token dan raw `initData` tidak pernah masuk output, error, inspect,
+    atau JSON serialization.
+  - [x] Typecheck, focused test, seluruh API test, dan diff check lulus.
+- Non-goal: mapping Telegram user ke UUID internal, admin lookup, allowlist,
+  penerbitan session API, dan wiring ke Fastify.
+- Dependencies: dokumentasi resmi Telegram Mini Apps; Node.js `crypto`.
+- Risks/failure modes reviewed: urutan field memakai comparison byte-stable,
+  fixture HMAC dihitung independen, duplicate key ditolak sebelum autentikasi,
+  dan timestamp boundary diuji eksplisit.
+- Commands/tests: focused Node test 8/8; seluruh API test 60/60;
+  `npm run typecheck`; `git diff --check`.
+- Result summary: signature palsu/tampered, stale/future, malformed encoding,
+  duplicate field, dan user invalid ditolak tanpa membocorkan input atau bot
+  token. Field Telegram tambahan tetap ikut ditandatangani dan diterima.
+- Remaining risk: verifier stateless hanya menolak replay yang kedaluwarsa.
+  Penggunaan ulang di dalam freshness window ditutup oleh session exchange pada
+  R1-002; mapping Telegram ID ke UUID internal juga belum dibuat.
+- Rollback note: verifier dan focused test dapat direvert tanpa migration,
+  credential mutation, atau side effect eksternal.
+- Follow-up units: R1-002 session exchange dan Fastify identity wiring, lalu
+  R1-003 admin role serta ownership boundary.
+
 ## Template penutupan unit
 
 ```markdown
