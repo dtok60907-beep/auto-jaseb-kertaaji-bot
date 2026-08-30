@@ -38,6 +38,7 @@ test("concurrent exchange consumes initData once and active lookup obeys revoke 
   });
   try {
     await sql`delete from public.app_users where telegram_user_id = ${telegramUserId}::bigint`;
+    await sql`select * from public.set_canary_admission(${telegramUserId}::bigint, true)`;
     const outcomes = await Promise.allSettled([
       issuer.exchange(rawInitData),
       issuer.exchange(rawInitData),
@@ -73,6 +74,7 @@ test("concurrent exchange consumes initData once and active lookup obeys revoke 
     `;
     assert.equal(await repository.findActiveByTokenHash(tokenHash), null);
   } finally {
+    await sql`select * from public.set_canary_admission(${telegramUserId}::bigint, false)`;
     await sql`delete from public.app_users where telegram_user_id = ${telegramUserId}::bigint`;
     await sql.end({ timeout: 5 });
   }

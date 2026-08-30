@@ -85,6 +85,7 @@ test("maps Telegram verification, replay, and dependency failures to stable publ
     { error: new TelegramMiniAppAuthError("TELEGRAM_INIT_DATA_HASH_INVALID"), status: 401, code: "TELEGRAM_AUTH_INVALID" },
     { error: new TelegramMiniAppAuthError("TELEGRAM_INIT_DATA_EXPIRED"), status: 401, code: "TELEGRAM_AUTH_EXPIRED" },
     { error: new TelegramMiniAppAuthError("TELEGRAM_INIT_DATA_FUTURE"), status: 401, code: "TELEGRAM_AUTH_CLOCK_INVALID" },
+    { error: new TelegramSessionExchangeError("CANARY_ACCESS_REQUIRED"), status: 403, code: "CANARY_ACCESS_REQUIRED" },
     { error: new TelegramSessionExchangeError("TELEGRAM_INIT_DATA_ALREADY_USED"), status: 409, code: "TELEGRAM_AUTH_REPLAYED" },
     { error: new TelegramSessionExchangeError("API_SESSION_ENTROPY_INVALID"), status: 503, code: "AUTH_TEMPORARILY_UNAVAILABLE" },
     { error: new Error("database-password query detail"), status: 503, code: "AUTH_TEMPORARILY_UNAVAILABLE" },

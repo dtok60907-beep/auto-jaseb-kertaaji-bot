@@ -20,6 +20,7 @@ type PublicAuthErrorCode =
   | "TELEGRAM_AUTH_EXPIRED"
   | "TELEGRAM_AUTH_CLOCK_INVALID"
   | "TELEGRAM_AUTH_REPLAYED"
+  | "CANARY_ACCESS_REQUIRED"
   | "AUTH_TEMPORARILY_UNAVAILABLE";
 
 function noStore(reply: FastifyReply): void {
@@ -83,6 +84,7 @@ export function registerTelegramAuthRoutes(
         if (error instanceof TelegramMiniAppAuthError) return telegramError(reply, error);
         if (error instanceof TelegramSessionExchangeError) {
           if (error.code === "TELEGRAM_INIT_DATA_ALREADY_USED") return fail(reply, 409, "TELEGRAM_AUTH_REPLAYED");
+          if (error.code === "CANARY_ACCESS_REQUIRED") return fail(reply, 403, "CANARY_ACCESS_REQUIRED");
           return fail(reply, 503, "AUTH_TEMPORARILY_UNAVAILABLE");
         }
         return fail(reply, 503, "AUTH_TEMPORARILY_UNAVAILABLE");

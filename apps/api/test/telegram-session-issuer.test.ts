@@ -90,6 +90,15 @@ test("rejects an already consumed initData hash without exposing the input", asy
   assert.deepEqual(JSON.parse(JSON.stringify(caught)), { code: "TELEGRAM_INIT_DATA_ALREADY_USED" });
 });
 
+test("rejects a verified identity outside the active canary", async () => {
+  const sessions = new FakeSessions({ status: "ACCESS_DENIED" });
+  const issuer = new TelegramSessionIssuer({ verifier: verifier(), sessions, now: () => NOW, entropy: () => new Uint8Array(32) });
+  await assert.rejects(
+    issuer.exchange(RAW_INIT_DATA),
+    (error) => errorCode(error) === "CANARY_ACCESS_REQUIRED",
+  );
+});
+
 test("fails closed if persistence returns a different expiry boundary", async () => {
   const sessions = new FakeSessions({
     status: "CREATED",

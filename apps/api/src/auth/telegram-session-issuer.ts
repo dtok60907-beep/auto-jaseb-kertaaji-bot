@@ -16,6 +16,7 @@ export type TelegramMiniAppIdentityVerifier = Readonly<{
 
 export type TelegramSessionExchangeErrorCode =
   | "TELEGRAM_INIT_DATA_ALREADY_USED"
+  | "CANARY_ACCESS_REQUIRED"
   | "API_SESSION_ENTROPY_INVALID";
 
 export class TelegramSessionExchangeError extends Error {
@@ -95,6 +96,9 @@ export class TelegramSessionIssuer {
     });
     if (result.status === "REPLAY") {
       throw new TelegramSessionExchangeError("TELEGRAM_INIT_DATA_ALREADY_USED");
+    }
+    if (result.status === "ACCESS_DENIED") {
+      throw new TelegramSessionExchangeError("CANARY_ACCESS_REQUIRED");
     }
     if (Date.parse(result.expiresAt) !== Date.parse(expiresAt)) {
       throw new Error("API_SESSION_EXPIRY_MISMATCH");

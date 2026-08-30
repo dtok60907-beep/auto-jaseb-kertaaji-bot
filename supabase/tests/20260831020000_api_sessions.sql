@@ -2,6 +2,9 @@
 
 begin;
 
+select * from public.set_canary_admission(900000005, true);
+select * from public.set_canary_admission(900000006, true);
+
 do $$
 declare
   first_status text;

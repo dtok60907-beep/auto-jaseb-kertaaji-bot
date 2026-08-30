@@ -14,7 +14,8 @@ export type ApiSessionIssueResult =
       sessionId: string;
       expiresAt: string;
     }>
-  | Readonly<{ status: "REPLAY" }>;
+  | Readonly<{ status: "REPLAY" }>
+  | Readonly<{ status: "ACCESS_DENIED" }>;
 
 export type ActiveApiSession = Readonly<{
   sessionId: string;

@@ -8,7 +8,7 @@ import type {
 } from "./api-session-repository.ts";
 
 type IssueRow = Readonly<{
-  result_status: "CREATED" | "REPLAY";
+  result_status: "CREATED" | "REPLAY" | "ACCESS_DENIED";
   resolved_user_id: string | null;
   created_session_id: string | null;
   session_expires_at: string | null;
@@ -51,6 +51,7 @@ export class PostgresApiSessionRepository implements ApiSessionRepository {
     const row = rows[0];
     if (!row) throw new Error("API_SESSION_NOT_ISSUED");
     if (row.result_status === "REPLAY") return Object.freeze({ status: "REPLAY" });
+    if (row.result_status === "ACCESS_DENIED") return Object.freeze({ status: "ACCESS_DENIED" });
     if (!row.resolved_user_id || !row.created_session_id || !row.session_expires_at) {
       throw new Error("API_SESSION_RESULT_INVALID");
     }

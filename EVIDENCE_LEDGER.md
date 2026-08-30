@@ -1481,6 +1481,42 @@ Penutupan:
 - Follow-up units: R2-002 atomic canary gate pada session exchange dan response
   `CANARY_ACCESS_REQUIRED`, lalu R2-003 owner bootstrap/runbook.
 
+### R2-002 — Atomic canary gate pada session exchange
+
+- Status: IN_PROGRESS
+- Parent: R2 — Canary maksimal 15 Mini App users
+- Outcome: hanya Telegram user ID dengan admission aktif yang dapat memperoleh API
+  session; penolakan tidak membuat `app_users` atau session parsial.
+- Goal trace: registry R2-001 harus benar-benar menjadi pintu masuk production,
+  bukan sekadar daftar yang tidak dipakai runtime.
+- Acceptance criteria:
+  - [ ] Check admission terjadi di function transaksi sebelum identity upsert dan
+    session insert, menutup TOCTOU serta partial user/session row.
+  - [ ] Repository/domain mengenali `ACCESS_DENIED` tanpa bergantung pada raw error
+    PostgreSQL atau string query.
+  - [ ] HTTP exchange memetakan penolakan ke 403 `CANARY_ACCESS_REQUIRED`, no-store,
+    tanpa membocorkan initData atau database detail.
+  - [ ] User admitted tetap menerima session normal; replay, expiry, entropy, dan
+    dependency error contract existing tidak berubah.
+  - [ ] Revoke admission membuat bearer existing invalid dan exchange berikutnya
+    kembali ditolak.
+  - [ ] Fresh/upgrade migration, focused tests, full regression, typecheck, dan
+    remote proof lulus.
+- Non-goal: admission HTTP/UI, owner bootstrap, subscription publik, dan menghapus
+  registry setelah canary.
+- Dependencies: R2-001.
+- Risks/failure modes: gate hanya di aplikasi sehingga race lolos, denied login tetap
+  membuat user row, denied status berubah menjadi 503, atau test identity memenuhi
+  cap production.
+- Test plan: denied no-row; admitted created; replay unchanged; revoke session;
+  denied response safe; upgrade preserves session; remote rollback proof.
+- Rollback/recovery: migration dapat diganti function versi pre-gate; registry dan
+  session existing tetap dipertahankan.
+- Expected touch points: canary gate migration/fixture, session repository/domain,
+  HTTP mapping/tests, migration runner, ledger.
+- Required evidence: zero denied rows, status/body/header, regression counts, remote
+  transaction rollback, diff, dan commit.
+
 ## Template penutupan unit
 
 ```markdown
