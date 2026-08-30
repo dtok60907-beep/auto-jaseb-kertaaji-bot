@@ -44,9 +44,22 @@ session.
 
 ## Deployment and evidence
 
-Deploy the clean commit with the Railway CLI to the dedicated project/service. Wait
-for `/health/ready` to return 200, collect the structured completion log and the
-safe `/benchmark/summary`, then query Supabase to confirm no fixture rows remain.
+Connect the dedicated service to the benchmark GitHub repository and deploy the
+clean `main` commit. Wait for `/health/ready` to return 200, collect the structured
+completion log and the safe `/benchmark/summary`, then query Supabase to confirm no
+fixture rows remain. `F57B_COMMIT` must match that deployed commit before the push
+which starts the measurement.
+
+### First-deployment failure signature
+
+An image built with the service root set to `apps/engine` cannot resolve the two
+internal source packages imported through repository-relative paths. It fails before
+opening the database with `ERR_MODULE_NOT_FOUND` for `/packages/telegram-contract`.
+The correct monorepo build uses repository root context, the root `.dockerignore`,
+and `apps/engine/Dockerfile`; the Dockerfile copies both `telegram-contract` and
+`telegram-session-crypto` into `/workspace/packages`. Do not redeploy the failed
+image, because Railway redeploy reuses its old build rather than the corrected Git
+commit.
 
 This evidence validates the selected Railway region/container path only. It does not
 permit production sizing until F5.7c controlled Telegram sessions and soak complete.
