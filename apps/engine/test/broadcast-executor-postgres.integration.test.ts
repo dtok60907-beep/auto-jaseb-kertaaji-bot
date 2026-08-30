@@ -10,7 +10,7 @@ import {
 import { PostgresBroadcastExecutorRepository } from "../src/broadcast-executor/postgres-repository.ts";
 import { executeNextBroadcast } from "../src/broadcast-executor/service.ts";
 
-const databaseUrl = process.env.F4_DATABASE_URL?.trim();
+const databaseUrl = process.env.F5_DATABASE_URL?.trim() || process.env.F4_DATABASE_URL?.trim();
 
 test("PostgreSQL claim → adapter → aggregation and fencing-safe completion", { skip: !databaseUrl }, async () => {
   const sql = postgres(databaseUrl!, { max: 1 });

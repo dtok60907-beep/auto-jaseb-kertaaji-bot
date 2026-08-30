@@ -884,6 +884,38 @@ Penutupan:
 - Follow-up unit: F5.7b production repository/lease/outbox load dengan PostgreSQL dan
   controlled fake provider; setelah itu F5.7c Telegram multi-session + soak.
 
+### DEV-F5-007B — Supabase repository/lease/outbox integration
+
+- Status: IN_PROGRESS
+- Parent: Unit F5.7 — Production engine capacity and soak evidence
+- Outcome: production PostgreSQL schema dan runtime contract dijalankan pada project
+  Supabase nyata dengan Telegram provider tetap fake.
+- Acceptance criteria:
+  - [x] Project target dan baseline kosong diverifikasi sebelum migration.
+  - [x] Seluruh 21 migration existing diterapkan berurutan dan contract runtime
+    `acquire_account_lease`, claim/finish broadcast, discovery, serta session loader ada.
+  - [x] Additive advisor migration menghapus duplicate index, menutup seluruh foreign
+    key tanpa covering index, dan mengubah 17 policy agar `auth.uid()` dievaluasi sekali.
+  - [x] Advisor sesudah koreksi tidak memiliki warning; enam info RLS tanpa policy
+    tetap dipertahankan untuk tabel service-only.
+  - [x] Transactional Supabase fixture membuktikan 11 assertion lease/outbox/agregasi
+    dan seluruh data di-rollback.
+  - [x] Dedicated Node gate gagal dengan exit `2` saat database URL tidak ada, sehingga
+    integration test tidak dapat hijau karena skip diam-diam.
+  - [ ] Repository Node production dan commit-time `LISTEN/NOTIFY` lulus melalui
+    direct/session Postgres connection ke project yang sama.
+  - [ ] Load matrix PostgreSQL, resource measurement, sanitized artifact, dan summary
+    selesai sebelum unit ditutup.
+- Current evidence: 22 remote migration record; 24 public tables, 49 routines, 93
+  indexes; post-correction advisor hanya melaporkan unused-index info pada database
+  kosong; engine regression `87 pass`, `0 fail`, `2 PostgreSQL skip`; typecheck bersih;
+  dependency audit `0 vulnerabilities`.
+- Remaining blocker: `apps/engine/.env` belum mempunyai `F5_DATABASE_URL`. Nilainya
+  harus memakai direct atau session pooler agar dedicated connection `LISTEN/NOTIFY`
+  didukung; transaction pooler tidak valid untuk gate ini.
+- Non-goal: Telegram live send, production capacity claim, Railway deploy, atau
+  perubahan data client.
+
 ### DEV-001 — Backend package catalog domain
 
 - Final status: VERIFIED (first production product-code unit).
