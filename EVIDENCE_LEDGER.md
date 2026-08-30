@@ -936,6 +936,10 @@ Penutupan:
 - Remaining gate: ulangi benchmark dari region Railway yang dipilih, lalu F5.7c
   controlled Telegram multi-session dan soak 1 jam/24 jam. Angka lokal-ke-Supabase
   ini belum boleh dipakai sebagai capacity promise atau Railway sizing final.
+- F5.7b-R implementation status: in progress. Dedicated Railway benchmark server
+  uses the production PostgreSQL path with a fake provider, requires every workload
+  input explicitly, exposes `live`/`ready` separately, and returns/logs a redacted
+  aggregate only. It does not load Telegram credentials or sessions.
 - Non-goal: Telegram live send, production capacity claim, Railway deploy, atau
   perubahan data client.
 
