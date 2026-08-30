@@ -1167,23 +1167,23 @@ Penutupan:
 
 ### R1-002B1 — Atomic Mini App session issuance
 
-- Status: IN_PROGRESS
+- Final status: VERIFIED
 - Parent: R1-002B — One-time session exchange dan replay prevention
 - Outcome: verified Telegram `initData` dapat ditukar tepat satu kali menjadi
   bearer token acak; database hanya menyimpan hash token dan hash `initData`.
 - Goal trace: route bisnis memerlukan credential pendek yang dapat dicabut dan
   tidak boleh menerima raw Telegram `initData` pada setiap request.
 - Acceptance criteria:
-  - [ ] Token mempunyai minimal 256-bit entropy, format ketat, TTL eksplisit, dan
+  - [x] Token mempunyai minimal 256-bit entropy, format ketat, TTL eksplisit, dan
     raw token hanya muncul pada hasil issuance.
-  - [ ] Identity upsert dan session insert terjadi dalam satu transaction/function
+  - [x] Identity upsert dan session insert terjadi dalam satu transaction/function
     database tanpa external network call di dalam transaction.
-  - [ ] Hash `initData` unik membuat exchange kedua menghasilkan status replay dan
+  - [x] Hash `initData` unik membuat exchange kedua menghasilkan status replay dan
     tidak membuat session kedua.
-  - [ ] Lookup hanya mengembalikan session yang belum revoked dan belum expired.
-  - [ ] `anon`/`authenticated` tidak dapat membaca table atau menjalankan function
+  - [x] Lookup hanya mengembalikan session yang belum revoked dan belum expired.
+  - [x] `anon`/`authenticated` tidak dapat membaca table atau menjalankan function
     session; token/initData mentah tidak tersimpan.
-  - [ ] Fresh + upgrade migration, concurrent replay test, token redaction test,
+  - [x] Fresh + upgrade migration, concurrent replay test, token redaction test,
     regression API/engine, typecheck, dan diff check lulus.
 - Non-goal: endpoint HTTP, header Bearer parser, Fastify authorizer, admin role,
   canary allowlist, refresh token, dan scheduled cleanup session.
@@ -1201,6 +1201,30 @@ Penutupan:
   dan PostgreSQL integration test, migration harness, ledger.
 - Required evidence: exact test counts, database assertions, remote migration
   proof/advisor, diff, dan commit.
+- Commit/diff: `3b6714a` (`feat: issue one-time Mini App sessions`).
+- Commands/tests: focused auth/repository 6/6; PostgreSQL harness 2/2 API
+  integration + 2/2 engine integration serta seluruh fresh/upgrade SQL gate;
+  API default suite 66 pass + 2 real-DB opt-in skip; engine 120 pass + 3 opt-in
+  skip; API/engine typecheck; syntax dan diff check.
+- Result summary: token `jas_` memakai 32 random byte dan database hanya menerima
+  SHA-256 32-byte untuk token serta `initData`. Dua exchange paralel menghasilkan
+  tepat satu session; request lain mendapat `TELEGRAM_INIT_DATA_ALREADY_USED`.
+  Lookup aktif berhenti menerima token segera setelah revoke atau expiry.
+- Remote evidence: migration Supabase `api_sessions` berhasil. Proof transaction
+  yang di-rollback menunjukkan `session_rows=1`, dua hash masing-masing 32 byte,
+  `anon_can_select=false`, `authenticated_can_issue=false`, dan tidak ada column
+  raw secret.
+- Advisor result: hanya INFO RLS tanpa policy untuk tabel backend-only (deny-all
+  disengaja) serta index belum digunakan karena database production masih kosong;
+  tidak ada warning/error baru.
+- Remaining risk: bila response pertama hilang setelah commit, retry initData yang
+  sama ditolak dan frontend harus meminta user membuka ulang Mini App. Cleanup row
+  session kedaluwarsa wajib masuk operational maintenance sebelum public launch.
+  Endpoint exchange dan Bearer parser sengaja menjadi R1-002B2/R1-002C.
+- Rollback note: source dapat direvert; schema remote additive tetap dipertahankan.
+  Seluruh session dapat direvoke tanpa menghapus `app_users` maupun setting.
+- Follow-up units: R1-002B2 HTTP exchange route dengan error mapping, lalu
+  R1-002C Bearer authorizer untuk seluruh route bisnis.
 
 ## Template penutupan unit
 
