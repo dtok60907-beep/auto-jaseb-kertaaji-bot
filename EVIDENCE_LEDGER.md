@@ -1614,21 +1614,21 @@ Penutupan:
 
 ### R1-004A — Production API configuration boundary
 
-- Status: IN_PROGRESS
+- Status: VERIFIED
 - Parent: R1-004 — Production API entrypoint
 - Outcome: API production gagal sebelum membuka port bila secret, connection policy,
   auth lifetime, atau readiness policy tidak lengkap/invalid.
 - Goal trace: canary tidak boleh dijalankan memakai implicit dev defaults atau config
   yang berbeda diam-diam antara local dan Railway.
 - Acceptance criteria:
-  - [ ] DATABASE_URL dan Telegram bot token tervalidasi tetapi disimpan private dan
+  - [x] DATABASE_URL dan Telegram bot token tervalidasi tetapi disimpan private dan
     tidak pernah muncul pada JSON/string/inspect/error.
-  - [ ] Seluruh angka pool, auth TTL/freshness, health, dan shutdown mempunyai range
+  - [x] Seluruh angka pool, auth TTL/freshness, health, dan shutdown mempunyai range
     eksplisit; tidak ada angka kapasitas production yang default diam-diam.
-  - [ ] Prepared-statement policy wajib eksplisit untuk compatibility pooler.
-  - [ ] Host/PORT tervalidasi untuk Railway/local tanpa menerima whitespace/path.
-  - [ ] Error hanya mengandung stable code + nama field, tidak mengandung value.
-  - [ ] `.env.example`, unit test matrix, typecheck, syntax, dan diff check lulus.
+  - [x] Prepared-statement policy wajib eksplisit untuk compatibility pooler.
+  - [x] Host/PORT tervalidasi untuk Railway/local tanpa menerima whitespace/path.
+  - [x] Error hanya mengandung stable code + nama field, tidak mengandung value.
+  - [x] `.env.example`, unit test matrix, typecheck, syntax, dan diff check lulus.
 - Non-goal: membuka koneksi DB/port, repository composition, logging, CORS, Railway
   deployment, owner bootstrap, dan frontend.
 - Dependencies: R1-003 dan R2-002.
@@ -1640,6 +1640,31 @@ Penutupan:
 - Expected touch points: production config/tests, `.env.example`, package check, ledger.
 - Required evidence: invalid-field matrix, secret absence assertions, test counts,
   diff, commit.
+- Commit/diff: `ffec4a5` (`feat: validate production API configuration`).
+- Acceptance evidence:
+  - DATABASE_URL wajib PostgreSQL URL dengan host/user/password/database; bot token
+    wajib nonempty, bounded, dan tanpa whitespace;
+  - kedua secret private-field hanya dapat diambil composition code dan tidak muncul
+    dalam JSON, string, inspect, maupun config error;
+  - 13 production numbers mempunyai explicit lower/upper bound: pool/connect/idle/
+    lifetime/close, session TTL, initData freshness/skew, port, readiness interval/
+    timeout/threshold, dan shutdown grace;
+  - readiness timeout wajib tidak melebihi interval; prepared statements hanya
+    menerima literal `true`/`false`; host menolak path/whitespace;
+  - `.env.example` meninggalkan seluruh nilai operasional kosong agar deployment
+    wajib mengisi angka hasil sizing, bukan menerima default diam-diam;
+  - config error hanya `API_CONFIG_INVALID:<field>` dan JSON `{code, field}`.
+- Commands/tests:
+  - focused production config: 4/4 pass, termasuk 26 lower/upper invalid cases;
+  - full API: 88 pass, 0 fail, 4 PostgreSQL integration opt-in skip;
+  - `npm run typecheck`, `npm run check`, dan `git diff --check`: pass.
+- Result summary: startup configuration boundary siap dipakai entrypoint dan aman
+  untuk Railway/Supabase pooler tanpa implicit capacity values.
+- Remaining risk: config belum membuka DB/port dan belum menjadi executable startup;
+  nilai nyata Railway belum diisi/diukur pada API runtime.
+- Rollback note: module/.env template additive dan belum mengubah runtime existing.
+- Follow-up units: R1-004B production repository/auth composition, lalu R1-004C
+  health/readiness/lifecycle/Railway start contract.
 
 ## Template penutupan unit
 
