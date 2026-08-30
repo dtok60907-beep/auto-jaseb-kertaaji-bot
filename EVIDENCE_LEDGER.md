@@ -933,15 +933,23 @@ Penutupan:
   berjalan paralel serta fixture broadcast lama tidak dibersihkan. Runner sekarang
   serial, assertions memfilter account fixture sendiri, dan cleanup selalu menghapus
   workflow sebelum user sesuai dependency FK. Rerun lulus dan remote row count kembali 0.
-- Remaining gate: ulangi benchmark dari region Railway yang dipilih, lalu F5.7c
-  controlled Telegram multi-session dan soak 1 jam/24 jam. Angka lokal-ke-Supabase
-  ini belum boleh dipakai sebagai capacity promise atau Railway sizing final.
-- F5.7b-R implementation status: in progress. Dedicated Railway benchmark server
-  uses the production PostgreSQL path with a fake provider, requires every workload
-  input explicitly, exposes `live`/`ready` separately, and returns/logs a redacted
-  aggregate only. It does not load Telegram credentials or sessions.
-- Non-goal: Telegram live send, production capacity claim, Railway deploy, atau
-  perubahan data client.
+- F5.7b-R Railway evidence: VERIFIED pada dedicated service `ams`, commit `9023d60`.
+  Fresh GitHub build menyalin kedua package internal dan selesai `SUCCESS` dengan
+  331 record, 165/165 hard assertion, dan 0 failure. Matrix sama menghasilkan batas
+  `50:10` dengan duration p50 `7154.76 ms`, p95 `7929.85 ms`, throughput median
+  `6.988 command/s`, RSS peak `96,088,064 byte`, dan event-loop p99 maksimum
+  `5.89 ms`. Query saat run melihat fixture `25:5`; query sesudah run membuktikan
+  operation, command, account, assignment, auth fixture user, dan active lease nol.
+  Detail ada di `apps/engine/benchmark-results/F5.7B_RAILWAY_RESULT.md`.
+- Deployment recovery evidence: deployment awal commit `1b5309d` gagal sebelum DB
+  karena image lama tidak membawa package repository-relative. Failure tersebut tidak
+  dijadikan benchmark; fresh build commit `9023d60` memakai root monorepo context dan
+  lulus. Runbook mencatat signature serta larangan memakai redeploy image gagal.
+- Remaining gate: F5.7c controlled Telegram multi-session dan soak 1 jam/24 jam.
+  Angka fake-provider ini belum boleh dipakai sebagai capacity promise atau Railway
+  sizing final.
+- Non-goal: Telegram live send, production capacity claim, atau perubahan data
+  client di luar fixture benchmark yang selalu dibersihkan.
 
 ### DEV-001 — Backend package catalog domain
 
