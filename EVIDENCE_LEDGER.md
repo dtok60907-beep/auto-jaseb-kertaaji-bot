@@ -886,7 +886,7 @@ Penutupan:
 
 ### DEV-F5-007B — Supabase repository/lease/outbox integration
 
-- Status: IN_PROGRESS
+- Status: VERIFIED (scope database path + fake Telegram provider)
 - Parent: Unit F5.7 — Production engine capacity and soak evidence
 - Outcome: production PostgreSQL schema dan runtime contract dijalankan pada project
   Supabase nyata dengan Telegram provider tetap fake.
@@ -904,7 +904,7 @@ Penutupan:
     integration test tidak dapat hijau karena skip diam-diam.
   - [x] Repository Node production dan commit-time `LISTEN/NOTIFY` lulus melalui
     direct/session Postgres connection ke project yang sama.
-  - [ ] Load matrix PostgreSQL, resource measurement, sanitized artifact, dan summary
+  - [x] Load matrix PostgreSQL, resource measurement, sanitized artifact, dan summary
     selesai sebelum unit ditutup.
 - Current evidence: 22 remote migration record; 24 public tables, 49 routines, 93
   indexes; post-correction advisor hanya melaporkan unused-index info pada database
@@ -920,12 +920,22 @@ Penutupan:
   operation, command, account, assignment, auth fixture, dan active lease semuanya `0`.
   Smoke ini hanya memvalidasi harness; belum menjadi capacity measurement karena
   dijalankan sebelum checkpoint commit dan tanpa load matrix.
+- Final load evidence: commit `d36b4e8`, matrix `1:1,10:1,10:5,25:5,50:10`, satu
+  warm-up + tiga measured sample per case, raw JSONL 331 record dengan SHA-256
+  `8055cb9e55e28dba6518c8b3dd65a247501acecd06181335f26aba81904a0841`.
+  Summarizer resmi menghasilkan `eligible=true`, hard assertion `165/165`, duplicate
+  side effect `0`, dan tidak ada timeout, execution, aggregation, lease, atau cleanup
+  failure. Pada case `50:10`, executor duration median `3509.41 ms`, p95 `4198.10 ms`,
+  throughput median `14.25 command/s`, RSS peak maksimum `76,296,192 byte`, dan
+  event-loop p99 maksimum `6.60 ms`. Detail boundary dan seluruh case ada di
+  `apps/engine/benchmark-results/F5.7B_SUPABASE_RESULT.md`.
 - Test-isolation correction: gate pertama menangkap cross-file NOTIFY karena Node test
   berjalan paralel serta fixture broadcast lama tidak dibersihkan. Runner sekarang
   serial, assertions memfilter account fixture sendiri, dan cleanup selalu menghapus
   workflow sebelum user sesuai dependency FK. Rerun lulus dan remote row count kembali 0.
-- Remaining gate: load matrix PostgreSQL, resource measurement, sanitized artifact,
-  dan summary; belum ada angka capacity yang boleh dipakai untuk Railway sizing.
+- Remaining gate: ulangi benchmark dari region Railway yang dipilih, lalu F5.7c
+  controlled Telegram multi-session dan soak 1 jam/24 jam. Angka lokal-ke-Supabase
+  ini belum boleh dipakai sebagai capacity promise atau Railway sizing final.
 - Non-goal: Telegram live send, production capacity claim, Railway deploy, atau
   perubahan data client.
 
