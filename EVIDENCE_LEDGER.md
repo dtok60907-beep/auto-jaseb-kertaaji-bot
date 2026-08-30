@@ -1415,6 +1415,39 @@ Penutupan:
 - Follow-up units: R2 canary allowlist maksimal 15 user, termasuk bootstrap owner
   yang eksplisit dan admission gate sebelum fitur production dibuka.
 
+### R2-001 — Canary admission registry dan hard cap
+
+- Status: IN_PROGRESS
+- Parent: R2 — Canary maksimal 15 Mini App users
+- Outcome: operator dapat pre-admit Telegram user ID, kapasitas aktif mustahil
+  melewati 15, dan revoke admission langsung mencabut seluruh API session user.
+- Goal trace: production dibuka bertahap untuk 1–2 user dan dinaikkan perlahan,
+  tetapi tidak pernah melampaui 15 selama canary.
+- Acceptance criteria:
+  - [ ] Registry backend-only menerima Telegram user ID sebelum first login dan
+    menyimpan active slot/revocation state tanpa bergantung pada account session.
+  - [ ] Constraint database membatasi tepat 15 slot unik; concurrency atau direct
+    write tidak dapat menciptakan user aktif ke-16.
+  - [ ] Operasi admission/revoke tunggal mempunyai status stabil, serialized, dan
+    hanya dapat dieksekusi backend role.
+  - [ ] Revoke melepaskan slot dan atomically merevoke semua API session terkait;
+    setting, entitlement, dan `app_users` tidak dihapus.
+  - [ ] Browser roles tidak dapat membaca registry atau menjalankan fungsi admission.
+  - [ ] Fresh/upgrade SQL fixture dan integration regression lulus.
+- Non-goal: gate pada session exchange (R2-002), UI admin, admission lewat public
+  HTTP, penghapusan user/setting, dan subscription publik.
+- Dependencies: R1-003.
+- Risks/failure modes: race menghasilkan user ke-16, revoke tidak mematikan bearer
+  existing, direct write melewati limit, atau canary terikat ke session/account kerja.
+- Test plan: admit 15; user ke-16 ditolak; revoke mencabut session dan melepas slot;
+  slot dipakai ulang; browser privilege denied; rollback menyisakan nol fixture.
+- Rollback/recovery: migration additive dipertahankan; belum dipakai login sampai
+  R2-002 sehingga source dapat direvert tanpa memblokir user existing.
+- Expected touch points: migration, SQL fixture/upgrade proof, migration runner,
+  ledger.
+- Required evidence: active count/slot uniqueness, revoke session proof, privilege,
+  fresh/upgrade markers, remote proof, diff, dan commit.
+
 ## Template penutupan unit
 
 ```markdown

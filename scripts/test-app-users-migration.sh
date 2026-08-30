@@ -88,10 +88,21 @@ PGDATABASE=app_admins_upgrade psql -v ON_ERROR_STOP=1 \
 PGDATABASE=app_admins_upgrade psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/upgrades/20260831030000_assert.sql" >/dev/null
 
+bootstrap_database canary_admissions_upgrade
+apply_migrations canary_admissions_upgrade 20260831040000_canary_admissions.sql
+PGDATABASE=canary_admissions_upgrade psql -v ON_ERROR_STOP=1 \
+  -f "${PROJECT_ROOT}/supabase/tests/upgrades/20260831040000_seed.sql" >/dev/null
+PGDATABASE=canary_admissions_upgrade psql -v ON_ERROR_STOP=1 \
+  -f "${PROJECT_ROOT}/supabase/migrations/20260831040000_canary_admissions.sql" >/dev/null
+PGDATABASE=canary_admissions_upgrade psql -v ON_ERROR_STOP=1 \
+  -f "${PROJECT_ROOT}/supabase/tests/upgrades/20260831040000_assert.sql" >/dev/null
+
 PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/20260831020000_api_sessions.sql" >/dev/null
 PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/20260831030000_app_admins.sql" >/dev/null
+PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
+  -f "${PROJECT_ROOT}/supabase/tests/20260831040000_canary_admissions.sql" >/dev/null
 
 (
   cd "${PROJECT_ROOT}/apps/api"
@@ -121,4 +132,8 @@ printf '%s\n' \
   'API_SESSIONS_REPLAY_OK' \
   'APP_ADMINS_FRESH_MIGRATION_OK' \
   'APP_ADMINS_UPGRADE_MIGRATION_OK' \
-  'APP_ADMINS_RLS_OK'
+  'APP_ADMINS_RLS_OK' \
+  'CANARY_ADMISSIONS_FRESH_MIGRATION_OK' \
+  'CANARY_ADMISSIONS_UPGRADE_MIGRATION_OK' \
+  'CANARY_ADMISSIONS_HARD_CAP_OK' \
+  'CANARY_ADMISSIONS_SESSION_REVOKE_OK'
