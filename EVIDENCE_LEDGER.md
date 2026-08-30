@@ -1417,23 +1417,23 @@ Penutupan:
 
 ### R2-001 — Canary admission registry dan hard cap
 
-- Status: IN_PROGRESS
+- Status: VERIFIED
 - Parent: R2 — Canary maksimal 15 Mini App users
 - Outcome: operator dapat pre-admit Telegram user ID, kapasitas aktif mustahil
   melewati 15, dan revoke admission langsung mencabut seluruh API session user.
 - Goal trace: production dibuka bertahap untuk 1–2 user dan dinaikkan perlahan,
   tetapi tidak pernah melampaui 15 selama canary.
 - Acceptance criteria:
-  - [ ] Registry backend-only menerima Telegram user ID sebelum first login dan
+  - [x] Registry backend-only menerima Telegram user ID sebelum first login dan
     menyimpan active slot/revocation state tanpa bergantung pada account session.
-  - [ ] Constraint database membatasi tepat 15 slot unik; concurrency atau direct
+  - [x] Constraint database membatasi tepat 15 slot unik; concurrency atau direct
     write tidak dapat menciptakan user aktif ke-16.
-  - [ ] Operasi admission/revoke tunggal mempunyai status stabil, serialized, dan
+  - [x] Operasi admission/revoke tunggal mempunyai status stabil, serialized, dan
     hanya dapat dieksekusi backend role.
-  - [ ] Revoke melepaskan slot dan atomically merevoke semua API session terkait;
+  - [x] Revoke melepaskan slot dan atomically merevoke semua API session terkait;
     setting, entitlement, dan `app_users` tidak dihapus.
-  - [ ] Browser roles tidak dapat membaca registry atau menjalankan fungsi admission.
-  - [ ] Fresh/upgrade SQL fixture dan integration regression lulus.
+  - [x] Browser roles tidak dapat membaca registry atau menjalankan fungsi admission.
+  - [x] Fresh/upgrade SQL fixture dan integration regression lulus.
 - Non-goal: gate pada session exchange (R2-002), UI admin, admission lewat public
   HTTP, penghapusan user/setting, dan subscription publik.
 - Dependencies: R1-003.
@@ -1447,6 +1447,39 @@ Penutupan:
   ledger.
 - Required evidence: active count/slot uniqueness, revoke session proof, privilege,
   fresh/upgrade markers, remote proof, diff, dan commit.
+- Commit/diff: `2272923` (`feat: enforce fifteen-user canary capacity`).
+- Acceptance evidence:
+  - registry memakai Telegram user ID langsung sehingga calon user dapat di-admit
+    sebelum `app_users` atau Telegram account session dibuat;
+  - active admission wajib memegang satu unique slot 1..15, sehingga schema sendiri
+    menutup kemungkinan user aktif ke-16;
+  - security-definer function diserialisasi advisory transaction lock dan hanya
+    memberi status `ADMITTED`, `ALREADY_ADMITTED`, `LIMIT_REACHED`, `REVOKED`, atau
+    `NOT_ADMITTED`;
+  - service role hanya memperoleh SELECT table + EXECUTE function; browser role
+    tidak memperoleh keduanya dan direct service-role mutation tidak tersedia;
+  - revoke mengosongkan slot dan merevoke seluruh `api_sessions` melalui canonical
+    `app_users.telegram_user_id`, tanpa menghapus user/data bisnis;
+  - slot yang dilepas terbukti dapat dipakai calon berikutnya dan active count tetap 15.
+- Commands/tests:
+  - ephemeral PostgreSQL fresh/upgrade/RLS: seluruh APP_USERS, API_SESSIONS,
+    APP_ADMINS, dan CANARY_ADMISSIONS marker pass;
+  - API PostgreSQL integration 3/3 dan engine PostgreSQL regression 2/2 pass;
+  - `git diff --check`: pass.
+- Remote evidence: Supabase migration `canary_admissions` berhasil dan tercatat.
+  Transaction proof memasukkan 15, menolak user ke-16, merevoke bearer session,
+  memakai ulang slot 1, mempertahankan active count 15, dan rollback menyisakan
+  0 row. RLS aktif serta `anon`/`authenticated` denied. Security advisor hanya INFO
+  RLS-no-policy yang disengaja untuk backend deny-all table.
+- Result summary: hard cap canary 15 kini dijamin database dan revoke admission
+  langsung mematikan session API tanpa menyentuh setting/langganan user.
+- Remaining risk: session exchange belum memeriksa registry, sehingga schema ini
+  belum membatasi login sampai R2-002 diterapkan. Operator bootstrap/runbook belum
+  ditutup sampai R2-003.
+- Rollback note: table/function remote additive dipertahankan; karena belum di-wire
+  ke exchange, revert source tidak mengubah perilaku login existing.
+- Follow-up units: R2-002 atomic canary gate pada session exchange dan response
+  `CANARY_ACCESS_REQUIRED`, lalu R2-003 owner bootstrap/runbook.
 
 ## Template penutupan unit
 
