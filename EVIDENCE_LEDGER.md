@@ -902,17 +902,22 @@ Penutupan:
     dan seluruh data di-rollback.
   - [x] Dedicated Node gate gagal dengan exit `2` saat database URL tidak ada, sehingga
     integration test tidak dapat hijau karena skip diam-diam.
-  - [ ] Repository Node production dan commit-time `LISTEN/NOTIFY` lulus melalui
+  - [x] Repository Node production dan commit-time `LISTEN/NOTIFY` lulus melalui
     direct/session Postgres connection ke project yang sama.
   - [ ] Load matrix PostgreSQL, resource measurement, sanitized artifact, dan summary
     selesai sebelum unit ditutup.
 - Current evidence: 22 remote migration record; 24 public tables, 49 routines, 93
   indexes; post-correction advisor hanya melaporkan unused-index info pada database
-  kosong; engine regression `87 pass`, `0 fail`, `2 PostgreSQL skip`; typecheck bersih;
-  dependency audit `0 vulnerabilities`.
-- Remaining blocker: `apps/engine/.env` belum mempunyai `F5_DATABASE_URL`. Nilainya
-  harus memakai direct atau session pooler agar dedicated connection `LISTEN/NOTIFY`
-  didukung; transaction pooler tidak valid untuk gate ini.
+  kosong; dedicated Supabase gate `2/2` tanpa skip membuktikan outbox aggregation,
+  fencing/takeover, shard parity, runtime backoff, commit-only/coalesced NOTIFY, rollback
+  silence, dan cleanup; engine regression `87 pass`, `0 fail`, `2 optional PostgreSQL
+  skip`; typecheck bersih; dependency audit `0 vulnerabilities`.
+- Test-isolation correction: gate pertama menangkap cross-file NOTIFY karena Node test
+  berjalan paralel serta fixture broadcast lama tidak dibersihkan. Runner sekarang
+  serial, assertions memfilter account fixture sendiri, dan cleanup selalu menghapus
+  workflow sebelum user sesuai dependency FK. Rerun lulus dan remote row count kembali 0.
+- Remaining gate: load matrix PostgreSQL, resource measurement, sanitized artifact,
+  dan summary; belum ada angka capacity yang boleh dipakai untuk Railway sizing.
 - Non-goal: Telegram live send, production capacity claim, Railway deploy, atau
   perubahan data client.
 

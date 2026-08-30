@@ -9,6 +9,7 @@ if (!databaseUrl) {
   const child = spawn(process.execPath, [
     "--experimental-strip-types",
     "--test",
+    "--test-concurrency=1",
     "test/broadcast-executor-postgres.integration.test.ts",
     "test/runtime-accounts-postgres.integration.test.ts",
   ], {

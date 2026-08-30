@@ -31,6 +31,7 @@ test("PostgreSQL runtime discovery is shard-safe, fenced, and commit-woken", { s
   });
   await cleanup();
   const wakeups: string[] = [];
+  const fixtureWakeups = () => wakeups.filter((value) => value === accountId);
   const subscription = await repository.subscribeWakeups((accountId) => wakeups.push(accountId));
 
   try {
@@ -105,13 +106,13 @@ test("PostgreSQL runtime discovery is shard-safe, fenced, and commit-woken", { s
         )
       `;
       await pause(50);
-      assert.deepEqual(wakeups, [], "NOTIFY must not escape an uncommitted transaction");
+      assert.deepEqual(fixtureWakeups(), [], "NOTIFY must not escape an uncommitted transaction");
     });
 
-    await waitUntil(() => wakeups.includes(accountId));
-    assert.equal(wakeups.filter((value) => value === accountId).length, 1, "duplicate wakeups in one transaction must coalesce");
+    await waitUntil(() => fixtureWakeups().length > 0);
+    assert.equal(fixtureWakeups().length, 1, "duplicate wakeups in one transaction must coalesce");
 
-    const wakeupCountBeforeRollback = wakeups.length;
+    const wakeupCountBeforeRollback = fixtureWakeups().length;
     await assert.rejects(
       sql.begin(async (transaction) => {
         await transaction`
@@ -124,7 +125,7 @@ test("PostgreSQL runtime discovery is shard-safe, fenced, and commit-woken", { s
       /INTENTIONAL_ROLLBACK/,
     );
     await pause(100);
-    assert.equal(wakeups.length, wakeupCountBeforeRollback, "rolled-back work must not emit a wakeup");
+    assert.equal(fixtureWakeups().length, wakeupCountBeforeRollback, "rolled-back work must not emit a wakeup");
 
     const shard = { shardCount: 3, shardIndex: shardIndexForAccount(accountId, 3) } as const;
     const due = await repository.listDue({ shard, limit: 10 });

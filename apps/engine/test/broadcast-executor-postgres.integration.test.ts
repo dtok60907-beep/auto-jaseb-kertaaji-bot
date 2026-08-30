@@ -14,12 +14,17 @@ const databaseUrl = process.env.F5_DATABASE_URL?.trim() || process.env.F4_DATABA
 
 test("PostgreSQL claim → adapter → aggregation and fencing-safe completion", { skip: !databaseUrl }, async () => {
   const sql = postgres(databaseUrl!, { max: 1 });
+  const userId = "30303030-3030-3030-3030-303030303030";
+  const accountId = "31313131-3131-3131-3131-313131313131";
+  const materialId = "32323232-3232-3232-3232-323232323232";
+  const targetId = "33333333-3333-3333-3333-333333333333";
+  const leaseOwner = "34343434-3434-3434-3434-343434343434";
+  const cleanup = () => sql.begin(async (transaction) => {
+    await transaction`delete from public.workflow_operations where user_id = ${userId}::uuid`;
+    await transaction`delete from auth.users where id = ${userId}::uuid`;
+  });
+  await cleanup();
   try {
-    const userId = "30303030-3030-3030-3030-303030303030";
-    const accountId = "31313131-3131-3131-3131-313131313131";
-    const materialId = "32323232-3232-3232-3232-323232323232";
-    const targetId = "33333333-3333-3333-3333-333333333333";
-    const leaseOwner = "34343434-3434-3434-3434-343434343434";
     await sql`insert into auth.users (id) values (${userId}::uuid)`;
     await sql`
       insert into public.entitlements (
@@ -242,6 +247,7 @@ test("PostgreSQL claim → adapter → aggregation and fencing-safe completion",
       provider_message_ids: [],
     });
   } finally {
-    await sql.end();
+    try { await cleanup(); }
+    finally { await sql.end(); }
   }
 });
