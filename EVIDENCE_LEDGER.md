@@ -1668,24 +1668,24 @@ Penutupan:
 
 ### R1-004B — Production API dependency composition
 
-- Status: IN_PROGRESS
+- Status: VERIFIED
 - Parent: R1-004 — Production API entrypoint
 - Outcome: satu composition path memasang seluruh repository PostgreSQL, Telegram
   Mini App verifier/session issuer, dan user/admin session authorizer ke API.
 - Goal trace: production tidak boleh menjalankan fake/legacy authorizer atau lupa
   memasang route fitur yang sudah dibangun/test terpisah.
 - Acceptance criteria:
-  - [ ] PostgreSQL client memakai seluruh database policy config termasuk explicit
+  - [x] PostgreSQL client memakai seluruh database policy config termasuk explicit
     prepared-statement mode dan bounded pool.
-  - [ ] Package, entitlement, broadcast setting/operation, Auto Komen, userbot profile,
+  - [x] Package, entitlement, broadcast setting/operation, Auto Komen, userbot profile,
     worker, API session, dan admin access memakai Postgres repository production.
-  - [ ] Telegram verifier/issuer memakai secret + freshness/TTL config yang sama
+  - [x] Telegram verifier/issuer memakai secret + freshness/TTL config yang sama
     dengan HTTP exchange.
-  - [ ] Production composition hanya memakai `apiSessions` + `adminAccess`, tidak
+  - [x] Production composition hanya memakai `apiSessions` + `adminAccess`, tidak
     injected fake user/admin authorizer.
-  - [ ] PostgreSQL integration membuktikan public route, denied canary login,
+  - [x] PostgreSQL integration membuktikan public route, denied canary login,
     admitted login, bearer user route, dan bearer admin route dalam satu app.
-  - [ ] Full regression, typecheck, syntax, dan diff check lulus.
+  - [x] Full regression, typecheck, syntax, dan diff check lulus.
 - Non-goal: listen/health/readiness/shutdown, logging, CORS, payment, owner nyata,
   Railway deploy, dan frontend.
 - Dependencies: R1-004A dan R2-002.
@@ -1699,6 +1699,36 @@ Penutupan:
   ledger.
 - Required evidence: real route statuses/data ownership, repository path, test counts,
   diff, commit.
+- Commit/diff: `9fc6313` (`feat: compose the production API stack`).
+- Acceptance evidence:
+  - database factory meneruskan max/connect/idle/lifetime/prepared config langsung
+    ke `postgres` client; close timeout tetap menjadi lifecycle R1-004C;
+  - composition memasang Postgres repository package, broadcast settings/operation,
+    Auto Komen, entitlement, userbot profile, worker, API session, dan admin access;
+  - verifier memakai bot token + initData age/skew config, issuer memakai session TTL
+    config, dan createApi production branch hanya menerima session/admin repository;
+  - real PostgreSQL app membuktikan public packages 200; unadmitted login 403 + no
+    user row; admitted signed Telegram login 200; bearer broadcast settings 200;
+    non-admin 403; DB admin grant lalu admin packages 200;
+  - request nyata Auto Komen dan userbot 200, worker admin 200, serta missing
+    broadcast operation 404 membuktikan optional production repositories terpasang;
+  - integration pertama menemukan lima constructor parameter-properties yang gagal
+    pada Node strip-only runtime; semuanya diubah menjadi standard fields dan proof
+    import/start berikutnya lulus.
+- Commands/tests:
+  - ephemeral PostgreSQL API integration 5/5, termasuk composition E2E 1/1;
+  - engine PostgreSQL regression 2/2 dan seluruh migration marker pass;
+  - full API: 88 pass, 0 fail, 5 PostgreSQL integration opt-in skip;
+  - `npm run typecheck`, expanded `npm run check`, dan `git diff --check`: pass.
+- Result summary: seluruh backend API dan auth kini memiliki satu production-only
+  wiring path yang telah dijalankan terhadap PostgreSQL nyata.
+- Remaining risk: composition belum melakukan DB startup probe, listen HTTP,
+  readiness transition, logging, atau graceful shutdown. `createProductionApiDatabase`
+  baru akan dipanggil executable main pada R1-004C.
+- Rollback note: composition additive; runtime syntax fixes semantik-equivalent dan
+  aman dipertahankan walau composition direvert.
+- Follow-up units: R1-004C executable lifecycle/health/Railway start contract, lalu
+  R2-003B actual owner admit/login/admin grant.
 
 ## Template penutupan unit
 
