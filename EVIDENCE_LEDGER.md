@@ -1228,24 +1228,24 @@ Penutupan:
 
 ### R1-002B2 — HTTP Mini App session exchange
 
-- Status: IN_PROGRESS
+- Status: VERIFIED
 - Parent: R1-002B — One-time session exchange dan replay prevention
 - Outcome: Mini App dapat menukar satu raw `initData` melalui endpoint versioned
   dan menerima bearer token dengan response/error contract yang aman.
 - Goal trace: frontend membutuhkan satu pintu login Telegram sebelum seluruh
   request bisnis memakai session API internal.
 - Acceptance criteria:
-  - [ ] `POST /v1/auth/telegram` hanya menerima JSON object dengan tepat satu
+  - [x] `POST /v1/auth/telegram` hanya menerima JSON object dengan tepat satu
     `initData` string dan batas ukuran yang sama dengan verifier.
-  - [ ] Success mengembalikan token/user/expiry tanpa field internal serta memakai
+  - [x] Success mengembalikan token/user/expiry tanpa field internal serta memakai
     `Cache-Control: no-store` dan `Pragma: no-cache`.
-  - [ ] malformed JSON/body, invalid signature, expired/future data, replay, dan
+  - [x] malformed JSON/body, invalid signature, expired/future data, replay, dan
     dependency failure mempunyai HTTP status + error code stabil yang berbeda.
-  - [ ] Error/response gagal tidak pernah mengecho raw `initData`, token candidate,
+  - [x] Error/response gagal tidak pernah mengecho raw `initData`, token candidate,
     stack, atau detail database.
-  - [ ] Route bersifat opt-in dalam `createApi` sehingga test/legacy composition
+  - [x] Route bersifat opt-in dalam `createApi` sehingga test/legacy composition
     tidak memperoleh authorizer palsu.
-  - [ ] Focused negative-path test, full API regression, typecheck, syntax, dan
+  - [x] Focused negative-path test, full API regression, typecheck, syntax, dan
     diff check lulus.
 - Non-goal: membaca Authorization header, mengautentikasi route bisnis, admin role,
   allowlist, rate control, refresh/revoke endpoint, dan frontend.
@@ -1260,6 +1260,28 @@ Penutupan:
   session existing; session yang sudah diterbitkan tetap mengikuti TTL/revoke.
 - Expected touch points: auth route, `createApi` option, focused route test, ledger.
 - Required evidence: test counts, payload/header assertions, diff, dan commit.
+- Commit/diff: `fc018c3` (`feat: expose Mini App session exchange`).
+- Acceptance evidence:
+  - success response hanya membawa bearer token, expiry, dan public user identity;
+  - seluruh response endpoint memakai `Cache-Control: no-store` dan
+    `Pragma: no-cache`;
+  - invalid request, terlalu besar, signature invalid, kedaluwarsa, future clock,
+    replay, dan dependency failure dipetakan ke status/code publik yang stabil;
+  - test memastikan raw `initData`, detail database, dan stack tidak muncul;
+  - tanpa `telegramSessionIssuer`, endpoint tidak terdaftar dan menghasilkan 404.
+- Commands/tests:
+  - focused auth route: 5/5 pass;
+  - full API: 71 pass, 0 fail, 2 integration PostgreSQL opt-in skip;
+  - `npm run typecheck`, `npm run check`, dan `git diff --check`: pass.
+- Result summary: HTTP exchange siap menjadi satu-satunya pintu penerbitan API
+  session dari Telegram Mini App, tetapi belum mengautentikasi route bisnis.
+- Remaining risk: response yang hilang setelah session tersimpan tetap menuntut
+  user membuka ulang Mini App karena replay ditolak. Rate control dan Bearer
+  authorizer sengaja dipisahkan ke unit berikutnya.
+- Rollback note: route dan composition option bersifat additive; revert source
+  tidak mengubah schema maupun session existing.
+- Follow-up units: R1-002C Bearer authorizer untuk route bisnis, lalu R1-003 role
+  admin yang terpisah dari identitas user.
 
 ## Template penutupan unit
 
