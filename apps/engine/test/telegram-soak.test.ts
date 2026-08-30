@@ -26,7 +26,7 @@ function config(overrides: Partial<TelegramSoakConfig> = {}): TelegramSoakConfig
     burstIntervalSeconds: 600,
     sendIntervalSeconds: 0,
     expectedAccounts: 10,
-    approvedCommandCount: 70,
+    approvedCommandCount: 66,
     interruptAtMinutes: [45, 15],
     revokeAccountIndex: 1,
     revokeAfterMinute: 30,
@@ -39,7 +39,7 @@ function config(overrides: Partial<TelegramSoakConfig> = {}): TelegramSoakConfig
 }
 
 test("Telegram soak config is explicit, supports the 1/10/50 protocol, and normalizes interruption order", () => {
-  const parsed = validateTelegramSoakConfig(config({ expectedAccounts: 50, approvedCommandCount: 350 }));
+  const parsed = validateTelegramSoakConfig(config({ expectedAccounts: 50, approvedCommandCount: 346 }));
   assert.equal(parsed.expectedAccounts, 50);
   assert.deepEqual(parsed.interruptAtMinutes, [15, 45]);
   assert.equal(Object.isFrozen(parsed), true);
@@ -52,7 +52,7 @@ test("Telegram soak config rejects ambiguous revocation and interruption schedul
     ["interruptAtMinutes", config({ interruptAtMinutes: [15, 15] })],
     ["interruptAtMinutes.0", config({ interruptAtMinutes: [60] })],
     ["expectedAccounts", config({ expectedAccounts: 51 })],
-    ["approvedCommandCount", config({ approvedCommandCount: 69 })],
+    ["approvedCommandCount", config({ approvedCommandCount: 65 })],
   ] as const) {
     assert.throws(() => validateTelegramSoakConfig(input), (error: unknown) => {
       assert.ok(error instanceof TelegramSoakConfigError);

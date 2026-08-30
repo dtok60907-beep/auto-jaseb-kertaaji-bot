@@ -1,8 +1,6 @@
 import { cpus, totalmem } from "node:os";
 import { monitorEventLoopDelay, performance } from "node:perf_hooks";
 
-import postgres, { type Sql } from "postgres";
-
 import type { TelegramRuntimeAdapterFactory } from "../account-runner/contracts.ts";
 import type { TelegramDeliveryAdapter } from "../../../../packages/telegram-contract/src/index.ts";
 
@@ -51,6 +49,23 @@ function integer(value: number, field: string, minimum: number, maximum: number)
   return value;
 }
 
+export function plannedTelegramSoakCommandCount(input: Readonly<{
+  soakDurationMinutes: number;
+  burstIntervalSeconds: number;
+  expectedAccounts: number;
+  revokeAfterMinute: number | null;
+}>): number {
+  const regularBursts = Math.ceil((input.soakDurationMinutes * 60) / input.burstIntervalSeconds);
+  if (input.revokeAfterMinute === null) return (regularBursts + 1) * input.expectedAccounts;
+  const burstsBeforeRevocation = Math.min(
+    regularBursts,
+    Math.ceil((input.revokeAfterMinute * 60) / input.burstIntervalSeconds),
+  );
+  const survivorCount = input.expectedAccounts - 1;
+  return (burstsBeforeRevocation * input.expectedAccounts)
+    + ((regularBursts - burstsBeforeRevocation + 1) * survivorCount);
+}
+
 export function validateTelegramSoakConfig(input: TelegramSoakConfig): TelegramSoakConfig {
   if (!input.databaseUrl.trim()) fail("databaseUrl");
   if (!COMMIT.test(input.commit)) fail("commit");
@@ -59,8 +74,6 @@ export function validateTelegramSoakConfig(input: TelegramSoakConfig): TelegramS
   const expectedAccounts = integer(input.expectedAccounts, "expectedAccounts", 1, 50);
   const burstIntervalSeconds = integer(input.burstIntervalSeconds, "burstIntervalSeconds", 10, 3_600);
   const approvedCommandCount = integer(input.approvedCommandCount, "approvedCommandCount", 1, 1_000_000);
-  const plannedCommandCount = (Math.ceil((soakDurationMinutes * 60) / burstIntervalSeconds) + 1) * expectedAccounts;
-  if (approvedCommandCount !== plannedCommandCount) fail("approvedCommandCount");
   const interrupts = input.interruptAtMinutes.map((minute, index) => {
     const parsed = integer(minute, `interruptAtMinutes.${index}`, 1, MAX_MINUTE - 1);
     if (parsed >= input.soakDurationMinutes) fail(`interruptAtMinutes.${index}`);
@@ -70,7 +83,15 @@ export function validateTelegramSoakConfig(input: TelegramSoakConfig): TelegramS
   const revokeAccountIndex = input.revokeAccountIndex === null ? null : integer(input.revokeAccountIndex, "revokeAccountIndex", 1, expectedAccountsSafe(input));
   const revokeAfterMinute = input.revokeAfterMinute === null ? null : integer(input.revokeAfterMinute, "revokeAfterMinute", 1, MAX_MINUTE - 1);
   if ((revokeAccountIndex === null) !== (revokeAfterMinute === null)) fail("revokeAccountIndex");
+  if (revokeAccountIndex !== null && expectedAccounts < 2) fail("revokeAccountIndex");
   if (revokeAfterMinute !== null && revokeAfterMinute >= input.soakDurationMinutes) fail("revokeAfterMinute");
+  const plannedCommandCount = plannedTelegramSoakCommandCount({
+    soakDurationMinutes,
+    burstIntervalSeconds,
+    expectedAccounts,
+    revokeAfterMinute,
+  });
+  if (approvedCommandCount !== plannedCommandCount) fail("approvedCommandCount");
   return Object.freeze({
     databaseUrl: input.databaseUrl.trim(),
     commit: input.commit.toLowerCase(),
@@ -254,108 +275,9 @@ export type SoakFixtureCounts = Readonly<{
   activeLeases: number;
 }>;
 
-export async function readSoakFixtureCounts(
-  sql: Sql,
-  prefixes: Readonly<{ commandPrefix: string; accountPrefix: string }>,
-): Promise<SoakFixtureCounts> {
-  const rows = await sql<{ metrics: Record<string, number> }[]>`
-    with fixture_accounts as (
-      select account.id, account.status
-        from public.telegram_accounts account
-        join public.workflow_operations operation on operation.account_id = account.id
-       where operation.idempotency_key like ${prefixes.accountPrefix + "%"}
-    ), fixture_commands as (
-      select command.id, command.status from public.workflow_commands command
-        join public.workflow_operations operation on operation.id = command.operation_id
-       where operation.idempotency_key like ${prefixes.commandPrefix + "%"}
-    )
-    select json_build_object(
-      'accounts_ready', (select count(*) from fixture_accounts where status = 'READY'),
-      'accounts_revoked', (select count(*) from fixture_accounts where status = 'REVOKED'),
-      'accounts_degraded', (select count(*) from fixture_accounts where status = 'DEGRADED'),
-      'commands_created', (select count(*) from fixture_commands),
-      'commands_succeeded', (select count(*) from fixture_commands where status = 'SUCCEEDED'),
-      'commands_pending', (select count(*) from fixture_commands where status = 'PENDING'),
-      'commands_in_flight', (select count(*) from fixture_commands where status in ('CLAIMED', 'SENDING')),
-      'commands_failed_retryable', (select count(*) from fixture_commands where status = 'FAILED_RETRYABLE'),
-      'commands_failed_final', (select count(*) from fixture_commands where status = 'FAILED_FINAL'),
-      'commands_uncertain', (select count(*) from fixture_commands where status = 'SIDE_EFFECT_UNCERTAIN'),
-      'active_leases', (select count(*) from public.account_leases lease
-        where lease.account_id in (select id from fixture_accounts) and lease.lease_until > now())
-    ) metrics
-  `;
-  const metrics = rows[0]?.metrics ?? {};
-  return Object.freeze({
-    accountsReady: Number(metrics.accounts_ready ?? 0),
-    accountsRevoked: Number(metrics.accounts_revoked ?? 0),
-    accountsDegraded: Number(metrics.accounts_degraded ?? 0),
-    commandsCreated: Number(metrics.commands_created ?? 0),
-    commandsSucceeded: Number(metrics.commands_succeeded ?? 0),
-    commandsPending: Number(metrics.commands_pending ?? 0),
-    commandsInFlight: Number(metrics.commands_in_flight ?? 0),
-    commandsFailedRetryable: Number(metrics.commands_failed_retryable ?? 0),
-    commandsFailedFinal: Number(metrics.commands_failed_final ?? 0),
-    commandsUncertain: Number(metrics.commands_uncertain ?? 0),
-    activeLeases: Number(metrics.active_leases ?? 0),
-  });
-}
-
 export type SendLatencySummary = Readonly<{
   sendsSucceeded: number;
   latencyP50Milliseconds: number;
   latencyP95Milliseconds: number;
   latencyMaxMilliseconds: number;
 }>;
-
-const EMPTY_LATENCY: SendLatencySummary = Object.freeze({
-  sendsSucceeded: 0, latencyP50Milliseconds: 0, latencyP95Milliseconds: 0, latencyMaxMilliseconds: 0,
-});
-
-export async function readSendLatencies(sql: Sql, commandPrefix: string): Promise<SendLatencySummary> {
-  const rows = await sql<{ latencies: number[] | null }[]>`
-    select array_agg(extract(epoch from (command.provider_sent_at - command.created_at)) * 1000
-                     order by extract(epoch from (command.provider_sent_at - command.created_at)) * 1000)::float8[] latencies
-      from public.workflow_commands command
-     where command.operation_id in (
-             select id from public.workflow_operations where idempotency_key like ${commandPrefix + "%"}
-           )
-       and command.status = 'SUCCEEDED' and command.provider_sent_at is not null
-  `;
-  const latencies = [...(rows[0]?.latencies ?? [])].sort((left, right) => left - right);
-  if (latencies.length === 0) return EMPTY_LATENCY;
-  const percentile = (ratio: number) => latencies[Math.min(latencies.length - 1, Math.floor(ratio * latencies.length))]!;
-  return Object.freeze({
-    sendsSucceeded: latencies.length,
-    latencyP50Milliseconds: percentile(0.5),
-    latencyP95Milliseconds: percentile(0.95),
-    latencyMaxMilliseconds: latencies[latencies.length - 1]!,
-  });
-}
-
-export async function readMalformedReceiptCount(sql: Sql, commandPrefix: string): Promise<number> {
-  const rows = await sql<{ malformed: number }[]>`
-    select count(*)::int malformed
-      from public.workflow_commands command
-      join public.workflow_operations operation on operation.id = command.operation_id
-     where operation.idempotency_key like ${commandPrefix + "%"}
-       and command.status = 'SUCCEEDED'
-       and cardinality(command.provider_message_ids) <> 1
-  `;
-  return rows[0]?.malformed ?? 0;
-}
-
-export async function readPostMarkerSucceededCount(
-  sql: Sql,
-  prefixes: Readonly<{ commandPrefix: string; accountPrefix: string }>,
-  afterIso: string,
-): Promise<number> {
-  const rows = await sql<{ succeeded: number }[]>`
-    select count(*)::int succeeded
-      from public.workflow_commands command
-      join public.workflow_operations operation on operation.id = command.operation_id
-     where operation.idempotency_key like ${prefixes.commandPrefix + "%"}
-       and command.status = 'SUCCEEDED'
-       and command.provider_sent_at >= ${afterIso}::timestamptz
-  `;
-  return rows[0]?.succeeded ?? 0;
-}
