@@ -1550,24 +1550,24 @@ Penutupan:
 
 ### R2-003A — Canary/operator bootstrap tooling
 
-- Status: IN_PROGRESS
+- Status: VERIFIED
 - Parent: R2 — Canary maksimal 15 Mini App users
 - Outcome: operator dapat admit/revoke/list canary dan grant/revoke admin melalui
   CLI terverifikasi tanpa menyalin SQL atau mengekspos credential/session.
 - Goal trace: owner dan 1–2 tester awal harus bisa dibootstrap repeatably sebelum
   API production dinyalakan, lalu admission dinaikkan perlahan hingga maksimal 15.
 - Acceptance criteria:
-  - [ ] CLI hanya menerima Telegram numeric user ID canonical dan command eksplisit;
+  - [x] CLI hanya menerima Telegram numeric user ID canonical dan command eksplisit;
     database URL hanya dari environment dan tidak pernah dicetak.
-  - [ ] admit/revoke memakai function hard-cap R2-001; grant admin gagal jelas bila
+  - [x] admit/revoke memakai function hard-cap R2-001; grant admin gagal jelas bila
     owner belum pernah login/memiliki `app_users` row.
-  - [ ] list hanya menampilkan operational admission/admin state, tanpa nama user,
+  - [x] list hanya menampilkan operational admission/admin state, tanpa nama user,
     bearer, initData, Telegram account session, atau database detail.
-  - [ ] Semua failure eksternal dipetakan ke stable operator code dan exit non-zero,
+  - [x] Semua failure eksternal dipetakan ke stable operator code dan exit non-zero,
     bukan raw PostgreSQL error.
-  - [ ] Runbook menetapkan urutan admit owner → first login → grant admin → admit
+  - [x] Runbook menetapkan urutan admit owner → first login → grant admin → admit
     tester 1–2, verifikasi, revoke, dan larangan melewati 15.
-  - [ ] Unit/integration test, regression, typecheck, dan diff check lulus.
+  - [x] Unit/integration test, regression, typecheck, dan diff check lulus.
 - Non-goal: public/admin HTTP endpoint, dashboard UI, actual owner ID admission,
   production API deploy, dan subscription publik.
 - Dependencies: R2-002.
@@ -1581,6 +1581,36 @@ Penutupan:
   API runbook/README, ledger.
 - Required evidence: CLI outputs/statuses, integration state, no-secret assertions,
   test counts, diff, commit.
+- Commit/diff: `7a1bb64` (`feat: add safe canary operator tooling`).
+- Acceptance evidence:
+  - parser hanya menerima `list`, `admit`, `revoke`, `grant-admin`, dan
+    `revoke-admin` dengan Telegram ID integer 1..4503599627370495;
+  - operator admission selalu memanggil `set_canary_admission`, sedangkan admin
+    grant mencari canonical `app_users` dan mengembalikan `APP_USER_NOT_FOUND` bila
+    first login belum terjadi;
+  - list hanya membawa Telegram ID, slot/timestamps, `appUserReady`, dan
+    `adminActive`; tidak ada nama, token, initData, account session, atau DB URL;
+  - CLI membaca `DATABASE_URL` dari environment, memakai satu non-prepared pooler
+    connection, dan menutupnya pada success/failure;
+  - invalid input/missing URL/provider failure menjadi stable JSON code + non-zero
+    exit; test membuktikan secret URL, password marker, dan raw query tidak keluar;
+  - runbook menetapkan admit owner sebelum deploy, first login sebelum admin grant,
+    hanya 1–2 tester awal, verifikasi list, serta revoke tanpa hapus data.
+- Commands/tests:
+  - focused operator unit: 3/3 pass;
+  - PostgreSQL operator integration: 1/1 pass dalam API integration 4/4;
+  - full API: 84 pass, 0 fail, 4 PostgreSQL integration opt-in skip;
+  - engine PostgreSQL regression 2/2 dan seluruh migration marker pass;
+  - `npm run typecheck`, `npm run check`, dan `git diff --check`: pass.
+- Result summary: bootstrap canary/admin kini repeatable melalui CLI terverifikasi,
+  bukan SQL manual, serta tidak memperluas public HTTP attack surface.
+- Remaining risk: actual owner belum di-admit karena numeric Telegram user ID owner
+  belum diberikan. Admin grant baru dapat dilakukan sesudah owner menyelesaikan
+  first login terhadap API production.
+- Rollback note: tooling/runbook additive; revert source tidak mengubah admission,
+  admin grant, user, session, atau setting yang sudah ada.
+- Follow-up units: R2-003B actual owner admission/login/admin grant, sesudah production
+  API composition/entrypoint tersedia; lalu admit 1–2 tester pertama.
 
 ## Template penutupan unit
 
