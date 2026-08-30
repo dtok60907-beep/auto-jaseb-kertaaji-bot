@@ -1612,6 +1612,35 @@ Penutupan:
 - Follow-up units: R2-003B actual owner admission/login/admin grant, sesudah production
   API composition/entrypoint tersedia; lalu admit 1–2 tester pertama.
 
+### R1-004A — Production API configuration boundary
+
+- Status: IN_PROGRESS
+- Parent: R1-004 — Production API entrypoint
+- Outcome: API production gagal sebelum membuka port bila secret, connection policy,
+  auth lifetime, atau readiness policy tidak lengkap/invalid.
+- Goal trace: canary tidak boleh dijalankan memakai implicit dev defaults atau config
+  yang berbeda diam-diam antara local dan Railway.
+- Acceptance criteria:
+  - [ ] DATABASE_URL dan Telegram bot token tervalidasi tetapi disimpan private dan
+    tidak pernah muncul pada JSON/string/inspect/error.
+  - [ ] Seluruh angka pool, auth TTL/freshness, health, dan shutdown mempunyai range
+    eksplisit; tidak ada angka kapasitas production yang default diam-diam.
+  - [ ] Prepared-statement policy wajib eksplisit untuk compatibility pooler.
+  - [ ] Host/PORT tervalidasi untuk Railway/local tanpa menerima whitespace/path.
+  - [ ] Error hanya mengandung stable code + nama field, tidak mengandung value.
+  - [ ] `.env.example`, unit test matrix, typecheck, syntax, dan diff check lulus.
+- Non-goal: membuka koneksi DB/port, repository composition, logging, CORS, Railway
+  deployment, owner bootstrap, dan frontend.
+- Dependencies: R1-003 dan R2-002.
+- Risks/failure modes: secret tercetak saat startup, zero/negative pool, readiness
+  timeout melebihi interval, session TTL unsafe, atau prepared mode berubah diam-diam.
+- Test plan: valid full config; missing/malformed secret; every numeric boundary;
+  timeout relation; boolean; host/port; JSON/string/inspect redaction.
+- Rollback/recovery: config module additive dan belum menjadi startup path.
+- Expected touch points: production config/tests, `.env.example`, package check, ledger.
+- Required evidence: invalid-field matrix, secret absence assertions, test counts,
+  diff, commit.
+
 ## Template penutupan unit
 
 ```markdown
