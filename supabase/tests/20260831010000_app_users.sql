@@ -87,6 +87,21 @@ select 1 / case when (
      and source_schema.nspname = 'public'
      and target_schema.nspname = 'public'
      and target.relname = 'app_users'
+     and source.relname in (
+       'package_catalog',
+       'entitlements',
+       'telegram_accounts',
+       'workflow_operations',
+       'worker_assignments',
+       'comment_rules',
+       'package_versions',
+       'broadcast_materials',
+       'broadcast_lpm_targets',
+       'auto_comment_divisions',
+       'auto_comment_channel_targets',
+       'auto_comment_reviews',
+       'userbot_profiles'
+     )
 ) then 1 else 0 end;
 
 select 1 / case when

@@ -46,11 +46,11 @@ SQL
 
 apply_migrations() {
   local database_name="$1"
-  local stop_before_app_users="${2:-false}"
+  local stop_before="${2:-}"
   local migration
   for migration in "${PROJECT_ROOT}"/supabase/migrations/*.sql; do
-    if [[ "${stop_before_app_users}" == "true" && "$(basename "${migration}")" == "20260831010000_app_users.sql" ]]; then
-      continue
+    if [[ -n "${stop_before}" && "$(basename "${migration}")" == "${stop_before}" ]]; then
+      break
     fi
     PGDATABASE="${database_name}" psql -v ON_ERROR_STOP=1 -f "${migration}" >/dev/null
   done
@@ -62,7 +62,7 @@ PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/20260831010000_app_users.sql" >/dev/null
 
 bootstrap_database app_users_upgrade
-apply_migrations app_users_upgrade true
+apply_migrations app_users_upgrade 20260831010000_app_users.sql
 PGDATABASE=app_users_upgrade psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/upgrades/20260831010000_seed.sql" >/dev/null
 PGDATABASE=app_users_upgrade psql -v ON_ERROR_STOP=1 \
@@ -70,11 +70,24 @@ PGDATABASE=app_users_upgrade psql -v ON_ERROR_STOP=1 \
 PGDATABASE=app_users_upgrade psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/upgrades/20260831010000_assert.sql" >/dev/null
 
+bootstrap_database api_sessions_upgrade
+apply_migrations api_sessions_upgrade 20260831020000_api_sessions.sql
+PGDATABASE=api_sessions_upgrade psql -v ON_ERROR_STOP=1 \
+  -f "${PROJECT_ROOT}/supabase/tests/upgrades/20260831020000_seed.sql" >/dev/null
+PGDATABASE=api_sessions_upgrade psql -v ON_ERROR_STOP=1 \
+  -f "${PROJECT_ROOT}/supabase/migrations/20260831020000_api_sessions.sql" >/dev/null
+PGDATABASE=api_sessions_upgrade psql -v ON_ERROR_STOP=1 \
+  -f "${PROJECT_ROOT}/supabase/tests/upgrades/20260831020000_assert.sql" >/dev/null
+
+PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
+  -f "${PROJECT_ROOT}/supabase/tests/20260831020000_api_sessions.sql" >/dev/null
+
 (
   cd "${PROJECT_ROOT}/apps/api"
   API_DATABASE_URL="postgresql://postgres@127.0.0.1:${PG_TEST_PORT}/app_users_fresh" \
     node --experimental-strip-types --test \
-      test/application-user-postgres.integration.test.ts
+      test/application-user-postgres.integration.test.ts \
+      test/api-session-postgres.integration.test.ts
 )
 
 (
@@ -90,4 +103,7 @@ printf '%s\n' \
   'APP_USERS_FRESH_MIGRATION_OK' \
   'APP_USERS_UPGRADE_MIGRATION_OK' \
   'APP_USERS_CONCURRENCY_OK' \
-  'APP_USERS_ENGINE_FIXTURES_OK'
+  'APP_USERS_ENGINE_FIXTURES_OK' \
+  'API_SESSIONS_FRESH_MIGRATION_OK' \
+  'API_SESSIONS_UPGRADE_MIGRATION_OK' \
+  'API_SESSIONS_REPLAY_OK'

@@ -1165,6 +1165,43 @@ Penutupan:
 - Follow-up units: R1-002B one-time session exchange/replay prevention, lalu
   R1-002C production Fastify authorizer wiring.
 
+### R1-002B1 — Atomic Mini App session issuance
+
+- Status: IN_PROGRESS
+- Parent: R1-002B — One-time session exchange dan replay prevention
+- Outcome: verified Telegram `initData` dapat ditukar tepat satu kali menjadi
+  bearer token acak; database hanya menyimpan hash token dan hash `initData`.
+- Goal trace: route bisnis memerlukan credential pendek yang dapat dicabut dan
+  tidak boleh menerima raw Telegram `initData` pada setiap request.
+- Acceptance criteria:
+  - [ ] Token mempunyai minimal 256-bit entropy, format ketat, TTL eksplisit, dan
+    raw token hanya muncul pada hasil issuance.
+  - [ ] Identity upsert dan session insert terjadi dalam satu transaction/function
+    database tanpa external network call di dalam transaction.
+  - [ ] Hash `initData` unik membuat exchange kedua menghasilkan status replay dan
+    tidak membuat session kedua.
+  - [ ] Lookup hanya mengembalikan session yang belum revoked dan belum expired.
+  - [ ] `anon`/`authenticated` tidak dapat membaca table atau menjalankan function
+    session; token/initData mentah tidak tersimpan.
+  - [ ] Fresh + upgrade migration, concurrent replay test, token redaction test,
+    regression API/engine, typecheck, dan diff check lulus.
+- Non-goal: endpoint HTTP, header Bearer parser, Fastify authorizer, admin role,
+  canary allowlist, refresh token, dan scheduled cleanup session.
+- Dependencies: R1-001 dan R1-002A.
+- Risks/failure modes: network response hilang setelah token dibuat, duplicate
+  request paralel, token hash collision, expired/revoked session diterima, raw
+  secret masuk persistence/error, dan pertumbuhan row session.
+- Test plan: deterministic entropy unit test; malformed policy; fake repository;
+  PostgreSQL first exchange/replay/concurrency/expiry/revoke; DB secret scan;
+  role privilege check; fresh dan upgrade migration.
+- Rollback/recovery: source dapat direvert; schema additive dipertahankan. Session
+  dapat direvoke tanpa mengubah user/settings; corrective schema memakai forward
+  migration.
+- Expected touch points: satu migration, session service/repository, focused unit
+  dan PostgreSQL integration test, migration harness, ledger.
+- Required evidence: exact test counts, database assertions, remote migration
+  proof/advisor, diff, dan commit.
+
 ## Template penutupan unit
 
 ```markdown
