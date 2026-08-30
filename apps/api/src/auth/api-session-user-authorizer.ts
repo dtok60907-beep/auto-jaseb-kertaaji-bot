@@ -15,11 +15,15 @@ export class ApiAuthenticationUnavailableError extends Error {
   }
 }
 
-function bearerToken(authorization: unknown): string | null {
+export function parseApiSessionBearerToken(authorization: unknown): string | null {
   if (typeof authorization !== "string") return null;
   const match = /^Bearer (.+)$/i.exec(authorization);
   if (!match || !API_SESSION_TOKEN.test(match[1])) return null;
   return match[1];
+}
+
+export function isCanonicalApplicationUserId(value: unknown): value is string {
+  return typeof value === "string" && USER_ID.test(value);
 }
 
 export function createApiSessionUserAuthorizer(sessions: ApiSessionRepository) {
@@ -27,12 +31,12 @@ export function createApiSessionUserAuthorizer(sessions: ApiSessionRepository) {
     throw new TypeError("INVALID_API_SESSION_REPOSITORY");
   }
   return async (request: FastifyRequest): Promise<ApiSessionUserActor | null> => {
-    const token = bearerToken(request.headers.authorization);
+    const token = parseApiSessionBearerToken(request.headers.authorization);
     if (token === null) return null;
     try {
       const active = await sessions.findActiveByTokenHash(hashApiSessionToken(token));
       if (active === null) return null;
-      if (!USER_ID.test(active.userId)) throw new Error("INVALID_API_SESSION_RESULT");
+      if (!isCanonicalApplicationUserId(active.userId)) throw new Error("INVALID_API_SESSION_RESULT");
       return Object.freeze({ id: active.userId });
     } catch {
       throw new ApiAuthenticationUnavailableError();

@@ -13,6 +13,7 @@ import type { AutoCommentSettingsRepository } from "../src/auto-comment/reposito
 import type { BroadcastSettingsRepository } from "../src/broadcast/repository.ts";
 import type { EntitlementRepository } from "../src/entitlements/repository.ts";
 import type { PackageRepository } from "../src/packages/repository.ts";
+import type { AdminAccessRepository } from "../src/auth/admin-access-repository.ts";
 
 const TOKEN = `jas_${"A".repeat(43)}`;
 const USER_ID = "11111111-1111-4111-8111-111111111111";
@@ -47,8 +48,8 @@ function app(sessions: ApiSessionRepository, seenUsers: string[] = []) {
     broadcasts,
     autoComments: {} as AutoCommentSettingsRepository,
     entitlements: {} as EntitlementRepository,
-    authorizeAdmin: async () => null,
     apiSessions: sessions,
+    adminAccess: { findActiveByTokenHash: async () => null } as AdminAccessRepository,
   });
 }
 

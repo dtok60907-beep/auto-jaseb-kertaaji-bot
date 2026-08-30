@@ -19,12 +19,13 @@ import {
   ApiAuthenticationUnavailableError,
   createApiSessionUserAuthorizer,
 } from "./auth/api-session-user-authorizer.ts";
+import type { AdminAccessRepository } from "./auth/admin-access-repository.ts";
+import { createApiSessionAdminAuthorizer } from "./auth/api-session-admin-authorizer.ts";
 
 type CommonApiOptions = {
   packages: PackageRepository;
   broadcasts: BroadcastSettingsRepository;
   autoComments: AutoCommentSettingsRepository;
-  authorizeAdmin: AdminAuthorizer;
   entitlements: EntitlementRepository;
   userbotProfiles?: UserbotProfileRepository;
   workers?: WorkerAccountSettingsRepository;
@@ -33,8 +34,18 @@ type CommonApiOptions = {
 };
 
 type ApiOptions = CommonApiOptions & (
-  | Readonly<{ apiSessions: ApiSessionRepository; authorizeUser?: never }>
-  | Readonly<{ apiSessions?: undefined; authorizeUser: UserAuthorizer }>
+  | Readonly<{
+      apiSessions: ApiSessionRepository;
+      adminAccess: AdminAccessRepository;
+      authorizeUser?: never;
+      authorizeAdmin?: never;
+    }>
+  | Readonly<{
+      apiSessions?: undefined;
+      adminAccess?: undefined;
+      authorizeUser: UserAuthorizer;
+      authorizeAdmin: AdminAuthorizer;
+    }>
 );
 
 export function createApi(options: ApiOptions) {
@@ -42,6 +53,9 @@ export function createApi(options: ApiOptions) {
   const authorizeUser = options.apiSessions
     ? createApiSessionUserAuthorizer(options.apiSessions)
     : options.authorizeUser;
+  const authorizeAdmin = options.apiSessions
+    ? createApiSessionAdminAuthorizer(options.adminAccess)
+    : options.authorizeAdmin;
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof ApiAuthenticationUnavailableError) {
       reply.header("cache-control", "no-store");
@@ -50,12 +64,12 @@ export function createApi(options: ApiOptions) {
     return reply.send(error);
   });
   if (options.telegramSessionIssuer) registerTelegramAuthRoutes(app, { issuer: options.telegramSessionIssuer });
-  registerPackageRoutes(app, options);
-  registerBroadcastSettingRoutes(app, { ...options, authorizeUser });
-  registerAutoCommentSettingRoutes(app, { ...options, authorizeUser });
-  registerEntitlementRoutes(app, options);
-  if (options.userbotProfiles) registerUserbotProfileRoutes(app, { profiles: options.userbotProfiles, authorizeUser, authorizeAdmin: options.authorizeAdmin });
-  if (options.workers) registerWorkerAccountRoutes(app, { workers: options.workers, authorizeAdmin: options.authorizeAdmin });
+  registerPackageRoutes(app, { ...options, authorizeAdmin });
+  registerBroadcastSettingRoutes(app, { ...options, authorizeUser, authorizeAdmin });
+  registerAutoCommentSettingRoutes(app, { ...options, authorizeUser, authorizeAdmin });
+  registerEntitlementRoutes(app, { ...options, authorizeAdmin });
+  if (options.userbotProfiles) registerUserbotProfileRoutes(app, { profiles: options.userbotProfiles, authorizeUser, authorizeAdmin });
+  if (options.workers) registerWorkerAccountRoutes(app, { workers: options.workers, authorizeAdmin });
   if (options.broadcastOperations) registerBroadcastOperationRoutes(app, { operations: options.broadcastOperations, authorizeUser });
   return app;
 }

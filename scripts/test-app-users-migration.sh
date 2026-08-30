@@ -79,15 +79,27 @@ PGDATABASE=api_sessions_upgrade psql -v ON_ERROR_STOP=1 \
 PGDATABASE=api_sessions_upgrade psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/upgrades/20260831020000_assert.sql" >/dev/null
 
+bootstrap_database app_admins_upgrade
+apply_migrations app_admins_upgrade 20260831030000_app_admins.sql
+PGDATABASE=app_admins_upgrade psql -v ON_ERROR_STOP=1 \
+  -f "${PROJECT_ROOT}/supabase/tests/upgrades/20260831030000_seed.sql" >/dev/null
+PGDATABASE=app_admins_upgrade psql -v ON_ERROR_STOP=1 \
+  -f "${PROJECT_ROOT}/supabase/migrations/20260831030000_app_admins.sql" >/dev/null
+PGDATABASE=app_admins_upgrade psql -v ON_ERROR_STOP=1 \
+  -f "${PROJECT_ROOT}/supabase/tests/upgrades/20260831030000_assert.sql" >/dev/null
+
 PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/20260831020000_api_sessions.sql" >/dev/null
+PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
+  -f "${PROJECT_ROOT}/supabase/tests/20260831030000_app_admins.sql" >/dev/null
 
 (
   cd "${PROJECT_ROOT}/apps/api"
   API_DATABASE_URL="postgresql://postgres@127.0.0.1:${PG_TEST_PORT}/app_users_fresh" \
     node --experimental-strip-types --test \
       test/application-user-postgres.integration.test.ts \
-      test/api-session-postgres.integration.test.ts
+      test/api-session-postgres.integration.test.ts \
+      test/admin-access-postgres.integration.test.ts
 )
 
 (
@@ -106,4 +118,7 @@ printf '%s\n' \
   'APP_USERS_ENGINE_FIXTURES_OK' \
   'API_SESSIONS_FRESH_MIGRATION_OK' \
   'API_SESSIONS_UPGRADE_MIGRATION_OK' \
-  'API_SESSIONS_REPLAY_OK'
+  'API_SESSIONS_REPLAY_OK' \
+  'APP_ADMINS_FRESH_MIGRATION_OK' \
+  'APP_ADMINS_UPGRADE_MIGRATION_OK' \
+  'APP_ADMINS_RLS_OK'

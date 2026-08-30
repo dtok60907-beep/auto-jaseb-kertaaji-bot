@@ -1344,6 +1344,43 @@ Penutupan:
 - Follow-up units: R1-003 role/admin authorization, lalu R2 canary allowlist maksimal
   15 user sebelum membuka integrasi fitur production.
 
+### R1-003 — Database-backed admin authorization
+
+- Status: IN_PROGRESS
+- Parent: R1 — Production API dan identity boundary
+- Outcome: endpoint admin hanya dapat dipakai app user dengan session aktif dan
+  grant admin aktif yang disimpan backend-only.
+- Goal trace: owner/admin harus dapat mengatur paket, entitlement, worker, dan
+  setting user tanpa memberi hak tersebut kepada semua user Mini App.
+- Acceptance criteria:
+  - [ ] Tabel grant admin mengacu ke `app_users`, mempertahankan revocation state,
+    memakai RLS deny-by-default, dan tidak dapat dibaca role browser.
+  - [ ] Tidak ada self-promotion HTTP; bootstrap/grant owner merupakan operasi
+    database deployment terkontrol.
+  - [ ] Satu lookup terindeks memverifikasi hash bearer, session aktif, serta grant
+    admin aktif dan mengembalikan canonical actor ID.
+  - [ ] User biasa, admin revoked, session unknown/revoked/expired, dan malformed
+    header ditolak sebelum handler admin menjalankan repository bisnis.
+  - [ ] Dependency failure menghasilkan 503 aman tanpa token/query detail.
+  - [ ] Composition production mewajibkan user-session dan admin-access repository
+    bersama; injected authorizer hanya tersedia pada mode legacy/test.
+  - [ ] SQL fixture, repository/route test, full regression, typecheck, dan remote
+    Supabase proof lulus sebelum status VERIFIED.
+- Non-goal: UI pengelolaan admin, multi-role/RBAC generik, canary allowlist, audit
+  perubahan setting, subscription/payment, dan frontend.
+- Dependencies: R1-002C.
+- Risks/failure modes: session user biasa diterima sebagai admin, admin revoked
+  tetap aktif, dua query per request menambah latency, browser membaca daftar admin,
+  atau mode production masih menerima dummy admin authorizer.
+- Test plan: fresh SQL grant/revoke/RLS; exact hash lookup; route admin allow/deny;
+  malformed no-query; outage safe 503; composition typecheck; remote advisor.
+- Rollback/recovery: source dapat kembali ke injected authorizer; tabel additive
+  dipertahankan agar grant/revoke tidak hilang dan tidak memengaruhi data bisnis.
+- Expected touch points: migration/SQL fixture, admin repository/authorizer,
+  `createApi`, focused integration test, ledger.
+- Required evidence: query count/hash, route response, SQL assertions, test counts,
+  remote migration/proof/advisor, diff, dan commit.
+
 ## Template penutupan unit
 
 ```markdown
