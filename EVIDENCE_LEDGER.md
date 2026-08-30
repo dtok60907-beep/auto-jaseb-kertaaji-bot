@@ -1226,6 +1226,41 @@ Penutupan:
 - Follow-up units: R1-002B2 HTTP exchange route dengan error mapping, lalu
   R1-002C Bearer authorizer untuk seluruh route bisnis.
 
+### R1-002B2 — HTTP Mini App session exchange
+
+- Status: IN_PROGRESS
+- Parent: R1-002B — One-time session exchange dan replay prevention
+- Outcome: Mini App dapat menukar satu raw `initData` melalui endpoint versioned
+  dan menerima bearer token dengan response/error contract yang aman.
+- Goal trace: frontend membutuhkan satu pintu login Telegram sebelum seluruh
+  request bisnis memakai session API internal.
+- Acceptance criteria:
+  - [ ] `POST /v1/auth/telegram` hanya menerima JSON object dengan tepat satu
+    `initData` string dan batas ukuran yang sama dengan verifier.
+  - [ ] Success mengembalikan token/user/expiry tanpa field internal serta memakai
+    `Cache-Control: no-store` dan `Pragma: no-cache`.
+  - [ ] malformed JSON/body, invalid signature, expired/future data, replay, dan
+    dependency failure mempunyai HTTP status + error code stabil yang berbeda.
+  - [ ] Error/response gagal tidak pernah mengecho raw `initData`, token candidate,
+    stack, atau detail database.
+  - [ ] Route bersifat opt-in dalam `createApi` sehingga test/legacy composition
+    tidak memperoleh authorizer palsu.
+  - [ ] Focused negative-path test, full API regression, typecheck, syntax, dan
+    diff check lulus.
+- Non-goal: membaca Authorization header, mengautentikasi route bisnis, admin role,
+  allowlist, rate control, refresh/revoke endpoint, dan frontend.
+- Dependencies: R1-001 dan R1-002B1.
+- Risks/failure modes: token tercache proxy/browser, body besar menghabiskan
+  resource, raw secret masuk error, parse error memakai format Fastify default,
+  atau dependency error membocorkan query.
+- Test plan: success; missing/extra/non-string/oversized body; malformed JSON;
+  seluruh Telegram verifier code; replay; entropy/persistence failure; response
+  header dan secret absence; regression penuh.
+- Rollback/recovery: route/composition additive dapat direvert tanpa schema atau
+  session existing; session yang sudah diterbitkan tetap mengikuti TTL/revoke.
+- Expected touch points: auth route, `createApi` option, focused route test, ledger.
+- Required evidence: test counts, payload/header assertions, diff, dan commit.
+
 ## Template penutupan unit
 
 ```markdown

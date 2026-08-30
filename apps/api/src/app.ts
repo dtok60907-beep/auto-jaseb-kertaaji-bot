@@ -13,6 +13,7 @@ import { registerWorkerAccountRoutes } from "./http/worker-account-routes.ts";
 import type { WorkerAccountSettingsRepository } from "./workers/repository.ts";
 import { registerBroadcastOperationRoutes } from "./http/broadcast-operation-routes.ts";
 import type { BroadcastOperationRepository } from "./broadcast-operations/repository.ts";
+import { registerTelegramAuthRoutes, type TelegramSessionExchange } from "./http/telegram-auth-routes.ts";
 
 export function createApi(options: {
   packages: PackageRepository;
@@ -24,8 +25,10 @@ export function createApi(options: {
   userbotProfiles?: UserbotProfileRepository;
   workers?: WorkerAccountSettingsRepository;
   broadcastOperations?: BroadcastOperationRepository;
+  telegramSessionIssuer?: TelegramSessionExchange;
 }) {
   const app = Fastify({ logger: false });
+  if (options.telegramSessionIssuer) registerTelegramAuthRoutes(app, { issuer: options.telegramSessionIssuer });
   registerPackageRoutes(app, options);
   registerBroadcastSettingRoutes(app, options);
   registerAutoCommentSettingRoutes(app, options);
