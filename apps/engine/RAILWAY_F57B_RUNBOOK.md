@@ -33,8 +33,8 @@ session.
 
 ## Service configuration
 
-- Root directory: `apps/engine`
-- Dockerfile: `Dockerfile`
+- Root directory: repository root (`/`)
+- Dockerfile: `apps/engine/Dockerfile`
 - Health path: `/health/ready`
 - Health timeout: 900 seconds
 - Sleep: disabled
