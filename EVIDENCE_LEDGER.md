@@ -1483,24 +1483,24 @@ Penutupan:
 
 ### R2-002 — Atomic canary gate pada session exchange
 
-- Status: IN_PROGRESS
+- Status: VERIFIED
 - Parent: R2 — Canary maksimal 15 Mini App users
 - Outcome: hanya Telegram user ID dengan admission aktif yang dapat memperoleh API
   session; penolakan tidak membuat `app_users` atau session parsial.
 - Goal trace: registry R2-001 harus benar-benar menjadi pintu masuk production,
   bukan sekadar daftar yang tidak dipakai runtime.
 - Acceptance criteria:
-  - [ ] Check admission terjadi di function transaksi sebelum identity upsert dan
+  - [x] Check admission terjadi di function transaksi sebelum identity upsert dan
     session insert, menutup TOCTOU serta partial user/session row.
-  - [ ] Repository/domain mengenali `ACCESS_DENIED` tanpa bergantung pada raw error
+  - [x] Repository/domain mengenali `ACCESS_DENIED` tanpa bergantung pada raw error
     PostgreSQL atau string query.
-  - [ ] HTTP exchange memetakan penolakan ke 403 `CANARY_ACCESS_REQUIRED`, no-store,
+  - [x] HTTP exchange memetakan penolakan ke 403 `CANARY_ACCESS_REQUIRED`, no-store,
     tanpa membocorkan initData atau database detail.
-  - [ ] User admitted tetap menerima session normal; replay, expiry, entropy, dan
+  - [x] User admitted tetap menerima session normal; replay, expiry, entropy, dan
     dependency error contract existing tidak berubah.
-  - [ ] Revoke admission membuat bearer existing invalid dan exchange berikutnya
+  - [x] Revoke admission membuat bearer existing invalid dan exchange berikutnya
     kembali ditolak.
-  - [ ] Fresh/upgrade migration, focused tests, full regression, typecheck, dan
+  - [x] Fresh/upgrade migration, focused tests, full regression, typecheck, dan
     remote proof lulus.
 - Non-goal: admission HTTP/UI, owner bootstrap, subscription publik, dan menghapus
   registry setelah canary.
@@ -1516,6 +1516,37 @@ Penutupan:
   HTTP mapping/tests, migration runner, ledger.
 - Required evidence: zero denied rows, status/body/header, regression counts, remote
   transaction rollback, diff, dan commit.
+- Commit/diff: `48d77d2` (`feat: gate API sessions by canary admission`).
+- Acceptance evidence:
+  - `issue_telegram_mini_app_session` memvalidasi request lalu memeriksa active
+    admission sebelum memanggil identity upsert atau session insert;
+  - denied result adalah typed `ACCESS_DENIED` dengan seluruh ID/expiry null, bukan
+    PostgreSQL exception string;
+  - repository meneruskan typed result, issuer mengubahnya menjadi domain error,
+    dan HTTP mengembalikan 403 `CANARY_ACCESS_REQUIRED` + no-store;
+  - denied fixture membuktikan nol `app_users` dan nol `api_sessions`; admitted user
+    tetap menghasilkan `CREATED` dan replay contract existing tetap lulus;
+  - revoke admission merevoke bearer existing dan exchange berikutnya kembali
+    menghasilkan `ACCESS_DENIED`.
+- Commands/tests:
+  - focused issuer + auth HTTP: 10/10 pass;
+  - full API: 81 pass, 0 fail, 3 PostgreSQL integration opt-in skip;
+  - ephemeral PostgreSQL fresh/upgrade: seluruh identity/session/admin/canary marker
+    pass, termasuk `CANARY_SESSION_GATE_NO_PARTIAL_ROWS_OK`;
+  - API PostgreSQL integration 3/3 dan engine regression 2/2 pass;
+  - `npm run typecheck`, `npm run check`, dan `git diff --check`: pass.
+- Remote evidence: Supabase migration `canary_session_gate` berhasil dan tercatat.
+  Remote transaction membuktikan denied no-row, admitted CREATED, revoke session,
+  dan denied-after-revoke; rollback menyisakan 0 admission/user/session proof row.
+- Result summary: registry canary kini menjadi atomic login gate production dan
+  user di luar daftar memperoleh error yang jelas tanpa partial state.
+- Remaining risk: belum ada owner/canary user nyata yang dimasukkan; jika API
+  dideploy sebelum bootstrap R2-003, semua login akan benar-benar ditolak. Public
+  subscription kelak memerlukan migration eksplisit untuk melepas gate canary.
+- Rollback note: function dapat dikembalikan ke versi pre-gate; registry, user,
+  settings, dan session existing tidak perlu dihapus.
+- Follow-up units: R2-003 owner bootstrap + admission runbook, lalu production API
+  composition/entrypoint sebelum fitur canary dijalankan.
 
 ## Template penutupan unit
 
