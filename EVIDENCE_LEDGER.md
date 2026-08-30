@@ -1104,7 +1104,7 @@ Penutupan:
 
 ### R1-002A — Canonical Telegram application user
 
-- Status: IN_PROGRESS
+- Final status: VERIFIED
 - Parent: R1 — Production API & identity
 - Outcome: satu Telegram user tervalidasi selalu dipetakan secara atomik ke satu
   UUID user internal tanpa email/nomor telepon sintetis dan tanpa bergantung pada
@@ -1113,16 +1113,16 @@ Penutupan:
   harus tetap mengikuti identitas Mini App user dan tidak berubah ketika session
   worker/userbot dilepas atau diganti.
 - Acceptance criteria:
-  - [ ] `app_users` menjadi parent UUID canonical bagi seluruh foreign key user
+  - [x] `app_users` menjadi parent UUID canonical bagi seluruh foreign key user
     pada schema bisnis.
-  - [ ] Telegram user ID positif, muat dalam batas 52-bit Telegram, dan unik.
-  - [ ] Upsert identitas bersifat atomic dan idempotent pada login bersamaan;
+  - [x] Telegram user ID positif, muat dalam batas 52-bit Telegram, dan unik.
+  - [x] Upsert identitas bersifat atomic dan idempotent pada login bersamaan;
     perubahan nama/username hanya memperbarui profile snapshot, bukan UUID.
-  - [ ] Migrasi upgrade membackfill UUID legacy sebelum foreign key dialihkan dan
+  - [x] Migrasi upgrade membackfill UUID legacy sebelum foreign key dialihkan dan
     tidak menghapus setting atau operation.
-  - [ ] Tabel serta function identitas tidak dapat dipanggil role browser
+  - [x] Tabel serta function identitas tidak dapat dipanggil role browser
     `anon`/`authenticated`; hanya backend database role yang mengaksesnya.
-  - [ ] Fresh migration, upgrade migration, focused repository test, seluruh API
+  - [x] Fresh migration, upgrade migration, focused repository test, seluruh API
     test, typecheck, dan diff check lulus.
 - Non-goal: menerbitkan bearer session API, replay consumption, role admin,
   canary allowlist, entitlement, dan wiring authorizer Fastify.
@@ -1141,6 +1141,29 @@ Penutupan:
   ledger.
 - Required evidence: command/result migration fresh+upgrade, concurrency result,
   privilege result, test counts, diff, dan commit.
+- Commit/diff: `4bdbce7` (`feat: add canonical Mini App users`).
+- Commands/tests: `scripts/test-app-users-migration.sh` membuktikan fresh,
+  upgrade, race, dan dua integration fixture engine; API default suite 62 pass +
+  1 opt-in DB skip; focused real-PostgreSQL 1/1; engine 120 pass + 3 opt-in
+  integration skip; API/engine typecheck; syntax/diff check.
+- Result summary: login paralel untuk Telegram ID sama menghasilkan satu row dan
+  UUID yang sama; snapshot dengan `auth_date` terbaru menang. Tiga belas foreign
+  key bisnis kini menuju `app_users`, sedangkan public FK menuju `auth.users`
+  menjadi nol. Migration Supabase remote `app_users` berhasil dan proof yang
+  di-rollback menghasilkan `identity_rows=1`, `app_user_foreign_keys=13`, serta
+  akses browser `false`.
+- Advisor result: security advisor hanya melaporkan INFO RLS tanpa policy pada
+  tabel backend-only (deny-all yang disengaja); performance advisor hanya
+  melaporkan index belum digunakan karena seluruh tabel production masih kosong.
+- Remaining risk: raw `initData` belum ditukar menjadi bearer session dan replay
+  dalam freshness window belum ditutup; keduanya sengaja menjadi R1-002B. Row
+  legacy tanpa Telegram ID didukung untuk upgrade, tetapi project remote memiliki
+  nol row legacy sehingga tidak memerlukan reconciliation.
+- Rollback note: source dapat direvert sebelum consumer session dibuat. Schema
+  remote tidak di-drop; rollback darurat harus berupa forward migration dan hanya
+  boleh mengalihkan FK kembali setelah semua UUID mempunyai parent yang valid.
+- Follow-up units: R1-002B one-time session exchange/replay prevention, lalu
+  R1-002C production Fastify authorizer wiring.
 
 ## Template penutupan unit
 
