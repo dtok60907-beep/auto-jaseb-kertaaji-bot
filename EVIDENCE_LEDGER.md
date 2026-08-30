@@ -910,8 +910,16 @@ Penutupan:
   indexes; post-correction advisor hanya melaporkan unused-index info pada database
   kosong; dedicated Supabase gate `2/2` tanpa skip membuktikan outbox aggregation,
   fencing/takeover, shard parity, runtime backoff, commit-only/coalesced NOTIFY, rollback
-  silence, dan cleanup; engine regression `87 pass`, `0 fail`, `2 optional PostgreSQL
-  skip`; typecheck bersih; dependency audit `0 vulnerabilities`.
+  silence, dan cleanup; setelah load harness ditambahkan, engine regression `91 pass`,
+  `0 fail`, `2 optional PostgreSQL skip`, API regression `52/52`, kedua typecheck
+  bersih, dan dependency audit engine/API masing-masing `0 vulnerabilities`.
+- Load-harness smoke evidence: case `1:1`, satu measured sample melalui Supabase
+  session pooler lulus seluruh 11 hard gate; fake-provider call tepat `1`, duplicate
+  side effect `0`, active lease `0`, executor duration sekitar `518.72 ms`, fixture
+  setup `2977.25 ms`, dan cleanup `1064.06 ms`. Query MCP sesudah run memverifikasi
+  operation, command, account, assignment, auth fixture, dan active lease semuanya `0`.
+  Smoke ini hanya memvalidasi harness; belum menjadi capacity measurement karena
+  dijalankan sebelum checkpoint commit dan tanpa load matrix.
 - Test-isolation correction: gate pertama menangkap cross-file NOTIFY karena Node test
   berjalan paralel serta fixture broadcast lama tidak dibersihkan. Runner sekarang
   serial, assertions memfilter account fixture sendiri, dan cleanup selalu menghapus

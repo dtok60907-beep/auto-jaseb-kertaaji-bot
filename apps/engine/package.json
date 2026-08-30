@@ -7,6 +7,7 @@
   },
   "scripts": {
     "benchmark:supervisor": "node --experimental-strip-types src/benchmark/run-supervisor-load.ts",
+    "benchmark:postgres": "node --env-file-if-exists=.env --experimental-strip-types src/benchmark/run-postgres-runtime-load.ts",
     "start:production": "node --experimental-strip-types src/production/main.ts",
     "test": "node --experimental-strip-types --test",
     "test:postgres": "node --env-file-if-exists=.env --experimental-strip-types src/benchmark/run-postgres-integration.ts",
