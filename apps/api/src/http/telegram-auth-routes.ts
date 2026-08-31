@@ -81,9 +81,15 @@ export function registerTelegramAuthRoutes(
           },
         });
       } catch (error) {
-        if (error instanceof TelegramMiniAppAuthError) return telegramError(reply, error);
+        if (error instanceof TelegramMiniAppAuthError) {
+          console.info(JSON.stringify({ event: "TELEGRAM_MINI_APP_AUTH_REJECTED", code: error.code }));
+          return telegramError(reply, error);
+        }
         if (error instanceof TelegramSessionExchangeError) {
-          if (error.code === "TELEGRAM_INIT_DATA_ALREADY_USED") return fail(reply, 409, "TELEGRAM_AUTH_REPLAYED");
+          if (error.code === "TELEGRAM_INIT_DATA_ALREADY_USED") {
+            console.info(JSON.stringify({ event: "TELEGRAM_MINI_APP_AUTH_REJECTED", code: error.code }));
+            return fail(reply, 409, "TELEGRAM_AUTH_REPLAYED");
+          }
           if (error.code === "CANARY_ACCESS_REQUIRED") return fail(reply, 403, "CANARY_ACCESS_REQUIRED");
           return fail(reply, 503, "AUTH_TEMPORARILY_UNAVAILABLE");
         }
