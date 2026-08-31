@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   ApiError,
@@ -183,15 +183,13 @@ function AccountCard({
           <span className={statusClass(account.status)} aria-hidden="true" />
           <div>
             <h3>{account.label}</h3>
-            <p>{account.active ? "Akun aktif" : "Akun tersimpan"}</p>
+            <p>{STATUS_LABEL[account.status]}</p>
           </div>
         </div>
-        {account.active && <span className="active-badge">Dipakai sekarang</span>}
+        {account.active && <span className="active-badge">Aktif</span>}
       </div>
       <div className="account-card__details">
-        <div><span>Status</span><strong>{STATUS_LABEL[account.status]}</strong></div>
         <div><span>Terhubung</span><strong>{formatDate(account.authenticatedAt)}</strong></div>
-        <div><span>Session</span><strong>{account.sessionPresent ? "Tersimpan aman" : "Belum tersedia"}</strong></div>
       </div>
       {account.lastErrorCode && (
         <p className="account-warning">{ERROR_LABEL[account.lastErrorCode] ?? "Akun perlu diperiksa."}</p>
@@ -296,23 +294,20 @@ function ConnectDialog({
       <div className="modal-backdrop" onClick={cancel} />
       <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="connect-title">
         <div className="modal-head">
-          <div><p className="eyebrow">Akun Userbot</p><h2 id="connect-title">Tambah akun Telegram</h2></div>
+          <h2 id="connect-title">Tambah akun Telegram</h2>
           <button className="close-button" type="button" onClick={cancel} aria-label="Tutup">Tutup</button>
         </div>
         {!flow && (
           <form className="stack-form" onSubmit={submitPhone}>
-            <p className="modal-intro">Masukkan nomor akun Telegram yang ingin dipakai Userbot. Telegram akan mengirim kode verifikasi ke akun tersebut.</p>
             <label htmlFor="phone">Nomor telepon</label>
             <input id="phone" inputMode="tel" autoComplete="tel" placeholder="+62 812 3456 7890" value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value)} required />
             {error && <p className="form-error" role="alert">{error}</p>}
             <button className="button button--primary button--wide" type="submit" disabled={busy}>{busy ? "Meminta kode" : "Kirim kode"}</button>
-            <p className="helper-text">Gunakan nomor yang bisa menerima kode Telegram.</p>
           </form>
         )}
         {flow?.status === "CODE_REQUIRED" && !expired && (
           <form className="stack-form" onSubmit={submitCode}>
             <div className="step-count"><span>Langkah 2 dari 3</span><strong>{formatRemaining(flow.expiresAt)}</strong></div>
-            <p className="modal-intro">Masukkan kode yang dikirim Telegram ke perangkatmu.</p>
             <label htmlFor="code">Kode Telegram</label>
             <input id="code" inputMode="numeric" autoComplete="one-time-code" placeholder="12345" value={code} onChange={(event) => setCode(event.target.value)} required />
             {error && <p className="form-error" role="alert">{error}</p>}
@@ -323,8 +318,7 @@ function ConnectDialog({
         {flow?.status === "PASSWORD_REQUIRED" && !expired && (
           <form className="stack-form" onSubmit={submitPassword}>
             <div className="step-count"><span>Langkah 3 dari 3</span><strong>{formatRemaining(flow.expiresAt)}</strong></div>
-            <p className="modal-intro">Akun ini memakai verifikasi dua langkah. Masukkan kata sandi Telegram kamu.</p>
-            <label htmlFor="password">Kata sandi Telegram</label>
+            <label htmlFor="password">Kata sandi 2FA Telegram</label>
             <input id="password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required />
             {error && <p className="form-error" role="alert">{error}</p>}
             <button className="button button--primary button--wide" type="submit" disabled={busy}>{busy ? "Memeriksa" : "Hubungkan akun"}</button>
@@ -332,9 +326,7 @@ function ConnectDialog({
         )}
         {flow && expired && (
           <div className="expired-state">
-            <p className="eyebrow">Waktu habis</p>
-            <h3>Proses koneksi perlu diulang.</h3>
-            <p>Kode Telegram hanya berlaku sebentar untuk menjaga akunmu tetap aman.</p>
+            <h3>Waktu koneksi habis</h3>
             <button className="button button--primary button--wide" type="button" onClick={() => { setFlow(null); setError(null); }}>Mulai lagi</button>
           </div>
         )}
@@ -349,9 +341,8 @@ function LogoutDialog({ account, busy, onClose, onConfirm }: { account: Telegram
     <div className="modal-layer" role="presentation">
       <div className="modal-backdrop" onClick={onClose} />
       <section className="modal-card modal-card--small" role="dialog" aria-modal="true" aria-labelledby="logout-title">
-        <p className="eyebrow">Hapus session</p>
         <h2 id="logout-title">Logout dari {account.label}?</h2>
-        <p className="modal-intro">Session Telegram akan dihapus dari server. Pengaturan Userbot dan langganan tetap ada.</p>
+        <p className="modal-intro">Session akun akan dihapus. Pengaturan dan langganan tetap tersimpan.</p>
         <div className="confirm-actions">
           <button className="button button--ghost" type="button" onClick={onClose} disabled={busy}>Batal</button>
           <button className="button button--danger" type="button" onClick={onConfirm} disabled={busy}>{busy ? "Menghapus" : "Ya, logout"}</button>
@@ -426,7 +417,6 @@ export default function App() {
 
   useEffect(() => { void authenticate(); }, [authenticate]);
 
-  const activeAccount = useMemo(() => accounts.find((account) => account.active) ?? null, [accounts]);
   const runAccountAction = async (nextAction: Exclude<ActionState, null>, account?: TelegramAccount) => {
     if (!session || action) return;
     setAction(nextAction); setPageError(null);
@@ -454,32 +444,23 @@ export default function App() {
   }
 
   return (
-    <main className="page">
+    <main className="page page--user">
       <header className="topbar">
         <div className="wordmark"><span className="wordmark-dot" aria-hidden="true" />kertaaji</div>
-        <div className="topbar-meta"><span className="live-pill"><span aria-hidden="true" />Login berhasil</span><span className="user-label">Akun Telegram</span></div>
+        <span className="user-mode">Userbot</span>
       </header>
-      <section className="hero">
-        <div className="hero-copy">
-          <p className="eyebrow">Akun Userbot</p>
-          <h1>Hubungkan akun Telegram <em>untuk Userbot.</em></h1>
-          <p className="hero-description">Tambahkan akun Telegram yang akan dipakai. Dari halaman ini kamu bisa memilih, melepas, atau logout akun tersebut.</p>
-        </div>
-        <div className="hero-note"><span className="note-line" aria-hidden="true" /><p>Session akun dienkripsi di server dan dipakai hanya saat Userbot berjalan.</p></div>
-      </section>
       <section className="content-section" aria-labelledby="accounts-heading">
-        <div className={`section-heading${accounts.length === 0 ? " section-heading--empty" : ""}`}>
-          <div><p className="eyebrow">Akun Telegram</p><h2 id="accounts-heading">Akun untuk Userbot</h2></div>
-          {accounts.length > 0 && <button className="button button--primary" type="button" onClick={() => setConnectOpen(true)}>Tambah akun Telegram</button>}
+        <div className="section-heading">
+          <h1 id="accounts-heading">Akun Telegram</h1>
+          <button className="button button--primary" type="button" onClick={() => setConnectOpen(true)}>Tambah akun</button>
         </div>
         {pageError && <div className="notice notice--error" role="alert"><span>{pageError}</span><button className="text-button" type="button" onClick={() => setPageError(null)}>Tutup</button></div>}
         {loadingAccounts ? <div className="account-grid" aria-busy="true"><div className="account-skeleton" /><div className="account-skeleton" /></div> : accounts.length === 0 ? (
-          <div className="empty-card"><div className="empty-mark" aria-hidden="true"><span /><span /></div><h3>Belum ada akun Telegram</h3><p>Tambahkan akun Telegram yang ingin dipakai Userbot.</p><button className="button button--primary" type="button" onClick={() => setConnectOpen(true)}>Tambah akun Telegram</button></div>
+          <div className="empty-card"><h2>Belum ada akun</h2></div>
         ) : (
           <div className="account-grid">{accounts.map((account) => <AccountCard key={account.id} account={account} action={action} onSwitch={(item) => void runAccountAction("SWITCH", item)} onDetach={() => void runAccountAction("DETACH")} onLogout={setLogoutAccount} />)}</div>
         )}
       </section>
-      {activeAccount && <footer className="page-footer"><span className={statusClass(activeAccount.status)} aria-hidden="true" />{activeAccount.label} sedang menjadi akun aktif Userbot.</footer>}
       {connectOpen && <ConnectDialog token={session.accessToken} onClose={() => setConnectOpen(false)} onConnected={() => loadAccounts(session.accessToken)} />}
       {logoutAccount && <LogoutDialog account={logoutAccount} busy={action === "LOGOUT"} onClose={() => { if (!action) setLogoutAccount(null); }} onConfirm={() => void runAccountAction("LOGOUT", logoutAccount)} />}
     </main>
