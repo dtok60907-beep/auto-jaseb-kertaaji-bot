@@ -1,6 +1,6 @@
 # Current Delivery Plan
 
-Status: 31 August 2026
+Status: 1 September 2026
 
 Dokumen ini adalah urutan kerja aktif. Tidak ada item baru dikerjakan sebelum
 item sebelumnya memiliki bukti yang disebutkan di bawah.
@@ -86,9 +86,9 @@ Domain web aktif, tetapi uji Telegram nyata belum dilakukan.
 
 ### D4 — Controlled production smoke
 
-Status saat ini: **NEXT** setelah D3 deployment. Jalur ini membutuhkan satu user
-canary dan otorisasi eksplisit sebelum login Telegram nyata, sehingga belum boleh
-dijalankan otomatis.
+Status saat ini: **IN_PROGRESS** pada preflight canary. Owner sudah admitted di
+slot 1 production dan status awal `appUserReady: false`, `adminActive: false`.
+Login Telegram nyata tetap harus dimulai oleh owner dari Mini App.
 
 - Outcome: satu user canary melakukan login nyata yang disetujui secara eksplisit
   dan memastikan session dapat dipakai engine lalu dilepas.
@@ -100,6 +100,11 @@ dijalankan otomatis.
 - Non-goal: load test, multi-account rollout, atau mengirim broadcast ke target
   production tanpa otoritas terpisah.
 - Dependency: D1 dan D3 selesai, serta user memberi otoritas untuk memakai akun uji.
+- Preflight evidence: operator `admit` mengembalikan `ALREADY_ADMITTED` pada slot 1;
+  operator `list` mengonfirmasi admission aktif tanpa app user atau admin grant.
+- Next action: owner membuka Mini App dari Telegram di
+  `https://kertaaji-web-production.up.railway.app`, menyelesaikan login Mini App,
+  lalu memberi konfirmasi agar smoke connect akun userbot dimulai.
 
 ### D5 — Userbot Jaseb configuration flow
 
