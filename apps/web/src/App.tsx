@@ -450,7 +450,10 @@ export default function App() {
         <div className="hero-note"><span className="note-line" aria-hidden="true" /><p>Session disimpan terenkripsi dan hanya dibuka saat Userbot bekerja.</p></div>
       </section>
       <section className="content-section" aria-labelledby="accounts-heading">
-        <div className="section-heading"><div><p className="eyebrow">Akun tersimpan</p><h2 id="accounts-heading">Pilih akun kerja</h2></div><button className="button button--primary" type="button" onClick={() => setConnectOpen(true)}>Hubungkan akun</button></div>
+        <div className={`section-heading${accounts.length === 0 ? " section-heading--empty" : ""}`}>
+          <div><p className="eyebrow">Akun tersimpan</p><h2 id="accounts-heading">Pilih akun kerja</h2></div>
+          {accounts.length > 0 && <button className="button button--primary" type="button" onClick={() => setConnectOpen(true)}>Hubungkan akun</button>}
+        </div>
         {pageError && <div className="notice notice--error" role="alert"><span>{pageError}</span><button className="text-button" type="button" onClick={() => setPageError(null)}>Tutup</button></div>}
         {loadingAccounts ? <div className="account-grid" aria-busy="true"><div className="account-skeleton" /><div className="account-skeleton" /></div> : accounts.length === 0 ? (
           <div className="empty-card"><div className="empty-mark" aria-hidden="true"><span /><span /></div><h3>Belum ada akun yang terhubung</h3><p>Hubungkan akun Telegram untuk mulai memakai Userbot dengan identitasmu sendiri.</p><button className="button button--primary" type="button" onClick={() => setConnectOpen(true)}>Hubungkan akun pertama</button></div>
