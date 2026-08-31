@@ -2,6 +2,8 @@ import type { Sql } from "postgres";
 
 import type {
   TelegramAccountAuthFlowResult,
+  TelegramAccountAuthFlowClaim,
+  TelegramAccountAuthCompletion,
   TelegramAccountAuthFlowStatus,
   TelegramAccountLifecycleRepository,
   TelegramAccountView,
@@ -24,6 +26,22 @@ type AccountRow = {
   session_authenticated_at: string | null;
   session_revoked_at: string | null;
   last_runtime_error_code: string | null;
+};
+
+type ClaimRow = {
+  result_status: TelegramAccountAuthFlowClaim["result"];
+  auth_flow_status: TelegramAccountAuthFlowStatus | null;
+  auth_flow_version: string | bigint | null;
+  auth_flow_expires_at: string | null;
+  auth_flow_encrypted_state: Buffer | null;
+  auth_flow_encryption_key_version: number | null;
+};
+
+type CompletionRow = {
+  result_status: TelegramAccountAuthCompletion["result"];
+  account_id: string | null;
+  account_label: string | null;
+  auth_flow_version: string | bigint | null;
 };
 
 function flow(row: FlowRow, fallbackId: string | null = null): TelegramAccountAuthFlowResult {
@@ -86,6 +104,60 @@ export class PostgresTelegramAccountLifecycleRepository implements TelegramAccou
       return flow(rows[0], input.authFlowId);
     } finally {
       encryptedState?.fill(0);
+    }
+  }
+
+  async claimAuthFlowStep(input: Parameters<TelegramAccountLifecycleRepository["claimAuthFlowStep"]>[0]) {
+    const rows = await this.sql<ClaimRow[]>`
+      select result_status, auth_flow_status, auth_flow_version::text,
+             auth_flow_expires_at::text, auth_flow_encrypted_state,
+             auth_flow_encryption_key_version
+        from public.claim_userbot_auth_flow_step(
+          ${input.userId}::uuid,
+          ${input.authFlowId}::uuid,
+          ${input.expectedVersion.toString()}::bigint,
+          ${input.expectedStatus}
+        )
+    `;
+    const row = rows[0];
+    if (!row) throw new Error("telegram auth flow claim was not returned");
+    return Object.freeze({
+      result: row.result_status,
+      status: row.auth_flow_status,
+      version: row.auth_flow_version === null ? null : BigInt(row.auth_flow_version),
+      expiresAt: row.auth_flow_expires_at,
+      encryptedState: row.auth_flow_encrypted_state === null
+        ? null
+        : Uint8Array.from(row.auth_flow_encrypted_state),
+      encryptionKeyVersion: row.auth_flow_encryption_key_version,
+    });
+  }
+
+  async completeAuthFlow(input: Parameters<TelegramAccountLifecycleRepository["completeAuthFlow"]>[0]) {
+    const encryptedSession = Buffer.from(input.encryptedSession);
+    try {
+      const rows = await this.sql<CompletionRow[]>`
+        select result_status, account_id::text, account_label, auth_flow_version::text
+          from public.complete_userbot_auth_flow(
+            ${input.userId}::uuid,
+            ${input.authFlowId}::uuid,
+            ${input.expectedVersion.toString()}::bigint,
+            ${input.providerUserId}::bigint,
+            ${input.label},
+            ${encryptedSession},
+            ${input.encryptionKeyVersion}
+          )
+      `;
+      const row = rows[0];
+      if (!row) throw new Error("telegram auth flow completion was not returned");
+      return Object.freeze({
+        result: row.result_status,
+        accountId: row.account_id,
+        label: row.account_label,
+        version: row.auth_flow_version === null ? null : BigInt(row.auth_flow_version),
+      });
+    } finally {
+      encryptedSession.fill(0);
     }
   }
 

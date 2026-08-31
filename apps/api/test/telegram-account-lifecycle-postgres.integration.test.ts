@@ -111,3 +111,96 @@ test("account lifecycle serializes auth flows and destroys only session-bound st
     await sql.end({ timeout: 5 });
   }
 });
+
+test("account authorization claims one attempt and atomically activates the verified account", { skip: !databaseUrl }, async () => {
+  const sql = postgres(databaseUrl!, { max: 3, prepare: false });
+  const repository = new PostgresTelegramAccountLifecycleRepository(sql);
+  const telegramUserId = 9_000_011_360;
+  let userId: string | null = null;
+  try {
+    const users = await sql<{ id: string }[]>`
+      select public.upsert_telegram_mini_app_user(
+        ${telegramUserId}::bigint, 'Authorization Repository Owner', null, null, 'id',
+        false, false, now()
+      )::text id
+    `;
+    userId = users[0]!.id;
+    const flow = await repository.beginAuthFlow(userId, 600);
+    const codeRequired = await repository.transitionAuthFlow({
+      userId,
+      authFlowId: flow.id!,
+      expectedVersion: 1n,
+      nextStatus: "CODE_REQUIRED",
+      encryptedState: Uint8Array.from([1, 2, 3, 4]),
+      encryptionKeyVersion: 1,
+    });
+    assert.equal(codeRequired.version, 2n);
+
+    const [claim, duplicate] = await Promise.all([
+      repository.claimAuthFlowStep({
+        userId, authFlowId: flow.id!, expectedVersion: 2n, expectedStatus: "CODE_REQUIRED",
+      }),
+      repository.claimAuthFlowStep({
+        userId, authFlowId: flow.id!, expectedVersion: 2n, expectedStatus: "CODE_REQUIRED",
+      }),
+    ]);
+    assert.deepEqual(new Set([claim.result, duplicate.result]), new Set(["CLAIMED", "VERSION_CONFLICT"]));
+    const claimed = claim.result === "CLAIMED" ? claim : duplicate;
+    const rejected = claim.result === "CLAIMED" ? duplicate : claim;
+    assert.equal(claimed.status, "VERIFYING");
+    assert.equal(claimed.version, 3n);
+    assert.deepEqual([...(claimed.encryptedState ?? [])], [1, 2, 3, 4]);
+    assert.equal(rejected.encryptedState, null);
+
+    const passwordRequired = await repository.transitionAuthFlow({
+      userId,
+      authFlowId: flow.id!,
+      expectedVersion: 3n,
+      nextStatus: "PASSWORD_REQUIRED",
+      encryptedState: Uint8Array.from([5, 6, 7, 8]),
+      encryptionKeyVersion: 1,
+    });
+    assert.equal(passwordRequired.version, 4n);
+    const passwordClaim = await repository.claimAuthFlowStep({
+      userId, authFlowId: flow.id!, expectedVersion: 4n, expectedStatus: "PASSWORD_REQUIRED",
+    });
+    assert.equal(passwordClaim.result, "CLAIMED");
+    assert.equal(passwordClaim.version, 5n);
+
+    const completion = await repository.completeAuthFlow({
+      userId,
+      authFlowId: flow.id!,
+      expectedVersion: 5n,
+      providerUserId: String(telegramUserId + 1),
+      label: "@verified_account",
+      encryptedSession: Uint8Array.from({ length: 41 }, () => 9),
+      encryptionKeyVersion: 1,
+    });
+    assert.equal(completion.result, "CONNECTED");
+    assert.equal(completion.version, 6n);
+    assert.ok(completion.accountId);
+
+    const accounts = await repository.listOwnedAccounts(userId);
+    assert.deepEqual(accounts.map(({ label, status, active, sessionPresent }) => ({ label, status, active, sessionPresent })), [{
+      label: "@verified_account", status: "READY", active: true, sessionPresent: true,
+    }]);
+    const rows = await sql<{ status: string; encrypted_state: Buffer | null; completed_account_id: string | null }[]>`
+      select status, encrypted_state, completed_account_id::text
+        from public.telegram_account_auth_flows where id = ${flow.id!}::uuid
+    `;
+    assert.deepEqual(rows[0], {
+      status: "SUCCEEDED", encrypted_state: null, completed_account_id: completion.accountId,
+    });
+  } finally {
+    if (userId) {
+      await sql`
+        delete from public.userbot_profile_accounts
+         where profile_id in (select id from public.userbot_profiles where user_id = ${userId}::uuid)
+      `;
+      await sql`delete from public.userbot_profiles where user_id = ${userId}::uuid`;
+      await sql`delete from public.telegram_accounts where owner_user_id = ${userId}::uuid`;
+      await sql`delete from public.app_users where id = ${userId}::uuid`;
+    }
+    await sql.end({ timeout: 5 });
+  }
+});

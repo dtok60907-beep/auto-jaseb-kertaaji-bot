@@ -127,6 +127,8 @@ PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/20260831050000_canary_session_gate.sql" >/dev/null
 PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/20260831110000_telegram_account_lifecycle.sql" >/dev/null
+PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
+  -f "${PROJECT_ROOT}/supabase/tests/20260831130000_telegram_account_authorization.sql" >/dev/null
 
 (
   cd "${PROJECT_ROOT}/apps/api"
@@ -172,4 +174,6 @@ printf '%s\n' \
   'TELEGRAM_ACCOUNT_LIFECYCLE_FRESH_MIGRATION_OK' \
   'TELEGRAM_ACCOUNT_LIFECYCLE_UPGRADE_MIGRATION_OK' \
   'TELEGRAM_ACCOUNT_AUTH_FLOW_CONCURRENCY_OK' \
-  'TELEGRAM_ACCOUNT_SESSION_REVOCATION_OK'
+  'TELEGRAM_ACCOUNT_SESSION_REVOCATION_OK' \
+  'TELEGRAM_ACCOUNT_AUTH_STEP_CLAIM_OK' \
+  'TELEGRAM_ACCOUNT_AUTH_COMPLETION_OK'
