@@ -1860,8 +1860,9 @@ Penutupan:
   - manifest sukses menunjukkan Dockerfile `/apps/api/Dockerfile`, build V3, satu
     replica, healthcheck `/health/ready` timeout 300s, overlap 5s, drain 35s,
     runtime V2, restart `ON_FAILURE`, dan application tidak sleep;
-  - watch paths membatasi GitHub auto-deploy pada `.dockerignore`, `apps/api/**`,
-    dan `packages/telegram-contract/**`, sehingga perubahan frontend/docs/ledger
+  - watch paths membatasi GitHub auto-deploy pada Docker input API: `.dockerignore`,
+    API Dockerfile, dependency manifests, `apps/api/src/**`, dan
+    `packages/telegram-contract/**`; frontend, test, runbook, env example, dan ledger
     tidak membakar build API yang tidak relevan;
   - deploy log hanya menunjukkan `API_READINESS_CHANGED ready=true` dan
     `API_APPLICATION_STARTED host=0.0.0.0 port=8080`, tanpa credential/error;
@@ -1888,6 +1889,35 @@ Penutupan:
   `da97c06`; tidak ada database migration/data rollback.
 - Follow-up units: R2-003B admit owner → first Mini App login → grant admin, lalu R3
   account lifecycle. Owner numeric Telegram user ID diperlukan untuk memulai bootstrap.
+
+### R2-003B — Actual owner bootstrap
+
+- Status: IMPLEMENTED_UNVERIFIED
+- Parent: R2-003 — Canary admission operations
+- Outcome: owner nyata telah masuk slot canary pertama melalui operator database resmi;
+  numeric Telegram user ID hanya disimpan pada `.env` lokal yang di-ignore Git.
+- Acceptance evidence:
+  - operator mengembalikan `ADMITTED` dengan slot `1`;
+  - read-back menunjukkan tepat satu admission aktif dan target owner ditemukan;
+  - `appUserReady: false` dan `adminActive: false` dipertahankan; sistem tidak membuat
+    application user palsu atau memberi admin sebelum login Telegram Mini App pertama;
+  - `.env.example` hanya memuat nama `CANARY_OWNER_TELEGRAM_USER_ID` tanpa value,
+    sedangkan runbook memakai ekspansi env dan tidak menulis ID ke source/command docs.
+- Commands/tests:
+  - `git check-ignore -v apps/api/.env`: ignored oleh root `.gitignore`;
+  - focused canary operator test: pass;
+  - production operator `admit` + redacted `list`: admission aktif `1`, slot `1`,
+    target present, app user belum ready, admin belum aktif;
+  - `git diff --check`: pass.
+- Result summary: boundary canary production sudah terbuka hanya untuk owner, tetapi
+  admin bootstrap sengaja belum selesai sampai identitas Mini App tervalidasi backend.
+- Remaining risk: belum ada successful owner Mini App login, bearer session nyata,
+  atau admin route proof; `grant-admin` sekarang harus menghasilkan
+  `APP_USER_NOT_FOUND` dan tidak boleh dibypass.
+- Rollback note: `revoke` melepaskan slot dan session tanpa menghapus settings/data;
+  file `.env` lokal dapat dihapus tanpa mengubah database admission.
+- Follow-up units: owner membuka Mini App production sekali; verifikasi
+  `appUserReady: true`; jalankan env-backed `grant-admin`; buktikan admin route.
 
 ## Template penutupan unit
 

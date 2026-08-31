@@ -15,7 +15,10 @@ export default defineRailway(() => {
       dockerfilePath: "/apps/api/Dockerfile",
       watchPatterns: [
         "/.dockerignore",
-        "/apps/api/**",
+        "/apps/api/Dockerfile",
+        "/apps/api/package.json",
+        "/apps/api/package-lock.json",
+        "/apps/api/src/**",
         "/packages/telegram-contract/**",
       ],
     },

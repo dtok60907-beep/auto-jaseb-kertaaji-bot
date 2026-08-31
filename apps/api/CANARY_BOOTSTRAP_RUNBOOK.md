@@ -16,11 +16,17 @@ an absolute maximum of 15 active Telegram user IDs.
 
 ## Owner bootstrap
 
-From `apps/api`, load `DATABASE_URL` into the current shell without printing it.
-Then admit the owner before starting the production API:
+Store the owner's numeric Telegram user ID only in the untracked `apps/api/.env`:
+
+```dotenv
+CANARY_OWNER_TELEGRAM_USER_ID=
+```
+
+From `apps/api`, load that file and `DATABASE_URL` into the current shell without
+printing either value. Then admit the owner before starting the production API:
 
 ```bash
-npm run canary:operator -- admit OWNER_TELEGRAM_USER_ID
+npm run canary:operator -- admit "$CANARY_OWNER_TELEGRAM_USER_ID"
 npm run canary:operator -- list
 ```
 
@@ -31,7 +37,7 @@ Mini App login.
 Deploy/start the API, open the Mini App once as the owner, then grant admin:
 
 ```bash
-npm run canary:operator -- grant-admin OWNER_TELEGRAM_USER_ID
+npm run canary:operator -- grant-admin "$CANARY_OWNER_TELEGRAM_USER_ID"
 npm run canary:operator -- list
 ```
 
