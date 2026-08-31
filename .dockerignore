@@ -9,6 +9,22 @@ apps/engine/*
 !apps/engine/src
 !apps/engine/src/**
 
+!apps/web
+apps/web/*
+!apps/web/Dockerfile
+!apps/web/.dockerignore
+!apps/web/package.json
+!apps/web/package-lock.json
+!apps/web/src
+!apps/web/src/**
+!apps/web/public
+!apps/web/public/**
+!apps/web/index.html
+!apps/web/tsconfig.json
+!apps/web/vite.config.ts
+!apps/web/nginx.conf
+!apps/web/docker-entrypoint.sh
+
 !apps/api
 apps/api/*
 !apps/api/package.json
