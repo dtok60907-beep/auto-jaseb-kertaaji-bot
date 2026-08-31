@@ -106,6 +106,15 @@ PGDATABASE=canary_session_gate_upgrade psql -v ON_ERROR_STOP=1 \
 PGDATABASE=canary_session_gate_upgrade psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/upgrades/20260831050000_assert.sql" >/dev/null
 
+bootstrap_database telegram_account_lifecycle_upgrade
+apply_migrations telegram_account_lifecycle_upgrade 20260831110000_telegram_account_lifecycle.sql
+PGDATABASE=telegram_account_lifecycle_upgrade psql -v ON_ERROR_STOP=1 \
+  -f "${PROJECT_ROOT}/supabase/tests/upgrades/20260831110000_seed.sql" >/dev/null
+PGDATABASE=telegram_account_lifecycle_upgrade psql -v ON_ERROR_STOP=1 \
+  -f "${PROJECT_ROOT}/supabase/migrations/20260831110000_telegram_account_lifecycle.sql" >/dev/null
+PGDATABASE=telegram_account_lifecycle_upgrade psql -v ON_ERROR_STOP=1 \
+  -f "${PROJECT_ROOT}/supabase/tests/upgrades/20260831110000_assert.sql" >/dev/null
+
 PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/20260831020000_api_sessions.sql" >/dev/null
 PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
@@ -114,6 +123,8 @@ PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/20260831040000_canary_admissions.sql" >/dev/null
 PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/20260831050000_canary_session_gate.sql" >/dev/null
+PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
+  -f "${PROJECT_ROOT}/supabase/tests/20260831110000_telegram_account_lifecycle.sql" >/dev/null
 
 (
   cd "${PROJECT_ROOT}/apps/api"
@@ -124,6 +135,7 @@ PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
       test/api-session-postgres.integration.test.ts \
       test/admin-access-postgres.integration.test.ts \
       test/canary-operator-postgres.integration.test.ts \
+      test/telegram-account-lifecycle-postgres.integration.test.ts \
       test/production-composition-postgres.integration.test.ts \
       test/production-application-postgres.integration.test.ts
 )
@@ -154,4 +166,8 @@ printf '%s\n' \
   'CANARY_ADMISSIONS_SESSION_REVOKE_OK' \
   'CANARY_SESSION_GATE_FRESH_MIGRATION_OK' \
   'CANARY_SESSION_GATE_UPGRADE_MIGRATION_OK' \
-  'CANARY_SESSION_GATE_NO_PARTIAL_ROWS_OK'
+  'CANARY_SESSION_GATE_NO_PARTIAL_ROWS_OK' \
+  'TELEGRAM_ACCOUNT_LIFECYCLE_FRESH_MIGRATION_OK' \
+  'TELEGRAM_ACCOUNT_LIFECYCLE_UPGRADE_MIGRATION_OK' \
+  'TELEGRAM_ACCOUNT_AUTH_FLOW_CONCURRENCY_OK' \
+  'TELEGRAM_ACCOUNT_SESSION_REVOCATION_OK'
