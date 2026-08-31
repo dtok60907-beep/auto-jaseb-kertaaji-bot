@@ -1985,6 +1985,65 @@ Penutupan:
 - Follow-up units: R3-002 Telegram connect transport + HTTP contract, lalu R3-003
   user list/switch/detach/logout route dan R3-004 engine handoff.
 
+### R3-002 — Durable Telegram connect API
+
+- Status: VERIFIED
+- Outcome: user dengan entitlement Userbot aktif dapat memulai login Telegram,
+  mengirim OTP, melanjutkan 2FA bila diperlukan, membatalkan flow, dan menyelesaikan
+  koneksi akun melalui state PostgreSQL terenkripsi yang aman terhadap restart dan
+  multi-replica. API tidak menyimpan OTP/password dan tidak memakai login map di RAM.
+- Goal trace: langganan serta setting tetap dimiliki `app_users`; sesi Telegram yang
+  dapat diganti hanya menjadi eksekutor, sehingga account switch/logout berikutnya
+  tidak perlu memindahkan konfigurasi user.
+- Acceptance criteria:
+  - [x] Request-code, OTP, 2FA, cancel, verified `getMe`, dan final account activation
+    mempunyai kontrak HTTP user-only, exact body, bounded body, dan `no-store`.
+  - [x] Setiap OTP/2FA attempt diklaim atomically memakai status + expected version;
+    submit bersamaan tidak dapat memakai transient state yang sama.
+  - [x] Transient flow dan final session memakai AES-256-GCM dengan AAD domain berbeda
+    serta terikat masing-masing ke auth-flow UUID dan account UUID.
+  - [x] OTP/password tidak diserialisasi; terminal flow membersihkan transient state;
+    ciphertext tidak pernah dikembalikan oleh API.
+  - [x] OTP/2FA salah memulihkan flow dengan version baru; subscription expiry
+    membatalkan flow sebelum provider call berikutnya.
+  - [x] Teleproto temporary client selalu disconnect saat sukses maupun provider error;
+    flood response menjadi error stabil tanpa internal sleep/interval produk.
+  - [x] Verified provider identity, encrypted final session, active account pointer,
+    dan flow completion disimpan atomically dengan global provider-account fencing.
+  - [x] Production Supabase migration, remote repository integration, Railway secrets,
+    deployment exact commit, health, dan unauthenticated route guard telah dibuktikan.
+- Commits: `28353b3` (`feat: isolate Telegram auth flow encryption`), `834ab52`
+  (`feat: fence Telegram authorization completion`), dan `ca5cc33`
+  (`feat: complete durable Telegram authorization API`).
+- Acceptance evidence:
+  - production migration `telegram_account_authorization` terpasang; completion FK
+    memakai cascade yang konsisten dengan invariant `SUCCEEDED`, dan function claim/
+    completion hanya dapat dieksekusi backend service role;
+  - production cleanup membuktikan fixture kembali nol untuk `app_users`, profile,
+    account, dan auth flow;
+  - lima runtime variable Telegram hadir dan lolos validasi bentuk tanpa nilainya
+    dicetak; Railway IaC plan menunjukkan 0 add, 1 safe watch-path change, 0 destroy;
+  - deployment Railway untuk exact commit `ca5cc33` berstatus `SUCCESS`;
+  - production `/health/live` mengembalikan `alive`, `/health/ready` mengembalikan
+    `ready/RUNNING`, dan connect endpoint tanpa bearer mengembalikan tepat
+    `401 USER_REQUIRED` tanpa mengirim OTP.
+- Commands/tests:
+  - full API: 108 pass, 0 fail, 0 cancelled, 8 opt-in PostgreSQL skip;
+  - focused authorization: 39 pass, 0 fail, 1 opt-in skip;
+  - full migration runner: API PostgreSQL 8/8 dan engine PostgreSQL 2/2;
+  - remote production lifecycle/authorization integration: 2/2 pass;
+  - `npm run typecheck`, `npm run check`, dan `git diff --check`: pass.
+- Remaining risk: belum dilakukan login Telegram real-user melalui endpoint production;
+  tindakan itu sengaja menunggu UI/aksi eksplisit user agar sistem tidak mengirim OTP
+  tanpa konteks. Shared session key yang sama wajib direferensikan oleh engine saat
+  R3-004, bukan digenerate ulang pada service engine.
+- Rollback note: sebelum ada account production, route dapat dilepas dan runtime
+  variables dipertahankan; migration additive dapat dinonaktifkan tanpa menyentuh
+  subscription/settings. Jangan merotasi/menghapus key version selama ciphertext dari
+  versi tersebut masih ada.
+- Follow-up units: R3-003 account list/switch/detach/logout API, kemudian R3-004
+  encrypted-session handoff ke engine.
+
 ## Template penutupan unit
 
 ```markdown
