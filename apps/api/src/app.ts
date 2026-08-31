@@ -27,6 +27,9 @@ import {
 } from "./http/telegram-account-auth-routes.ts";
 import { registerTelegramAccountManagementRoutes } from "./http/telegram-account-management-routes.ts";
 import type { TelegramAccountLifecycleRepository } from "./telegram-accounts/repository.ts";
+import { registerCurrentUserRoutes } from "./http/current-user-routes.ts";
+import type { AdminUserRepository } from "./admin-users/repository.ts";
+import { registerAdminUserRoutes } from "./http/admin-user-routes.ts";
 
 type CommonApiOptions = {
   packages: PackageRepository;
@@ -39,6 +42,7 @@ type CommonApiOptions = {
   telegramSessionIssuer?: TelegramSessionExchange;
   telegramAuthorization?: TelegramAuthorizationUseCase;
   telegramAccounts?: TelegramAccountLifecycleRepository;
+  adminUsers?: AdminUserRepository;
 };
 
 type ApiOptions = CommonApiOptions & (
@@ -66,7 +70,7 @@ export function createApi(options: ApiOptions) {
     reply
       .header("access-control-allow-origin", "*")
       .header("access-control-allow-headers", "authorization, content-type")
-      .header("access-control-allow-methods", "GET, POST, DELETE, OPTIONS")
+      .header("access-control-allow-methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
       .header("access-control-max-age", "600");
     if (request.method === "OPTIONS") return reply.code(204).send();
   });
@@ -84,6 +88,7 @@ export function createApi(options: ApiOptions) {
     return reply.send(error);
   });
   if (options.telegramSessionIssuer) registerTelegramAuthRoutes(app, { issuer: options.telegramSessionIssuer });
+  registerCurrentUserRoutes(app, { authorizeUser, authorizeAdmin });
   if (options.telegramAuthorization) {
     registerTelegramAccountAuthRoutes(app, {
       authorization: options.telegramAuthorization,
@@ -98,6 +103,7 @@ export function createApi(options: ApiOptions) {
     });
   }
   registerPackageRoutes(app, { ...options, authorizeAdmin });
+  if (options.adminUsers) registerAdminUserRoutes(app, { users: options.adminUsers, authorizeAdmin });
   registerBroadcastSettingRoutes(app, { ...options, authorizeUser, authorizeAdmin });
   registerAutoCommentSettingRoutes(app, { ...options, authorizeUser, authorizeAdmin });
   registerEntitlementRoutes(app, { ...options, authorizeAdmin });

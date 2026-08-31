@@ -24,6 +24,6 @@ test("API answers Mini App CORS preflight without enabling cookie credentials", 
   assert.equal(response.statusCode, 204);
   assert.equal(response.headers["access-control-allow-origin"], "*");
   assert.equal(response.headers["access-control-allow-headers"], "authorization, content-type");
-  assert.equal(response.headers["access-control-allow-methods"], "GET, POST, DELETE, OPTIONS");
+  assert.equal(response.headers["access-control-allow-methods"], "GET, POST, PUT, PATCH, DELETE, OPTIONS");
   assert.equal(response.headers["access-control-allow-credentials"], undefined);
 });

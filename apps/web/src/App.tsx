@@ -5,6 +5,7 @@ import {
   cancelTelegramAuthorization,
   detachTelegramAccount,
   exchangeTelegramInitData,
+  getCurrentUser,
   listTelegramAccounts,
   logoutTelegramAccount,
   startTelegramAuthorization,
@@ -12,8 +13,9 @@ import {
   submitTelegramPassword,
   switchTelegramAccount,
 } from "./api";
-import type { AuthFlow, AuthorizationResult, IssuedSession, TelegramAccount } from "./types";
+import type { AuthFlow, AuthorizationResult, IssuedSession, SessionRole, TelegramAccount } from "./types";
 import { readTelegramInitData } from "./telegram";
+import { AdminPanel } from "./AdminPanel";
 
 const SESSION_STORAGE_KEY = "jaseb.telegram.api-session";
 
@@ -363,6 +365,7 @@ export default function App() {
   const [authStatus, setAuthStatus] = useState<AuthStatus>("CHECKING");
   const [telegramAccessIssue, setTelegramAccessIssue] = useState<TelegramAccessIssue>("MISSING_INIT_DATA");
   const [session, setSession] = useState<IssuedSession | null>(null);
+  const [role, setRole] = useState<SessionRole | null>(null);
   const [accounts, setAccounts] = useState<readonly TelegramAccount[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
@@ -375,16 +378,23 @@ export default function App() {
     try { setAccounts(await listTelegramAccounts(accessToken)); }
     catch (cause) {
       if (cause instanceof ApiError && cause.status === 401) {
-        clearSession(); setSession(null); setAuthStatus("TELEGRAM_REQUIRED");
+        clearSession(); setSession(null); setRole(null); setAuthStatus("TELEGRAM_REQUIRED");
       } else setPageError(errorLabel(cause));
     } finally { setLoadingAccounts(false); }
   }, []);
+
+  const openSession = useCallback(async (issued: IssuedSession) => {
+    setSession(issued); setRole(null);
+    const currentUser = await getCurrentUser(issued.accessToken);
+    setRole(currentUser.role); setAuthStatus("READY");
+    if (currentUser.role === "USER") await loadAccounts(issued.accessToken);
+  }, [loadAccounts]);
 
   const authenticate = useCallback(async () => {
     const webApp = window.Telegram?.WebApp;
     webApp?.ready(); webApp?.expand();
     const stored = readStoredSession();
-    if (stored) { setSession(stored); setAuthStatus("READY"); await loadAccounts(stored.accessToken); return; }
+    if (stored) { await openSession(stored); return; }
     clearSession();
     const initData = readTelegramInitData();
     if (!initData) {
@@ -395,7 +405,7 @@ export default function App() {
     setAuthStatus("CHECKING");
     try {
       const issued = await exchangeTelegramInitData(initData);
-      saveSession(issued); setSession(issued); setAuthStatus("READY"); await loadAccounts(issued.accessToken);
+      saveSession(issued); await openSession(issued);
     } catch (cause) {
       if (cause instanceof ApiError && cause.code === "CANARY_ACCESS_REQUIRED") {
         setTelegramAccessIssue("CANARY_ACCESS");
@@ -412,7 +422,7 @@ export default function App() {
       }
       setAuthStatus("ERROR");
     }
-  }, [loadAccounts]);
+  }, [openSession]);
 
   useEffect(() => { void authenticate(); }, [authenticate]);
 
@@ -433,6 +443,14 @@ export default function App() {
   if (authStatus === "CHECKING") return <LoadingScreen />;
   if (authStatus === "TELEGRAM_REQUIRED" || authStatus === "ERROR" || !session) {
     return <TelegramRequired issue={telegramAccessIssue} onRetry={() => void authenticate()} />;
+  }
+
+  if (!role) return <LoadingScreen />;
+
+  if (role === "ADMIN") {
+    return <AdminPanel token={session.accessToken} onSessionExpired={() => {
+      clearSession(); setSession(null); setRole(null); setAuthStatus("TELEGRAM_REQUIRED");
+    }} />;
   }
 
   return (

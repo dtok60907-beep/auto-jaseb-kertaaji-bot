@@ -1,4 +1,15 @@
-import type { AuthFlow, AuthorizationResult, IssuedSession, TelegramAccount } from "./types";
+import type {
+  AdminUser,
+  AuthFlow,
+  AuthorizationResult,
+  CurrentUser,
+  Entitlement,
+  IssuedSession,
+  PackageInput,
+  ServicePackage,
+  TelegramAccount,
+  WorkerAccount,
+} from "./types";
 
 const runtimeApiBase = typeof window !== "undefined" ? window.__JASEB_RUNTIME_CONFIG__?.apiBaseUrl : undefined;
 const API_ROOT = (runtimeApiBase ?? import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
@@ -46,6 +57,11 @@ export function exchangeTelegramInitData(initData: string): Promise<IssuedSessio
     method: "POST",
     body: JSON.stringify({ initData }),
   });
+}
+
+export async function getCurrentUser(token: string): Promise<CurrentUser> {
+  const result = await request<{ user: CurrentUser }>("/v1/me", {}, token);
+  return result.user;
 }
 
 export async function listTelegramAccounts(token: string): Promise<readonly TelegramAccount[]> {
@@ -97,4 +113,79 @@ export function detachTelegramAccount(token: string): Promise<void> {
 
 export function logoutTelegramAccount(token: string, accountId: string): Promise<void> {
   return request<void>(`/v1/userbot/telegram-accounts/${accountId}/session`, { method: "DELETE" }, token);
+}
+
+export async function listAdminUsers(token: string, query = ""): Promise<readonly AdminUser[]> {
+  const params = new URLSearchParams();
+  if (query.trim()) params.set("q", query.trim());
+  const suffix = params.size > 0 ? `?${params}` : "";
+  const result = await request<{ users: readonly AdminUser[] }>(`/v1/admin/users${suffix}`, {}, token);
+  return result.users;
+}
+
+export async function listAdminPackages(token: string): Promise<readonly ServicePackage[]> {
+  const result = await request<{ packages: readonly ServicePackage[] }>("/v1/admin/packages", {}, token);
+  return result.packages;
+}
+
+export async function createAdminPackage(token: string, input: Required<PackageInput>): Promise<ServicePackage> {
+  const result = await request<{ package: ServicePackage }>("/v1/admin/packages", {
+    method: "POST",
+    body: JSON.stringify(input),
+  }, token);
+  return result.package;
+}
+
+export async function updateAdminPackage(token: string, packageId: string, input: Omit<PackageInput, "code">): Promise<ServicePackage> {
+  const result = await request<{ package: ServicePackage }>(`/v1/admin/packages/${packageId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  }, token);
+  return result.package;
+}
+
+export async function listEntitlements(token: string, userId: string): Promise<readonly Entitlement[]> {
+  const result = await request<{ entitlements: readonly Entitlement[] }>(`/v1/admin/users/${userId}/entitlements`, {}, token);
+  return result.entitlements;
+}
+
+export async function grantEntitlement(
+  token: string,
+  userId: string,
+  input: Readonly<{ packageId: string; durationDays: number; maxLpmGroups: number; maxChannelTargets: number }>,
+): Promise<Entitlement> {
+  const result = await request<{ entitlement: Entitlement }>(`/v1/admin/users/${userId}/entitlements`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  }, token);
+  return result.entitlement;
+}
+
+export async function extendEntitlement(token: string, entitlementId: string, durationDays: number): Promise<Entitlement> {
+  const result = await request<{ entitlement: Entitlement }>(`/v1/admin/entitlements/${entitlementId}/extend`, {
+    method: "POST",
+    body: JSON.stringify({ durationDays }),
+  }, token);
+  return result.entitlement;
+}
+
+export function revokeEntitlement(token: string, entitlementId: string): Promise<void> {
+  return request<void>(`/v1/admin/entitlements/${entitlementId}/revoke`, { method: "POST" }, token);
+}
+
+export async function listWorkerAccounts(token: string): Promise<readonly WorkerAccount[]> {
+  const result = await request<{ workers: readonly WorkerAccount[] }>("/v1/admin/worker-accounts", {}, token);
+  return result.workers;
+}
+
+export async function updateWorkerAccount(
+  token: string,
+  accountId: string,
+  input: Readonly<{ intervalSeconds: number; active: boolean }>,
+): Promise<WorkerAccount> {
+  const result = await request<{ worker: WorkerAccount }>(`/v1/admin/worker-accounts/${accountId}/settings`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  }, token);
+  return result.worker;
 }

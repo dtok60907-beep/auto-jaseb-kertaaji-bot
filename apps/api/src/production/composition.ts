@@ -13,6 +13,7 @@ import { PostgresPackageRepository } from "../packages/postgres-repository.ts";
 import { PostgresUserbotProfileRepository } from "../userbot-profiles/postgres-repository.ts";
 import { PostgresWorkerAccountSettingsRepository } from "../workers/postgres-repository.ts";
 import { PostgresTelegramAccountLifecycleRepository } from "../telegram-accounts/postgres-repository.ts";
+import { PostgresAdminUserRepository } from "../admin-users/postgres-repository.ts";
 import { TelegramAuthorizationService } from "../telegram-authorization/service.ts";
 import { TeleprotoAuthorizationTransport } from "../telegram-authorization/teleproto-transport.ts";
 import type { ProductionApiConfig } from "./config.ts";
@@ -65,5 +66,6 @@ export function composeProductionApi(config: ProductionApiConfig, sql: Sql) {
     telegramSessionIssuer: sessionIssuer,
     telegramAuthorization,
     telegramAccounts,
+    adminUsers: new PostgresAdminUserRepository(sql),
   });
 }
