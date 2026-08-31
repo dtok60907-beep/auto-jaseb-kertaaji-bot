@@ -19,6 +19,7 @@ const SESSION_STORAGE_KEY = "jaseb.telegram.api-session";
 
 type AuthStatus = "CHECKING" | "READY" | "TELEGRAM_REQUIRED" | "ERROR";
 type ActionState = "SWITCH" | "DETACH" | "LOGOUT" | null;
+type TelegramAccessIssue = "MISSING_INIT_DATA" | "OPEN_AGAIN" | "CANARY_ACCESS" | "UNAVAILABLE";
 
 const STATUS_LABEL: Record<TelegramAccount["status"], string> = {
   CONNECTING: "Sedang tersambung",
@@ -112,16 +113,28 @@ function LoadingScreen() {
   );
 }
 
-function TelegramRequired({ onRetry }: { onRetry: () => void }) {
+function TelegramRequired({
+  issue,
+  onRetry,
+}: {
+  issue: TelegramAccessIssue;
+  onRetry: () => void;
+}) {
+  const message = issue === "MISSING_INIT_DATA"
+    ? "Telegram belum mengirim identitas saat halaman ini dibuka. Tutup halaman ini, lalu buka lagi dari tombol Buka Kertaaji di chat bot."
+    : issue === "OPEN_AGAIN"
+      ? "Data pembukaan dari Telegram sudah tidak dapat dipakai. Tutup halaman ini, lalu buka lagi dari chat bot."
+      : issue === "CANARY_ACCESS"
+        ? "Akun Telegram ini belum mendapat akses uji coba."
+        : "Layanan akun belum dapat dihubungi. Coba lagi beberapa saat.";
+
   return (
     <main className="page page--centered page--auth">
       <div className="auth-card">
         <div className="brand-mark" aria-hidden="true"><span /><span /><span /></div>
         <p className="eyebrow">Ruang akun Telegram</p>
         <h1>Bawa akunmu ke tempat yang lebih rapi.</h1>
-        <p className="auth-copy">
-          Buka halaman ini dari Mini App Telegram supaya identitasmu bisa diverifikasi dengan aman.
-        </p>
+        <p className="auth-copy">{message}</p>
         <button className="button button--primary button--wide" type="button" onClick={onRetry}>
           Coba lagi
         </button>
@@ -335,6 +348,7 @@ function LogoutDialog({ account, busy, onClose, onConfirm }: { account: Telegram
 
 export default function App() {
   const [authStatus, setAuthStatus] = useState<AuthStatus>("CHECKING");
+  const [telegramAccessIssue, setTelegramAccessIssue] = useState<TelegramAccessIssue>("MISSING_INIT_DATA");
   const [session, setSession] = useState<IssuedSession | null>(null);
   const [accounts, setAccounts] = useState<readonly TelegramAccount[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
@@ -360,12 +374,30 @@ export default function App() {
     if (stored) { setSession(stored); setAuthStatus("READY"); await loadAccounts(stored.accessToken); return; }
     clearSession();
     const initData = readTelegramInitData();
-    if (!initData) { setAuthStatus("TELEGRAM_REQUIRED"); return; }
+    if (!initData) {
+      setTelegramAccessIssue("MISSING_INIT_DATA");
+      setAuthStatus("TELEGRAM_REQUIRED");
+      return;
+    }
     setAuthStatus("CHECKING");
     try {
       const issued = await exchangeTelegramInitData(initData);
       saveSession(issued); setSession(issued); setAuthStatus("READY"); await loadAccounts(issued.accessToken);
-    } catch { setAuthStatus("ERROR"); }
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.code === "CANARY_ACCESS_REQUIRED") {
+        setTelegramAccessIssue("CANARY_ACCESS");
+      } else if (cause instanceof ApiError && [
+        "TELEGRAM_AUTH_INVALID",
+        "TELEGRAM_AUTH_EXPIRED",
+        "TELEGRAM_AUTH_CLOCK_INVALID",
+        "TELEGRAM_AUTH_REPLAYED",
+      ].includes(cause.code)) {
+        setTelegramAccessIssue("OPEN_AGAIN");
+      } else {
+        setTelegramAccessIssue("UNAVAILABLE");
+      }
+      setAuthStatus("ERROR");
+    }
   }, [loadAccounts]);
 
   useEffect(() => { void authenticate(); }, [authenticate]);
@@ -385,7 +417,9 @@ export default function App() {
   };
 
   if (authStatus === "CHECKING") return <LoadingScreen />;
-  if (authStatus === "TELEGRAM_REQUIRED" || authStatus === "ERROR" || !session) return <TelegramRequired onRetry={() => void authenticate()} />;
+  if (authStatus === "TELEGRAM_REQUIRED" || authStatus === "ERROR" || !session) {
+    return <TelegramRequired issue={telegramAccessIssue} onRetry={() => void authenticate()} />;
+  }
 
   return (
     <main className="page">
