@@ -18,13 +18,27 @@ tanpa runner lama dapat memakai session yang sudah dilepas.
 | Mini App identity, session, entitlement | Verified | Backend dan migration sudah ada. |
 | R3-001 lifecycle account | Verified | Session/profile/entitlement dipisahkan. |
 | R3-002 connect API | Verified | OTP/2FA API terenkripsi dan durable. Real-user production login belum dilakukan. |
-| R3-003 list/switch/detach/logout API | Verified locally | Commit `1de0de7`; route, migration, typecheck, dan PostgreSQL integration lulus. Belum ada bukti migration/deploy production. |
+| R3-003 list/switch/detach/logout API | Verified production | Commit `1de0de7`; release `4a15d37` deployed successfully, migration applied, health and anonymous guard verified. |
 | R3-004 engine session handoff | Implemented and regression-verified | Engine sudah melakukan discovery → lease/fencing → load ciphertext → decrypt → connect; 29 focused tests lulus. Closure evidence belum dirapikan di ledger. |
 | Mini App UI | Not started | Tidak ada frontend aplikasi saat ini. |
 
 ## Urutan kerja yang dikunci
 
 ### D1 — Release dan verifikasi R3-003
+
+Status: **VERIFIED**
+
+Bukti 31 August 2026:
+
+- Railway deployment `7d3089f4-6990-4e86-9126-1a47f70b87c9` berstatus `SUCCESS` dan
+  service instance `RUNNING` dari branch `main`.
+- `20260831150000_telegram_account_management.sql` berhasil diterapkan ke database
+  production; function `detach_userbot_profile_account` dan
+  `switch_userbot_profile_account` terdeteksi.
+- `/health/live` mengembalikan `{"status":"alive"}` dan `/health/ready`
+  mengembalikan `{"status":"ready","state":"RUNNING"}`.
+- `GET /v1/userbot/telegram-accounts` tanpa bearer mengembalikan tepat
+  `{"code":"USER_REQUIRED"}` dengan HTTP `401`.
 
 - Outcome: API production menjalankan commit `1de0de7` dan migration account
   management terpasang.
