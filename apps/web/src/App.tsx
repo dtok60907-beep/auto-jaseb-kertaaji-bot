@@ -19,7 +19,14 @@ const SESSION_STORAGE_KEY = "jaseb.telegram.api-session";
 
 type AuthStatus = "CHECKING" | "READY" | "TELEGRAM_REQUIRED" | "ERROR";
 type ActionState = "SWITCH" | "DETACH" | "LOGOUT" | null;
-type TelegramAccessIssue = "MISSING_INIT_DATA" | "OPEN_AGAIN" | "CANARY_ACCESS" | "UNAVAILABLE";
+type TelegramAccessIssue =
+  | "MISSING_INIT_DATA"
+  | "AUTH_REJECTED"
+  | "AUTH_EXPIRED"
+  | "AUTH_REPLAYED"
+  | "CLOCK_INVALID"
+  | "CANARY_ACCESS"
+  | "UNAVAILABLE";
 
 const STATUS_LABEL: Record<TelegramAccount["status"], string> = {
   CONNECTING: "Sedang tersambung",
@@ -122,8 +129,14 @@ function TelegramRequired({
 }) {
   const message = issue === "MISSING_INIT_DATA"
     ? "Telegram belum mengirim identitas saat halaman ini dibuka. Tutup halaman ini, lalu buka lagi dari tombol Buka Kertaaji di chat bot."
-    : issue === "OPEN_AGAIN"
-      ? "Data pembukaan dari Telegram sudah tidak dapat dipakai. Tutup halaman ini, lalu buka lagi dari chat bot."
+    : issue === "AUTH_REJECTED"
+      ? "Identitas dari Telegram ditolak oleh server. Ini perlu diperbaiki di sistem, bukan dengan mencoba ulang."
+      : issue === "AUTH_EXPIRED"
+        ? "Data pembukaan Telegram sudah kedaluwarsa. Tutup halaman ini, lalu buka lagi dari chat bot."
+        : issue === "AUTH_REPLAYED"
+          ? "Data pembukaan ini sudah pernah dipakai. Tutup halaman ini, lalu buka lagi dari chat bot."
+          : issue === "CLOCK_INVALID"
+            ? "Waktu pada data Telegram tidak cocok dengan server. Ini perlu diperbaiki di sistem."
       : issue === "CANARY_ACCESS"
         ? "Akun Telegram ini belum mendapat akses uji coba."
         : "Layanan akun belum dapat dihubungi. Coba lagi beberapa saat.";
@@ -386,13 +399,14 @@ export default function App() {
     } catch (cause) {
       if (cause instanceof ApiError && cause.code === "CANARY_ACCESS_REQUIRED") {
         setTelegramAccessIssue("CANARY_ACCESS");
-      } else if (cause instanceof ApiError && [
-        "TELEGRAM_AUTH_INVALID",
-        "TELEGRAM_AUTH_EXPIRED",
-        "TELEGRAM_AUTH_CLOCK_INVALID",
-        "TELEGRAM_AUTH_REPLAYED",
-      ].includes(cause.code)) {
-        setTelegramAccessIssue("OPEN_AGAIN");
+      } else if (cause instanceof ApiError && cause.code === "TELEGRAM_AUTH_INVALID") {
+        setTelegramAccessIssue("AUTH_REJECTED");
+      } else if (cause instanceof ApiError && cause.code === "TELEGRAM_AUTH_EXPIRED") {
+        setTelegramAccessIssue("AUTH_EXPIRED");
+      } else if (cause instanceof ApiError && cause.code === "TELEGRAM_AUTH_REPLAYED") {
+        setTelegramAccessIssue("AUTH_REPLAYED");
+      } else if (cause instanceof ApiError && cause.code === "TELEGRAM_AUTH_CLOCK_INVALID") {
+        setTelegramAccessIssue("CLOCK_INVALID");
       } else {
         setTelegramAccessIssue("UNAVAILABLE");
       }
