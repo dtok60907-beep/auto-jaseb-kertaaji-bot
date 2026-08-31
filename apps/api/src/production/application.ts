@@ -130,7 +130,6 @@ export async function closeFastifyWithGrace(app: FastifyInstance, graceMilliseco
     forced = true;
     app.server.closeAllConnections();
   }, graceMilliseconds);
-  timer.unref?.();
   try { await closing; }
   finally { if (timer !== null) clearTimeout(timer); }
   return forced;

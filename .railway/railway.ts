@@ -20,6 +20,7 @@ export default defineRailway(() => {
         "/apps/api/package-lock.json",
         "/apps/api/src/**",
         "/packages/telegram-contract/**",
+        "/packages/telegram-session-crypto/**",
       ],
     },
     deploy: {
@@ -33,6 +34,11 @@ export default defineRailway(() => {
     env: {
       DATABASE_URL: preserve(),
       TELEGRAM_BOT_TOKEN: preserve(),
+      TELEGRAM_API_ID: preserve(),
+      TELEGRAM_API_HASH: preserve(),
+      TELEGRAM_SESSION_ACTIVE_KEY_VERSION: preserve(),
+      TELEGRAM_SESSION_KEYS: preserve(),
+      TELEGRAM_AUTH_FLOW_TTL_SECONDS: "600",
       API_DATABASE_MAX_CONNECTIONS: "5",
       API_DATABASE_CONNECT_TIMEOUT_SECONDS: "10",
       API_DATABASE_IDLE_TIMEOUT_SECONDS: "30",

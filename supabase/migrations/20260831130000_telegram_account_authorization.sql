@@ -196,6 +196,7 @@ create function public.complete_userbot_auth_flow(
   p_user_id uuid,
   p_auth_flow_id uuid,
   p_expected_version bigint,
+  p_account_id uuid,
   p_provider_user_id bigint,
   p_label text,
   p_encrypted_session bytea,
@@ -215,6 +216,9 @@ declare
   account_row public.telegram_accounts%rowtype;
   normalized_label text;
 begin
+  if p_account_id is null then
+    raise exception using errcode = 'P0001', message = 'INVALID_TELEGRAM_ACCOUNT_ID';
+  end if;
   if p_provider_user_id is null or p_provider_user_id <= 0 then
     raise exception using errcode = 'P0001', message = 'INVALID_TELEGRAM_PROVIDER_USER_ID';
   end if;
@@ -276,6 +280,11 @@ begin
       null::text, flow_row.version;
     return;
   end if;
+  if found and account_row.id is distinct from p_account_id then
+    return query select 'ACCOUNT_ID_MISMATCH'::text, account_row.id,
+      account_row.label, flow_row.version;
+    return;
+  end if;
 
   if found then
     update public.telegram_accounts
@@ -293,10 +302,10 @@ begin
      returning * into account_row;
   else
     insert into public.telegram_accounts (
-      owner_user_id, account_type, label, encrypted_session,
+      id, owner_user_id, account_type, label, encrypted_session,
       encryption_key_version, provider_user_id, status, session_authenticated_at
     ) values (
-      p_user_id, 'USERBOT', normalized_label, p_encrypted_session,
+      p_account_id, p_user_id, 'USERBOT', normalized_label, p_encrypted_session,
       p_encryption_key_version, p_provider_user_id, 'READY', now()
     ) returning * into account_row;
   end if;
@@ -317,15 +326,15 @@ $$;
 revoke all on function public.claim_userbot_auth_flow_step(uuid, uuid, bigint, text)
   from public, anon, authenticated;
 revoke all on function public.complete_userbot_auth_flow(
-  uuid, uuid, bigint, bigint, text, bytea, integer
+  uuid, uuid, bigint, uuid, bigint, text, bytea, integer
 ) from public, anon, authenticated;
 grant execute on function public.claim_userbot_auth_flow_step(uuid, uuid, bigint, text)
   to service_role;
 grant execute on function public.complete_userbot_auth_flow(
-  uuid, uuid, bigint, bigint, text, bytea, integer
+  uuid, uuid, bigint, uuid, bigint, text, bytea, integer
 ) to service_role;
 
 comment on function public.claim_userbot_auth_flow_step(uuid, uuid, bigint, text)
   is 'Atomically claims one OTP or 2FA attempt and returns encrypted state only to the backend role.';
-comment on function public.complete_userbot_auth_flow(uuid, uuid, bigint, bigint, text, bytea, integer)
+comment on function public.complete_userbot_auth_flow(uuid, uuid, bigint, uuid, bigint, text, bytea, integer)
   is 'Atomically binds verified Telegram identity/session, switches the profile, and clears transient auth state.';

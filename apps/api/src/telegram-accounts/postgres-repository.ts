@@ -142,6 +142,7 @@ export class PostgresTelegramAccountLifecycleRepository implements TelegramAccou
             ${input.userId}::uuid,
             ${input.authFlowId}::uuid,
             ${input.expectedVersion.toString()}::bigint,
+            ${input.accountId}::uuid,
             ${input.providerUserId}::bigint,
             ${input.label},
             ${encryptedSession},
@@ -159,6 +160,21 @@ export class PostgresTelegramAccountLifecycleRepository implements TelegramAccou
     } finally {
       encryptedSession.fill(0);
     }
+  }
+
+  async resolveCompletionAccountId(input: Parameters<TelegramAccountLifecycleRepository["resolveCompletionAccountId"]>[0]) {
+    const rows = await this.sql<{ id: string; owner_user_id: string | null; account_type: string }[]>`
+      select id::text, owner_user_id::text, account_type
+        from public.telegram_accounts
+       where provider_user_id = ${input.providerUserId}::bigint
+       limit 1
+    `;
+    const existing = rows[0];
+    if (!existing) return Object.freeze({ result: "RESOLVED" as const, accountId: input.proposedAccountId });
+    if (existing.account_type !== "USERBOT" || existing.owner_user_id !== input.userId) {
+      return Object.freeze({ result: "ACCOUNT_ALREADY_CONNECTED" as const, accountId: null });
+    }
+    return Object.freeze({ result: "RESOLVED" as const, accountId: existing.id });
   }
 
   async expireAuthFlows(at: string) {

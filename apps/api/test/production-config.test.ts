@@ -6,11 +6,18 @@ import { ProductionApiConfig, ProductionApiConfigError } from "../src/production
 
 const DATABASE_SECRET = "postgresql://api_user:database-password@pooler.example.com:5432/app";
 const BOT_SECRET = "123456789:telegram-bot-secret-token";
+const API_HASH_SECRET = "ab".repeat(16);
+const SESSION_KEY_SECRET = "cd".repeat(32);
 
 function validEnvironment(): Record<string, string> {
   return {
     DATABASE_URL: DATABASE_SECRET,
     TELEGRAM_BOT_TOKEN: BOT_SECRET,
+    TELEGRAM_API_ID: "12345",
+    TELEGRAM_API_HASH: API_HASH_SECRET,
+    TELEGRAM_SESSION_ACTIVE_KEY_VERSION: "1",
+    TELEGRAM_SESSION_KEYS: JSON.stringify({ 1: SESSION_KEY_SECRET }),
+    TELEGRAM_AUTH_FLOW_TTL_SECONDS: "600",
     API_DATABASE_MAX_CONNECTIONS: "5",
     API_DATABASE_CONNECT_TIMEOUT_SECONDS: "10",
     API_DATABASE_IDLE_TIMEOUT_SECONDS: "30",
@@ -44,6 +51,10 @@ test("parses a complete explicit production policy and freezes public views", ()
     initDataMaxAgeSeconds: 300,
     initDataClockSkewSeconds: 30,
   });
+  assert.deepEqual(config.telegramAuthorizationPolicy, { flowTtlSeconds: 600 });
+  assert.equal(config.telegramApiId, 12345);
+  assert.equal(config.telegramApiHash(), API_HASH_SECRET);
+  assert.equal(config.telegramSessionKeyRing().activeKeyVersion, 1);
   assert.deepEqual(config.serverPolicy, {
     host: "0.0.0.0",
     port: 8080,
@@ -64,12 +75,16 @@ test("redacts both production secrets from JSON, string, and inspect", () => {
   assert.equal(rendered.includes(DATABASE_SECRET), false);
   assert.equal(rendered.includes("database-password"), false);
   assert.equal(rendered.includes(BOT_SECRET), false);
+  assert.equal(rendered.includes(API_HASH_SECRET), false);
+  assert.equal(rendered.includes(SESSION_KEY_SECRET), false);
   assert.equal(rendered.includes("telegram-bot-secret-token"), false);
   assert.deepEqual(JSON.parse(JSON.stringify(config)), {
     redacted: true,
     databasePolicy: config.databasePolicy,
     authPolicy: config.authPolicy,
+    telegramAuthorizationPolicy: config.telegramAuthorizationPolicy,
     serverPolicy: config.serverPolicy,
+    telegramApiId: 12345,
   });
 });
 
@@ -78,6 +93,8 @@ test("rejects missing or malformed secret, host, boolean, and timeout relation b
     ["DATABASE_URL", undefined, "DATABASE_URL"],
     ["DATABASE_URL", "https://example.com/db", "DATABASE_URL"],
     ["TELEGRAM_BOT_TOKEN", "bad token", "TELEGRAM_BOT_TOKEN"],
+    ["TELEGRAM_API_HASH", "bad", "TELEGRAM_API_HASH"],
+    ["TELEGRAM_SESSION_KEYS", "not-json", "TELEGRAM_SESSION_KEYRING"],
     ["API_DATABASE_PREPARE_STATEMENTS", "yes", "API_DATABASE_PREPARE_STATEMENTS"],
     ["API_HOST", "0.0.0.0/path", "API_HOST"],
     ["PORT", "0", "PORT"],
@@ -94,6 +111,8 @@ test("rejects missing or malformed secret, host, boolean, and timeout relation b
     const rendered = inspect(caught);
     assert.equal(rendered.includes(DATABASE_SECRET), false);
     assert.equal(rendered.includes(BOT_SECRET), false);
+    assert.equal(rendered.includes(API_HASH_SECRET), false);
+    assert.equal(rendered.includes(SESSION_KEY_SECRET), false);
   }
 });
 
@@ -105,6 +124,8 @@ test("enforces both numeric boundaries for every production number", () => {
     ["API_DATABASE_MAX_LIFETIME_SECONDS", "59", "86401"],
     ["API_DATABASE_CLOSE_TIMEOUT_SECONDS", "0", "61"],
     ["API_SESSION_TTL_SECONDS", "299", "604801"],
+    ["TELEGRAM_API_ID", "0", "2147483648"],
+    ["TELEGRAM_AUTH_FLOW_TTL_SECONDS", "59", "901"],
     ["TELEGRAM_INIT_DATA_MAX_AGE_SECONDS", "0", "86401"],
     ["TELEGRAM_INIT_DATA_CLOCK_SKEW_SECONDS", "-1", "301"],
     ["PORT", "0", "65536"],

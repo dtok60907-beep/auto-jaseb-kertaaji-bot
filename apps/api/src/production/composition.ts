@@ -12,6 +12,9 @@ import { PostgresEntitlementRepository } from "../entitlements/postgres-reposito
 import { PostgresPackageRepository } from "../packages/postgres-repository.ts";
 import { PostgresUserbotProfileRepository } from "../userbot-profiles/postgres-repository.ts";
 import { PostgresWorkerAccountSettingsRepository } from "../workers/postgres-repository.ts";
+import { PostgresTelegramAccountLifecycleRepository } from "../telegram-accounts/postgres-repository.ts";
+import { TelegramAuthorizationService } from "../telegram-authorization/service.ts";
+import { TeleprotoAuthorizationTransport } from "../telegram-authorization/teleproto-transport.ts";
 import type { ProductionApiConfig } from "./config.ts";
 
 export function createProductionApiDatabase(config: ProductionApiConfig): Sql {
@@ -37,16 +40,29 @@ export function composeProductionApi(config: ProductionApiConfig, sql: Sql) {
     sessions,
     sessionTtlSeconds: config.authPolicy.sessionTtlSeconds,
   });
+  const entitlements = new PostgresEntitlementRepository(sql);
+  const telegramAccounts = new PostgresTelegramAccountLifecycleRepository(sql);
+  const telegramAuthorization = new TelegramAuthorizationService({
+    accounts: telegramAccounts,
+    entitlements,
+    transport: new TeleprotoAuthorizationTransport({
+      apiId: config.telegramApiId,
+      apiHash: config.telegramApiHash(),
+    }),
+    keyRing: config.telegramSessionKeyRing(),
+    flowTtlSeconds: config.telegramAuthorizationPolicy.flowTtlSeconds,
+  });
   return createApi({
     packages: new PostgresPackageRepository(sql),
     broadcasts: new PostgresBroadcastSettingsRepository(sql),
     autoComments: new PostgresAutoCommentSettingsRepository(sql),
-    entitlements: new PostgresEntitlementRepository(sql),
+    entitlements,
     userbotProfiles: new PostgresUserbotProfileRepository(sql),
     workers: new PostgresWorkerAccountSettingsRepository(sql),
     broadcastOperations: new PostgresBroadcastOperationRepository(sql),
     apiSessions: sessions,
     adminAccess: new PostgresAdminAccessRepository(sql),
     telegramSessionIssuer: sessionIssuer,
+    telegramAuthorization,
   });
 }

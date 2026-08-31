@@ -21,6 +21,10 @@ import {
 } from "./auth/api-session-user-authorizer.ts";
 import type { AdminAccessRepository } from "./auth/admin-access-repository.ts";
 import { createApiSessionAdminAuthorizer } from "./auth/api-session-admin-authorizer.ts";
+import {
+  registerTelegramAccountAuthRoutes,
+  type TelegramAuthorizationUseCase,
+} from "./http/telegram-account-auth-routes.ts";
 
 type CommonApiOptions = {
   packages: PackageRepository;
@@ -31,6 +35,7 @@ type CommonApiOptions = {
   workers?: WorkerAccountSettingsRepository;
   broadcastOperations?: BroadcastOperationRepository;
   telegramSessionIssuer?: TelegramSessionExchange;
+  telegramAuthorization?: TelegramAuthorizationUseCase;
 };
 
 type ApiOptions = CommonApiOptions & (
@@ -64,6 +69,12 @@ export function createApi(options: ApiOptions) {
     return reply.send(error);
   });
   if (options.telegramSessionIssuer) registerTelegramAuthRoutes(app, { issuer: options.telegramSessionIssuer });
+  if (options.telegramAuthorization) {
+    registerTelegramAccountAuthRoutes(app, {
+      authorization: options.telegramAuthorization,
+      authorizeUser,
+    });
+  }
   registerPackageRoutes(app, { ...options, authorizeAdmin });
   registerBroadcastSettingRoutes(app, { ...options, authorizeUser, authorizeAdmin });
   registerAutoCommentSettingRoutes(app, { ...options, authorizeUser, authorizeAdmin });

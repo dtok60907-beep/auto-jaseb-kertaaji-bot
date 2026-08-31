@@ -1,4 +1,5 @@
 import { inspect } from "node:util";
+import { TelegramSessionKeyRing } from "../../../../packages/telegram-session-crypto/src/index.ts";
 
 const INSPECT = inspect.custom;
 
@@ -15,6 +16,10 @@ export type ApiAuthPolicy = Readonly<{
   sessionTtlSeconds: number;
   initDataMaxAgeSeconds: number;
   initDataClockSkewSeconds: number;
+}>;
+
+export type TelegramAuthorizationPolicy = Readonly<{
+  flowTtlSeconds: number;
 }>;
 
 export type ApiServerPolicy = Readonly<{
@@ -107,25 +112,43 @@ function telegramBotToken(env: Readonly<Record<string, string | undefined>>): st
   return value;
 }
 
+function telegramApiHash(env: Readonly<Record<string, string | undefined>>): string {
+  const value = requiredText(env, "TELEGRAM_API_HASH", 32);
+  if (!/^[0-9a-f]{32}$/i.test(value)) fail("TELEGRAM_API_HASH");
+  return value;
+}
+
 export class ProductionApiConfig {
   readonly databasePolicy: ApiDatabasePolicy;
   readonly authPolicy: ApiAuthPolicy;
+  readonly telegramAuthorizationPolicy: TelegramAuthorizationPolicy;
   readonly serverPolicy: ApiServerPolicy;
   readonly #databaseUrl: string;
   readonly #telegramBotToken: string;
+  readonly #telegramApiHash: string;
+  readonly #telegramSessionKeyRing: TelegramSessionKeyRing;
+  readonly telegramApiId: number;
 
   private constructor(input: Readonly<{
     databasePolicy: ApiDatabasePolicy;
     authPolicy: ApiAuthPolicy;
+    telegramAuthorizationPolicy: TelegramAuthorizationPolicy;
     serverPolicy: ApiServerPolicy;
     databaseUrl: string;
     telegramBotToken: string;
+    telegramApiId: number;
+    telegramApiHash: string;
+    telegramSessionKeyRing: TelegramSessionKeyRing;
   }>) {
     this.databasePolicy = input.databasePolicy;
     this.authPolicy = input.authPolicy;
+    this.telegramAuthorizationPolicy = input.telegramAuthorizationPolicy;
     this.serverPolicy = input.serverPolicy;
     this.#databaseUrl = input.databaseUrl;
     this.#telegramBotToken = input.telegramBotToken;
+    this.telegramApiId = input.telegramApiId;
+    this.#telegramApiHash = input.telegramApiHash;
+    this.#telegramSessionKeyRing = input.telegramSessionKeyRing;
     Object.freeze(this);
   }
 
@@ -135,9 +158,15 @@ export class ProductionApiConfig {
     if (readinessProbeTimeoutMilliseconds > readinessProbeIntervalMilliseconds) {
       fail("API_READINESS_PROBE_TIMEOUT_MS");
     }
+    let telegramSessionKeyRing: TelegramSessionKeyRing;
+    try { telegramSessionKeyRing = TelegramSessionKeyRing.fromEnvironment(env); }
+    catch { fail("TELEGRAM_SESSION_KEYRING"); }
     return new ProductionApiConfig({
       databaseUrl: databaseUrl(env),
       telegramBotToken: telegramBotToken(env),
+      telegramApiId: integer(env, "TELEGRAM_API_ID", 1, 2_147_483_647),
+      telegramApiHash: telegramApiHash(env),
+      telegramSessionKeyRing,
       databasePolicy: Object.freeze({
         maxConnections: integer(env, "API_DATABASE_MAX_CONNECTIONS", 1, 50),
         connectTimeoutSeconds: integer(env, "API_DATABASE_CONNECT_TIMEOUT_SECONDS", 1, 60),
@@ -150,6 +179,9 @@ export class ProductionApiConfig {
         sessionTtlSeconds: integer(env, "API_SESSION_TTL_SECONDS", 300, 604_800),
         initDataMaxAgeSeconds: integer(env, "TELEGRAM_INIT_DATA_MAX_AGE_SECONDS", 1, 86_400),
         initDataClockSkewSeconds: integer(env, "TELEGRAM_INIT_DATA_CLOCK_SKEW_SECONDS", 0, 300),
+      }),
+      telegramAuthorizationPolicy: Object.freeze({
+        flowTtlSeconds: integer(env, "TELEGRAM_AUTH_FLOW_TTL_SECONDS", 60, 900),
       }),
       serverPolicy: Object.freeze({
         host: host(env),
@@ -164,13 +196,17 @@ export class ProductionApiConfig {
 
   databaseUrl(): string { return this.#databaseUrl; }
   telegramBotToken(): string { return this.#telegramBotToken; }
+  telegramApiHash(): string { return this.#telegramApiHash; }
+  telegramSessionKeyRing(): TelegramSessionKeyRing { return this.#telegramSessionKeyRing; }
 
   toJSON(): Readonly<Record<string, unknown>> {
     return Object.freeze({
       redacted: true,
       databasePolicy: this.databasePolicy,
       authPolicy: this.authPolicy,
+      telegramAuthorizationPolicy: this.telegramAuthorizationPolicy,
       serverPolicy: this.serverPolicy,
+      telegramApiId: this.telegramApiId,
     });
   }
 

@@ -171,6 +171,7 @@ test("account authorization claims one attempt and atomically activates the veri
       userId,
       authFlowId: flow.id!,
       expectedVersion: 5n,
+      accountId: "43434343-4343-4343-8343-434343434343",
       providerUserId: String(telegramUserId + 1),
       label: "@verified_account",
       encryptedSession: Uint8Array.from({ length: 41 }, () => 9),

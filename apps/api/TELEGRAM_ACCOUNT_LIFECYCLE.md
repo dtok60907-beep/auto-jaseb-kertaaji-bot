@@ -45,8 +45,32 @@ Only `READY` accounts are discoverable. Logout/revocation removes the account le
 so stale runners cannot claim new work or load the session again. Existing lease and
 command fencing remain the authority for ambiguous in-flight Telegram side effects.
 
+## Connect API (R3-002)
+
+The production API exposes these user-only operations:
+
+- `POST /v1/userbot/telegram-auth-flows`
+- `POST /v1/userbot/telegram-auth-flows/:authFlowId/code`
+- `POST /v1/userbot/telegram-auth-flows/:authFlowId/password`
+- `POST /v1/userbot/telegram-auth-flows/:authFlowId/cancel`
+
+Starting or continuing authorization requires an active Userbot entitlement. Request
+bodies are exact and bounded; responses are `no-store`. Submitted OTP and 2FA values
+exist only for the duration of their request. The Teleproto client is disconnected
+before a verified final session is committed as `READY`.
+
+Transient authorization state uses an auth-flow-specific AES-GCM domain, while the
+final Telegram session uses an account-specific AES-GCM domain. The database claims
+each OTP/2FA step by status and version, then atomically binds verified `getMe`
+identity, encrypted session, and active profile. This makes restart and multi-replica
+handling independent of process-memory login maps.
+
+Provider flood responses are returned as `TELEGRAM_RATE_LIMITED`; the API does not
+silently sleep or add a product interval. Invalid OTP/password restores the durable
+flow with a new version so the user can retry without restarting connection.
+
 ## Next unit
 
-R3-002 supplies the Telegram transport and HTTP routes for request-code, OTP, optional
-2FA, verified `getMe`, encrypted session completion, and stable public errors. It must
-use these database transitions instead of process-memory-only login state.
+R3-003 adds account list, switch, detach, and explicit logout HTTP operations on top
+of the lifecycle repository. The UI is wired only after those backend contracts are
+verified.

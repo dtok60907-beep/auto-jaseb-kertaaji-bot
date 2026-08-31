@@ -54,7 +54,8 @@ begin
     user_id_value, flow_row.auth_flow_id, 4, 'PASSWORD_REQUIRED'
   );
   select * into completion_row from public.complete_userbot_auth_flow(
-    user_id_value, flow_row.auth_flow_id, 5, 900001302,
+    user_id_value, flow_row.auth_flow_id, 5,
+    '13131313-1313-4313-8313-131313131313', 900001302,
     '@authorization_owner', decode(repeat('ab', 41), 'hex'), 1
   );
   if completion_row.result_status <> 'CONNECTED'
@@ -100,7 +101,7 @@ select 1 / case when
   )
   and not has_function_privilege(
     'authenticated',
-    'public.complete_userbot_auth_flow(uuid,uuid,bigint,bigint,text,bytea,integer)',
+    'public.complete_userbot_auth_flow(uuid,uuid,bigint,uuid,bigint,text,bytea,integer)',
     'EXECUTE'
   )
 then 1 else 0 end;

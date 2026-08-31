@@ -16,6 +16,11 @@ function config() {
   return ProductionApiConfig.fromEnvironment({
     DATABASE_URL: configDatabaseUrl.toString(),
     TELEGRAM_BOT_TOKEN: botToken,
+    TELEGRAM_API_ID: "12345",
+    TELEGRAM_API_HASH: "ab".repeat(16),
+    TELEGRAM_SESSION_ACTIVE_KEY_VERSION: "1",
+    TELEGRAM_SESSION_KEYS: JSON.stringify({ 1: "cd".repeat(32) }),
+    TELEGRAM_AUTH_FLOW_TTL_SECONDS: "600",
     API_DATABASE_MAX_CONNECTIONS: "3",
     API_DATABASE_CONNECT_TIMEOUT_SECONDS: "5",
     API_DATABASE_IDLE_TIMEOUT_SECONDS: "10",

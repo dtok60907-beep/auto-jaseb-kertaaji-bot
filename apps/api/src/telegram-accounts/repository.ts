@@ -26,7 +26,7 @@ export type TelegramAccountAuthFlowClaim = Readonly<{
 }>;
 
 export type TelegramAccountAuthCompletion = Readonly<{
-  result: "CONNECTED" | "ACCOUNT_ALREADY_CONNECTED" | "NOT_FOUND" | "FLOW_TERMINAL" | "FLOW_EXPIRED" | "VERSION_CONFLICT" | "STATUS_MISMATCH";
+  result: "CONNECTED" | "ACCOUNT_ALREADY_CONNECTED" | "ACCOUNT_ID_MISMATCH" | "NOT_FOUND" | "FLOW_TERMINAL" | "FLOW_EXPIRED" | "VERSION_CONFLICT" | "STATUS_MISMATCH";
   accountId: string | null;
   label: string | null;
   version: bigint | null;
@@ -64,11 +64,20 @@ export interface TelegramAccountLifecycleRepository {
     userId: string;
     authFlowId: string;
     expectedVersion: bigint;
+    accountId: string;
     providerUserId: string;
     label: string;
     encryptedSession: Uint8Array;
     encryptionKeyVersion: number;
   }>): Promise<TelegramAccountAuthCompletion>;
+  resolveCompletionAccountId(input: Readonly<{
+    userId: string;
+    providerUserId: string;
+    proposedAccountId: string;
+  }>): Promise<Readonly<{
+    result: "RESOLVED" | "ACCOUNT_ALREADY_CONNECTED";
+    accountId: string | null;
+  }>>;
   expireAuthFlows(at: string): Promise<number>;
   listOwnedAccounts(userId: string): Promise<readonly TelegramAccountView[]>;
   revokeSession(userId: string, accountId: string): Promise<"REVOKED" | "ALREADY_REVOKED" | "NOT_FOUND">;
