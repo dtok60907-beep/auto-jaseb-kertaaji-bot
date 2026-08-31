@@ -65,6 +65,14 @@ Bukti 31 August 2026:
 
 ### D3 — Mini App UI: koneksi dan manajemen akun
 
+Status: **IMPLEMENTED_UNVERIFIED**
+
+Implementasi commit `35c7e1f` di `apps/web` memakai React, Vite, TypeScript, dan
+container Nginx. Test API client `3/3`, production build Vite, dependency audit
+`0 vulnerabilities`, serta API CORS preflight `4/4` lulus. Docker image belum
+dibuild karena Docker daemon lokal tidak aktif. Uji Telegram nyata dan deployment
+frontend menunggu service/domain web.
+
 - Outcome: user dapat memulai connect, memasukkan OTP/2FA, melihat akun aman,
   switch, detach, dan logout melalui mobile Telegram.
 - Acceptance:
