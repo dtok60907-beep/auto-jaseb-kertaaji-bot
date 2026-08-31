@@ -2,6 +2,9 @@
 
 Shared encryption boundary for Telegram StringSession values. Account onboarding
 encrypts with this package and the Telegram engine decrypts with the same package.
+Short-lived authorization-flow state uses the same key ring but a distinct `JAF1`
+envelope and flow-id AAD, so it cannot be substituted for a final `JSE1` account
+session (or replayed into another flow).
 
 Environment contract:
 

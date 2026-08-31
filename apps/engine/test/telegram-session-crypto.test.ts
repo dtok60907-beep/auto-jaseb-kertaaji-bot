@@ -16,7 +16,10 @@ const OTHER_ACCOUNT: TelegramSessionContext = Object.freeze({
   accountId: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
   accountType: "USERBOT",
 });
+const AUTH_FLOW = Object.freeze({ authFlowId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" });
+const OTHER_AUTH_FLOW = Object.freeze({ authFlowId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd" });
 const SESSION = "1A-test-string-session-value";
+const AUTH_STATE = JSON.stringify({ phoneNumber: "+628123456789", phoneCodeHash: "sensitive-hash", session: "temporary-session" });
 const KEY_ONE = "11".repeat(32);
 const KEY_TWO = "22".repeat(32);
 
@@ -64,6 +67,53 @@ test("rotation encrypts with the active key and retains decrypt support for old 
 
   const withoutOldKey = TelegramSessionKeyRing.fromHexKeys({ activeKeyVersion: 2, keys: { 2: KEY_TWO } });
   assert.throws(() => withoutOldKey.decrypt(ACCOUNT, oldCiphertext), (error) => code(error) === "SESSION_KEY_NOT_FOUND");
+});
+
+test("auth-flow state has a separate envelope and cannot cross flow or session domains", () => {
+  const keyRing = ring();
+  const encrypted = keyRing.encryptAuthState(AUTH_FLOW, AUTH_STATE);
+  assert.equal(encrypted.ciphertext.subarray(0, 4).toString("ascii"), "JAF1");
+  assert.equal(encrypted.ciphertext.includes(Buffer.from("sensitive-hash")), false);
+  assert.equal(keyRing.decryptAuthState(AUTH_FLOW, encrypted), AUTH_STATE);
+  assert.throws(
+    () => keyRing.decryptAuthState(OTHER_AUTH_FLOW, encrypted),
+    (error) => code(error) === "AUTH_STATE_AUTH_FAILED",
+  );
+  assert.throws(
+    () => keyRing.decrypt(ACCOUNT, encrypted),
+    (error) => code(error) === "SESSION_ENVELOPE_INVALID",
+  );
+  const finalSession = keyRing.encrypt(ACCOUNT, SESSION);
+  assert.throws(
+    () => keyRing.decryptAuthState(AUTH_FLOW, finalSession),
+    (error) => code(error) === "AUTH_STATE_ENVELOPE_INVALID",
+  );
+});
+
+test("auth-flow state validates context, version, tampering, and database envelope limit", () => {
+  const keyRing = ring();
+  const encrypted = keyRing.encryptAuthState(AUTH_FLOW, AUTH_STATE);
+  const tampered = Buffer.from(encrypted.ciphertext);
+  tampered[tampered.length - 1] ^= 1;
+  assert.throws(
+    () => keyRing.decryptAuthState(AUTH_FLOW, { ciphertext: tampered, keyVersion: encrypted.keyVersion }),
+    (error) => code(error) === "AUTH_STATE_AUTH_FAILED",
+  );
+  assert.throws(
+    () => keyRing.decryptAuthState(AUTH_FLOW, { ciphertext: encrypted.ciphertext, keyVersion: 1 }),
+    (error) => code(error) === "AUTH_STATE_KEY_VERSION_MISMATCH",
+  );
+  assert.throws(
+    () => keyRing.encryptAuthState({ authFlowId: "not-a-uuid" }, AUTH_STATE),
+    (error) => code(error) === "AUTH_STATE_CONTEXT_INVALID",
+  );
+  assert.throws(
+    () => keyRing.encryptAuthState(AUTH_FLOW, "x".repeat(131_033)),
+    (error) => code(error) === "AUTH_STATE_VALUE_INVALID",
+  );
+  const maximum = keyRing.encryptAuthState(AUTH_FLOW, "x".repeat(131_032));
+  assert.equal(maximum.ciphertext.length, 131_072);
+  assert.equal(keyRing.decryptAuthState(AUTH_FLOW, maximum).length, 131_032);
 });
 
 test("tampering with IV, tag, ciphertext, or valid context is authentication failure", () => {

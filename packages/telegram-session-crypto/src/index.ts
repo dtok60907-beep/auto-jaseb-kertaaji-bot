@@ -15,6 +15,12 @@ export const TELEGRAM_SESSION_CRYPTO_ERROR_CODES = [
   "SESSION_ENVELOPE_UNSUPPORTED",
   "SESSION_KEY_VERSION_MISMATCH",
   "SESSION_AUTH_FAILED",
+  "AUTH_STATE_CONTEXT_INVALID",
+  "AUTH_STATE_VALUE_INVALID",
+  "AUTH_STATE_ENVELOPE_INVALID",
+  "AUTH_STATE_ENVELOPE_UNSUPPORTED",
+  "AUTH_STATE_KEY_VERSION_MISMATCH",
+  "AUTH_STATE_AUTH_FAILED",
 ] as const;
 
 export type TelegramSessionCryptoErrorCode = (typeof TELEGRAM_SESSION_CRYPTO_ERROR_CODES)[number];
@@ -27,9 +33,15 @@ export type EncryptedTelegramSession = Readonly<{
   ciphertext: Buffer;
   keyVersion: number;
 }>;
+export type TelegramAuthFlowContext = Readonly<{ authFlowId: string }>;
+export type EncryptedTelegramAuthState = Readonly<{
+  ciphertext: Buffer;
+  keyVersion: number;
+}>;
 
 const ALGORITHM = "aes-256-gcm";
-const MAGIC = Buffer.from("JSE1", "ascii");
+const SESSION_MAGIC = Buffer.from("JSE1", "ascii");
+const AUTH_STATE_MAGIC = Buffer.from("JAF1", "ascii");
 const FORMAT_VERSION = 1;
 const CIPHER_ID_AES_256_GCM = 1;
 const HEADER_LENGTH = 12;
@@ -39,6 +51,7 @@ const KEY_LENGTH = 32;
 const MAX_KEYS = 32;
 const MAX_SERIALIZED_KEYRING_BYTES = 4_096;
 const MAX_SESSION_BYTES = 65_536;
+const MAX_AUTH_STATE_BYTES = 131_032;
 const MAX_KEY_VERSION = 2_147_483_647;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const INSPECT = Symbol.for("nodejs.util.inspect.custom");
@@ -70,7 +83,7 @@ function keyVersion(value: unknown, errorCode: TelegramSessionCryptoErrorCode): 
   return value;
 }
 
-function contextData(context: TelegramSessionContext): Readonly<{ accountId: string; accountType: TelegramSessionAccountType }> {
+function sessionContextData(context: TelegramSessionContext): Readonly<{ accountId: string; accountType: TelegramSessionAccountType }> {
   if (
     typeof context !== "object" || context === null
     || typeof context.accountId !== "string" || !UUID.test(context.accountId)
@@ -79,22 +92,131 @@ function contextData(context: TelegramSessionContext): Readonly<{ accountId: str
   return Object.freeze({ accountId: context.accountId.toLowerCase(), accountType: context.accountType });
 }
 
-function aad(header: Buffer, context: ReturnType<typeof contextData>): Buffer {
+function authFlowContextData(context: TelegramAuthFlowContext): Readonly<{ authFlowId: string }> {
+  if (
+    typeof context !== "object" || context === null
+    || typeof context.authFlowId !== "string" || !UUID.test(context.authFlowId)
+  ) fail("AUTH_STATE_CONTEXT_INVALID");
+  return Object.freeze({ authFlowId: context.authFlowId.toLowerCase() });
+}
+
+function sessionAad(header: Buffer, context: ReturnType<typeof sessionContextData>): Buffer {
   return Buffer.concat([
     header,
     Buffer.from(`\0jaseb.telegram-session\0${context.accountId}\0${context.accountType}`, "utf8"),
   ]);
 }
 
-function header(version: number): Buffer {
+function authStateAad(header: Buffer, context: ReturnType<typeof authFlowContextData>): Buffer {
+  return Buffer.concat([
+    header,
+    Buffer.from(`\0jaseb.telegram-auth-flow\0${context.authFlowId}`, "utf8"),
+  ]);
+}
+
+function header(version: number, magic: Buffer): Buffer {
   const value = Buffer.alloc(HEADER_LENGTH);
-  MAGIC.copy(value, 0);
+  magic.copy(value, 0);
   value.writeUInt8(FORMAT_VERSION, 4);
   value.writeUInt8(CIPHER_ID_AES_256_GCM, 5);
   value.writeUInt8(IV_LENGTH, 6);
   value.writeUInt8(TAG_LENGTH, 7);
   value.writeUInt32BE(version, 8);
   return value;
+}
+
+type EnvelopeErrorCodes = Readonly<{
+  value: TelegramSessionCryptoErrorCode;
+  invalid: TelegramSessionCryptoErrorCode;
+  unsupported: TelegramSessionCryptoErrorCode;
+  version: TelegramSessionCryptoErrorCode;
+  auth: TelegramSessionCryptoErrorCode;
+}>;
+
+function encryptSecret(input: Readonly<{
+  key: KeyObject;
+  keyVersion: number;
+  magic: Buffer;
+  aad: (header: Buffer) => Buffer;
+  value: string;
+  maximumBytes: number;
+  valueError: TelegramSessionCryptoErrorCode;
+}>): EncryptedTelegramSession {
+  if (typeof input.value !== "string" || !input.value.trim()) fail(input.valueError);
+  const plaintext = Buffer.from(input.value, "utf8");
+  if (plaintext.length < 1 || plaintext.length > input.maximumBytes) {
+    plaintext.fill(0);
+    fail(input.valueError);
+  }
+  const envelopeHeader = header(input.keyVersion, input.magic);
+  const iv = randomBytes(IV_LENGTH);
+  try {
+    const cipher = createCipheriv(ALGORITHM, input.key, iv, { authTagLength: TAG_LENGTH });
+    cipher.setAAD(input.aad(envelopeHeader));
+    const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    return Object.freeze({
+      ciphertext: Buffer.concat([envelopeHeader, iv, tag, ciphertext]),
+      keyVersion: input.keyVersion,
+    });
+  } finally {
+    plaintext.fill(0);
+  }
+}
+
+function decryptSecret(input: Readonly<{
+  keyForVersion: (version: number) => KeyObject | undefined;
+  magic: Buffer;
+  aad: (header: Buffer) => Buffer;
+  ciphertext: Uint8Array;
+  keyVersion: number;
+  maximumBytes: number;
+  errors: EnvelopeErrorCodes;
+}>): string {
+  const expectedKeyVersion = keyVersion(input?.keyVersion, input.errors.version);
+  if (!(input?.ciphertext instanceof Uint8Array)) fail(input.errors.invalid);
+  const envelope = Buffer.from(input.ciphertext);
+  const minimumLength = HEADER_LENGTH + IV_LENGTH + TAG_LENGTH + 1;
+  const maximumLength = HEADER_LENGTH + IV_LENGTH + TAG_LENGTH + input.maximumBytes;
+  if (envelope.length < minimumLength || envelope.length > maximumLength) fail(input.errors.invalid);
+
+  const envelopeHeader = envelope.subarray(0, HEADER_LENGTH);
+  if (!envelopeHeader.subarray(0, input.magic.length).equals(input.magic)) fail(input.errors.invalid);
+  if (envelopeHeader.readUInt8(4) !== FORMAT_VERSION || envelopeHeader.readUInt8(5) !== CIPHER_ID_AES_256_GCM) fail(input.errors.unsupported);
+  if (envelopeHeader.readUInt8(6) !== IV_LENGTH || envelopeHeader.readUInt8(7) !== TAG_LENGTH) fail(input.errors.invalid);
+  const envelopeKeyVersion = envelopeHeader.readUInt32BE(8);
+  if (envelopeKeyVersion !== expectedKeyVersion) fail(input.errors.version);
+  const selectedKey = input.keyForVersion(envelopeKeyVersion);
+  if (!selectedKey) fail("SESSION_KEY_NOT_FOUND");
+
+  const ivOffset = HEADER_LENGTH;
+  const tagOffset = ivOffset + IV_LENGTH;
+  const ciphertextOffset = tagOffset + TAG_LENGTH;
+  const iv = envelope.subarray(ivOffset, tagOffset);
+  const tag = envelope.subarray(tagOffset, ciphertextOffset);
+  const ciphertext = envelope.subarray(ciphertextOffset);
+  let plaintext: Buffer;
+  try {
+    const decipher = createDecipheriv(ALGORITHM, selectedKey, iv, { authTagLength: TAG_LENGTH });
+    decipher.setAAD(input.aad(envelopeHeader));
+    decipher.setAuthTag(tag);
+    plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  } catch {
+    fail(input.errors.auth);
+  }
+
+  try {
+    const value = plaintext.toString("utf8");
+    const reencoded = Buffer.from(value, "utf8");
+    try {
+      if (!value.trim() || !reencoded.equals(plaintext)) fail(input.errors.value);
+      return value;
+    } finally {
+      reencoded.fill(0);
+    }
+  } finally {
+    plaintext.fill(0);
+  }
 }
 
 function parseHexKeys(input: Readonly<Record<string, string>>): ReadonlyMap<number, KeyObject> {
@@ -163,84 +285,79 @@ export class TelegramSessionKeyRing {
   }
 
   encrypt(context: TelegramSessionContext, session: string): EncryptedTelegramSession {
-    const normalizedContext = contextData(context);
-    if (typeof session !== "string" || !session.trim()) fail("SESSION_VALUE_INVALID");
-    const plaintext = Buffer.from(session, "utf8");
-    if (plaintext.length < 1 || plaintext.length > MAX_SESSION_BYTES) {
-      plaintext.fill(0);
-      fail("SESSION_VALUE_INVALID");
-    }
+    const normalizedContext = sessionContextData(context);
     const version = this.activeKeyVersion;
     const selectedKey = this.#keys.get(version);
-    if (!selectedKey) {
-      plaintext.fill(0);
-      fail("SESSION_KEY_NOT_FOUND");
-    }
-    const envelopeHeader = header(version);
-    const iv = randomBytes(IV_LENGTH);
-    try {
-      const cipher = createCipheriv(ALGORITHM, selectedKey, iv, { authTagLength: TAG_LENGTH });
-      cipher.setAAD(aad(envelopeHeader, normalizedContext));
-      const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-      const tag = cipher.getAuthTag();
-      return Object.freeze({
-        ciphertext: Buffer.concat([envelopeHeader, iv, tag, ciphertext]),
-        keyVersion: version,
-      });
-    } finally {
-      plaintext.fill(0);
-    }
+    if (!selectedKey) fail("SESSION_KEY_NOT_FOUND");
+    return encryptSecret({
+      key: selectedKey,
+      keyVersion: version,
+      magic: SESSION_MAGIC,
+      aad: (envelopeHeader) => sessionAad(envelopeHeader, normalizedContext),
+      value: session,
+      maximumBytes: MAX_SESSION_BYTES,
+      valueError: "SESSION_VALUE_INVALID",
+    });
   }
 
   decrypt(
     context: TelegramSessionContext,
     input: Readonly<{ ciphertext: Uint8Array; keyVersion: number }>,
   ): string {
-    const normalizedContext = contextData(context);
-    const expectedKeyVersion = keyVersion(input?.keyVersion, "SESSION_KEY_VERSION_MISMATCH");
-    if (!(input?.ciphertext instanceof Uint8Array)) fail("SESSION_ENVELOPE_INVALID");
-    const envelope = Buffer.from(input.ciphertext);
-    const minimumLength = HEADER_LENGTH + IV_LENGTH + TAG_LENGTH + 1;
-    const maximumLength = HEADER_LENGTH + IV_LENGTH + TAG_LENGTH + MAX_SESSION_BYTES;
-    if (envelope.length < minimumLength || envelope.length > maximumLength) fail("SESSION_ENVELOPE_INVALID");
+    const normalizedContext = sessionContextData(context);
+    return decryptSecret({
+      keyForVersion: (version) => this.#keys.get(version),
+      magic: SESSION_MAGIC,
+      aad: (envelopeHeader) => sessionAad(envelopeHeader, normalizedContext),
+      ciphertext: input?.ciphertext,
+      keyVersion: input?.keyVersion,
+      maximumBytes: MAX_SESSION_BYTES,
+      errors: {
+        value: "SESSION_VALUE_INVALID",
+        invalid: "SESSION_ENVELOPE_INVALID",
+        unsupported: "SESSION_ENVELOPE_UNSUPPORTED",
+        version: "SESSION_KEY_VERSION_MISMATCH",
+        auth: "SESSION_AUTH_FAILED",
+      },
+    });
+  }
 
-    const envelopeHeader = envelope.subarray(0, HEADER_LENGTH);
-    if (!envelopeHeader.subarray(0, MAGIC.length).equals(MAGIC)) fail("SESSION_ENVELOPE_INVALID");
-    if (envelopeHeader.readUInt8(4) !== FORMAT_VERSION || envelopeHeader.readUInt8(5) !== CIPHER_ID_AES_256_GCM) fail("SESSION_ENVELOPE_UNSUPPORTED");
-    if (envelopeHeader.readUInt8(6) !== IV_LENGTH || envelopeHeader.readUInt8(7) !== TAG_LENGTH) fail("SESSION_ENVELOPE_INVALID");
-    const envelopeKeyVersion = envelopeHeader.readUInt32BE(8);
-    if (envelopeKeyVersion !== expectedKeyVersion) fail("SESSION_KEY_VERSION_MISMATCH");
-    const selectedKey = this.#keys.get(envelopeKeyVersion);
+  encryptAuthState(context: TelegramAuthFlowContext, state: string): EncryptedTelegramAuthState {
+    const normalizedContext = authFlowContextData(context);
+    const version = this.activeKeyVersion;
+    const selectedKey = this.#keys.get(version);
     if (!selectedKey) fail("SESSION_KEY_NOT_FOUND");
+    return encryptSecret({
+      key: selectedKey,
+      keyVersion: version,
+      magic: AUTH_STATE_MAGIC,
+      aad: (envelopeHeader) => authStateAad(envelopeHeader, normalizedContext),
+      value: state,
+      maximumBytes: MAX_AUTH_STATE_BYTES,
+      valueError: "AUTH_STATE_VALUE_INVALID",
+    });
+  }
 
-    const ivOffset = HEADER_LENGTH;
-    const tagOffset = ivOffset + IV_LENGTH;
-    const ciphertextOffset = tagOffset + TAG_LENGTH;
-    const iv = envelope.subarray(ivOffset, tagOffset);
-    const tag = envelope.subarray(tagOffset, ciphertextOffset);
-    const ciphertext = envelope.subarray(ciphertextOffset);
-    let plaintext: Buffer;
-    try {
-      const decipher = createDecipheriv(ALGORITHM, selectedKey, iv, { authTagLength: TAG_LENGTH });
-      decipher.setAAD(aad(envelopeHeader, normalizedContext));
-      decipher.setAuthTag(tag);
-      plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-    } catch {
-      fail("SESSION_AUTH_FAILED");
-    }
-
-    try {
-      const session = plaintext.toString("utf8");
-      const reencoded = Buffer.from(session, "utf8");
-      try {
-        if (!session.trim() || !reencoded.equals(plaintext)) fail("SESSION_VALUE_INVALID");
-        return session;
-      } finally {
-        reencoded.fill(0);
-      }
-    } finally {
-      plaintext.fill(0);
-    }
+  decryptAuthState(
+    context: TelegramAuthFlowContext,
+    input: Readonly<{ ciphertext: Uint8Array; keyVersion: number }>,
+  ): string {
+    const normalizedContext = authFlowContextData(context);
+    return decryptSecret({
+      keyForVersion: (version) => this.#keys.get(version),
+      magic: AUTH_STATE_MAGIC,
+      aad: (envelopeHeader) => authStateAad(envelopeHeader, normalizedContext),
+      ciphertext: input?.ciphertext,
+      keyVersion: input?.keyVersion,
+      maximumBytes: MAX_AUTH_STATE_BYTES,
+      errors: {
+        value: "AUTH_STATE_VALUE_INVALID",
+        invalid: "AUTH_STATE_ENVELOPE_INVALID",
+        unsupported: "AUTH_STATE_ENVELOPE_UNSUPPORTED",
+        version: "AUTH_STATE_KEY_VERSION_MISMATCH",
+        auth: "AUTH_STATE_AUTH_FAILED",
+      },
+    });
   }
 
   toJSON(): Readonly<{ redacted: true; activeKeyVersion: number }> {
