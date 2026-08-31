@@ -25,6 +25,8 @@ import {
   registerTelegramAccountAuthRoutes,
   type TelegramAuthorizationUseCase,
 } from "./http/telegram-account-auth-routes.ts";
+import { registerTelegramAccountManagementRoutes } from "./http/telegram-account-management-routes.ts";
+import type { TelegramAccountLifecycleRepository } from "./telegram-accounts/repository.ts";
 
 type CommonApiOptions = {
   packages: PackageRepository;
@@ -36,6 +38,7 @@ type CommonApiOptions = {
   broadcastOperations?: BroadcastOperationRepository;
   telegramSessionIssuer?: TelegramSessionExchange;
   telegramAuthorization?: TelegramAuthorizationUseCase;
+  telegramAccounts?: TelegramAccountLifecycleRepository;
 };
 
 type ApiOptions = CommonApiOptions & (
@@ -72,6 +75,13 @@ export function createApi(options: ApiOptions) {
   if (options.telegramAuthorization) {
     registerTelegramAccountAuthRoutes(app, {
       authorization: options.telegramAuthorization,
+      authorizeUser,
+    });
+  }
+  if (options.telegramAccounts && options.userbotProfiles) {
+    registerTelegramAccountManagementRoutes(app, {
+      accounts: options.telegramAccounts,
+      profiles: options.userbotProfiles,
       authorizeUser,
     });
   }

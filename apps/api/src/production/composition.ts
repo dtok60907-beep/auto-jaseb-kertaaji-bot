@@ -64,5 +64,6 @@ export function composeProductionApi(config: ProductionApiConfig, sql: Sql) {
     adminAccess: new PostgresAdminAccessRepository(sql),
     telegramSessionIssuer: sessionIssuer,
     telegramAuthorization,
+    telegramAccounts,
   });
 }

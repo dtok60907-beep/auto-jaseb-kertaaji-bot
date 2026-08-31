@@ -1,5 +1,9 @@
 import type { Sql } from "postgres";
-import type { UserbotProfileRepository, UserbotProfileView } from "./repository.ts";
+import {
+  UserbotProfileAccountError,
+  type UserbotProfileRepository,
+  type UserbotProfileView,
+} from "./repository.ts";
 type Row = { id: string; status: UserbotProfileView["status"]; broadcast_interval_seconds: number; account_id: string | null; label: string | null; account_status: string | null };
 function view(row: Row): UserbotProfileView { return Object.freeze({ id: row.id, status: row.status, broadcastIntervalSeconds: row.broadcast_interval_seconds, activeAccount: row.account_id && row.label && row.account_status ? Object.freeze({ id: row.account_id, label: row.label, status: row.account_status }) : null }); }
 export class PostgresUserbotProfileRepository implements UserbotProfileRepository {
@@ -19,7 +23,21 @@ export class PostgresUserbotProfileRepository implements UserbotProfileRepositor
     const hydrated = (await this.rows(userId))[0];
     return view(hydrated ?? profile);
   }
-  async attach(userId: string, accountId: string) { await this.sql`select public.switch_userbot_profile_account(${userId}::uuid, ${accountId}::uuid)`; const row = (await this.rows(userId))[0]; if (!row) throw new Error("profile was not persisted"); return view(row); }
+  async attach(userId: string, accountId: string) {
+    try {
+      await this.sql`select public.switch_userbot_profile_account(${userId}::uuid, ${accountId}::uuid)`;
+    } catch (error) {
+      const code = typeof error === "object" && error !== null && "code" in error
+        ? (error as { code?: unknown }).code
+        : null;
+      if (code === "P0002") throw new UserbotProfileAccountError("ACCOUNT_NOT_FOUND");
+      if (code === "55000" || code === "42501") throw new UserbotProfileAccountError("ACCOUNT_NOT_READY");
+      throw error;
+    }
+    const row = (await this.rows(userId))[0];
+    if (!row) throw new Error("profile was not persisted");
+    return view(row);
+  }
   async detach(userId: string) { const rows = await this.sql<{ detached: boolean }[]>`select public.detach_userbot_profile_account(${userId}::uuid) detached`; return rows[0]?.detached ?? false; }
   private rows(userId: string) { return this.sql<Row[]>`select p.id::text,p.status,p.broadcast_interval_seconds,p.active_account_id::text account_id,a.label,a.status account_status from public.userbot_profiles p left join public.telegram_accounts a on a.id=p.active_account_id where p.user_id=${userId}::uuid`; }
 }
