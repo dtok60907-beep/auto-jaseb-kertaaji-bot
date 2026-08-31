@@ -103,7 +103,7 @@ Login Telegram nyata tetap harus dimulai oleh owner dari Mini App.
 - Preflight evidence: operator `admit` mengembalikan `ALREADY_ADMITTED` pada slot 1;
   operator `list` mengonfirmasi admission aktif tanpa app user atau admin grant.
 - Bot API `getMe` valid untuk `@DjaruumUserbot`; default menu button `Buka Kertaaji`
-  sudah diarahkan ke URL Mini App production dengan cache version `v=267acc3` dan
+  sudah diarahkan ke URL Mini App production dengan cache version `v=daea1b2` dan
   diverifikasi dengan `getChatMenuButton`.
 - Next action: owner membuka menu `Buka Kertaaji` pada `@DjaruumUserbot` di Telegram,
   lalu menyelesaikan login Mini App dari
