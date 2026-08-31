@@ -15,5 +15,5 @@ COPY --from=build /app/dist /usr/share/nginx/html
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY apps/web/docker-entrypoint.sh /usr/local/bin/kertaaji-web-entrypoint
 RUN chmod +x /usr/local/bin/kertaaji-web-entrypoint
-EXPOSE 80
+EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/kertaaji-web-entrypoint"]

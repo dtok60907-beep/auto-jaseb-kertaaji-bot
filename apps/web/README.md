@@ -29,7 +29,7 @@ Build production membutuhkan API base URL saat build image:
 
 ```bash
 docker build -t kertaaji-web .
-docker run -e API_BASE_URL=https://kertaaji-api-production.up.railway.app -p 8080:80 kertaaji-web
+docker run -e API_BASE_URL=https://kertaaji-api-production.up.railway.app -p 8080:8080 kertaaji-web
 ```
 
 Container hanya menyajikan hasil build dan endpoint `/health` untuk probe. API
