@@ -17,6 +17,9 @@ The initial migration contains:
 - explicit `SIDE_EFFECT_UNCERTAIN` state for ambiguous Telegram outcomes;
 - shard-safe Jasa Sebar runtime discovery, transaction-commit wake-ups, runtime
   retry/error state, and lease-fenced access to encrypted session envelopes;
+- short-lived version-fenced Telegram authorization flows, explicit session
+  destruction, and account/profile separation that preserves settings across switch,
+  detach, logout, expiry, and reauthorization;
 - RLS policies for user-visible reads, with writes reserved for the server/service role.
 
 `telegram_accounts`, `account_leases`, and `broadcast_runtime_eligible_operations`

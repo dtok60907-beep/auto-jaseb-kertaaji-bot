@@ -1919,6 +1919,72 @@ Penutupan:
 - Follow-up units: owner membuka Mini App production sekali; verifikasi
   `appUserReady: true`; jalankan env-backed `grant-admin`; buktikan admin route.
 
+### R3-001 — Telegram account lifecycle foundation
+
+- Status: VERIFIED
+- Outcome: proses authorization Telegram kini memiliki state server-only yang
+  bounded, expiring, dan version-fenced; session final tetap terpisah dari Mini App
+  identity, subscription, profile, serta setting. Logout/revocation menghancurkan
+  ciphertext dan lease tanpa menghapus profile atau interval user.
+- Goal trace: user dapat mengganti atau logout akun terhubung tanpa kehilangan
+  langganan/setting, sementara expired subscription cukup menghentikan runtime dan
+  tidak memaksa Telegram login ulang.
+- Acceptance criteria:
+  - [x] Hanya satu auth flow aktif per canonical Mini App user; TTL 60–900 detik.
+  - [x] State transition memakai expected version dan stale request tidak menimpa
+    state terbaru.
+  - [x] Terminal flow selalu menghapus encrypted transient state; schema tidak
+    menyediakan kolom OTP atau password 2FA.
+  - [x] `CONNECTING`/`REVOKED` tidak boleh memiliki session; account runnable wajib
+    memiliki ciphertext + key version sebagai pasangan.
+  - [x] Explicit logout idempotent, menghapus ciphertext dan account lease, detach
+    active profile, tetapi mempertahankan profile dan broadcast interval.
+  - [x] Runtime Telegram revocation mengubah profile menjadi `NEEDS_REAUTH` dan stale
+    runner kehilangan lease.
+  - [x] Repository hanya mengembalikan metadata + `sessionPresent`; tidak pernah
+    mengembalikan ciphertext, OTP, 2FA, atau provider object.
+  - [x] Fresh/upgrade, concurrency, API/engine regression, Supabase advisor, remote
+    integration, cleanup, dan Railway health mempunyai bukti nyata.
+- Non-goal: request OTP ke Telegram, verifikasi code/2FA, final account provisioning,
+  public HTTP lifecycle routes, dan UI. Semua itu milik R3-002/R3-003.
+- Commits: `f82d083` (`feat: add Telegram account lifecycle foundation`) dan
+  `c87c7bb` (`perf: cover completed Telegram account lookup`).
+- Acceptance evidence:
+  - local migration runner: fresh + legacy upgrade pass; historical `REVOKED` session
+    dibersihkan, sedangkan `READY` session dan profile interval tetap ada;
+  - PostgreSQL integration: concurrent begin menghasilkan tepat satu `CREATED` dan
+    satu `ACTIVE_FLOW_EXISTS` untuk ID flow yang sama; stale version ditolak;
+  - logout pertama `REVOKED`, logout kedua `ALREADY_REVOKED`; account tidak aktif,
+    ciphertext/key/lease hilang, profile `DISCONNECTED`, interval tetap `41`;
+  - Supabase preflight menunjukkan 28 migration lama lengkap, lifecycle table belum
+    ada, `telegram_accounts=0`, dan `app_users=0`; tidak ada legacy data yang diubah;
+  - production migration history kemudian berisi
+    `telegram_account_lifecycle` dan `telegram_account_lifecycle_indexes`;
+  - schema proof production: lifecycle table + RLS + active-flow index + empat
+    function tersedia, `CONNECTING` valid, session/key nullable, row account/flow nol;
+  - advisor menemukan missing covering index untuk `completed_account_id`; follow-up
+    migration menutupnya dan advisor ulang tidak lagi melaporkan unindexed FK;
+  - remote repository integration 1/1 pass dan cleanup proof kembali menunjukkan
+    fixture app user/account/auth flow nol serta seluruh production account/flow nol;
+  - API Railway setelah kedua migration tetap `alive` dan `ready/RUNNING`.
+- Commands/tests:
+  - `scripts/test-app-users-migration.sh`: API PostgreSQL 7/7, engine PostgreSQL 2/2,
+    seluruh marker identity/session/admin/canary/lifecycle pass;
+  - full API: 95 pass, 0 fail, 7 opt-in PostgreSQL skip;
+  - full engine dengan izin local socket: 120 pass, 0 fail, 3 PostgreSQL/live skip;
+  - production Supabase lifecycle repository: 1 pass, 0 fail, 0 skip;
+  - `npm run typecheck`, native strip check, dan `git diff --check`: pass.
+- Advisor disposition:
+  - RLS-without-policy INFO untuk auth-flow table disengaja: anon/authenticated tidak
+    memiliki table/function privileges; hanya backend service role yang diberi akses;
+  - expiry/completed-account index `unused` INFO diabaikan sementara karena database
+    dan auth-flow table masih kosong; index dibutuhkan oleh expiry scan dan FK cleanup.
+- Rollback note: sebelum traffic authorization, rollback additive function/table/
+  trigger/constraint dimungkinkan, tetapi jangan mengembalikan ciphertext dari row
+  yang sudah berstatus `REVOKED`. Tidak ada production user/account data saat apply.
+- Follow-up units: R3-002 Telegram connect transport + HTTP contract, lalu R3-003
+  user list/switch/detach/logout route dan R3-004 engine handoff.
+
 ## Template penutupan unit
 
 ```markdown
