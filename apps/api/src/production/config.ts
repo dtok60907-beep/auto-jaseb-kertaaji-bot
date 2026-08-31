@@ -22,6 +22,11 @@ export type TelegramAuthorizationPolicy = Readonly<{
   flowTtlSeconds: number;
 }>;
 
+export type TelegramBotPolicy = Readonly<{
+  miniAppUrl: string;
+  webhookUrl: string;
+}>;
+
 export type ApiServerPolicy = Readonly<{
   host: string;
   port: number;
@@ -118,14 +123,31 @@ function telegramApiHash(env: Readonly<Record<string, string | undefined>>): str
   return value;
 }
 
+function httpsUrl(env: Readonly<Record<string, string | undefined>>, field: string): string {
+  const value = requiredText(env, field, 2_048);
+  let parsed: URL;
+  try { parsed = new URL(value); }
+  catch { fail(field); }
+  if (parsed.protocol !== "https:" || !parsed.hostname || parsed.username || parsed.password) fail(field);
+  return parsed.toString();
+}
+
+function telegramWebhookSecret(env: Readonly<Record<string, string | undefined>>): string {
+  const value = requiredText(env, "TELEGRAM_WEBHOOK_SECRET", 256);
+  if (!/^[A-Za-z0-9_-]{32,256}$/.test(value)) fail("TELEGRAM_WEBHOOK_SECRET");
+  return value;
+}
+
 export class ProductionApiConfig {
   readonly databasePolicy: ApiDatabasePolicy;
   readonly authPolicy: ApiAuthPolicy;
   readonly telegramAuthorizationPolicy: TelegramAuthorizationPolicy;
+  readonly telegramBotPolicy: TelegramBotPolicy;
   readonly serverPolicy: ApiServerPolicy;
   readonly #databaseUrl: string;
   readonly #telegramBotToken: string;
   readonly #telegramApiHash: string;
+  readonly #telegramWebhookSecret: string;
   readonly #telegramSessionKeyRing: TelegramSessionKeyRing;
   readonly telegramApiId: number;
 
@@ -133,21 +155,25 @@ export class ProductionApiConfig {
     databasePolicy: ApiDatabasePolicy;
     authPolicy: ApiAuthPolicy;
     telegramAuthorizationPolicy: TelegramAuthorizationPolicy;
+    telegramBotPolicy: TelegramBotPolicy;
     serverPolicy: ApiServerPolicy;
     databaseUrl: string;
     telegramBotToken: string;
     telegramApiId: number;
     telegramApiHash: string;
+    telegramWebhookSecret: string;
     telegramSessionKeyRing: TelegramSessionKeyRing;
   }>) {
     this.databasePolicy = input.databasePolicy;
     this.authPolicy = input.authPolicy;
     this.telegramAuthorizationPolicy = input.telegramAuthorizationPolicy;
+    this.telegramBotPolicy = input.telegramBotPolicy;
     this.serverPolicy = input.serverPolicy;
     this.#databaseUrl = input.databaseUrl;
     this.#telegramBotToken = input.telegramBotToken;
     this.telegramApiId = input.telegramApiId;
     this.#telegramApiHash = input.telegramApiHash;
+    this.#telegramWebhookSecret = input.telegramWebhookSecret;
     this.#telegramSessionKeyRing = input.telegramSessionKeyRing;
     Object.freeze(this);
   }
@@ -166,6 +192,7 @@ export class ProductionApiConfig {
       telegramBotToken: telegramBotToken(env),
       telegramApiId: integer(env, "TELEGRAM_API_ID", 1, 2_147_483_647),
       telegramApiHash: telegramApiHash(env),
+      telegramWebhookSecret: telegramWebhookSecret(env),
       telegramSessionKeyRing,
       databasePolicy: Object.freeze({
         maxConnections: integer(env, "API_DATABASE_MAX_CONNECTIONS", 1, 50),
@@ -183,6 +210,10 @@ export class ProductionApiConfig {
       telegramAuthorizationPolicy: Object.freeze({
         flowTtlSeconds: integer(env, "TELEGRAM_AUTH_FLOW_TTL_SECONDS", 60, 900),
       }),
+      telegramBotPolicy: Object.freeze({
+        miniAppUrl: httpsUrl(env, "TELEGRAM_MINI_APP_URL"),
+        webhookUrl: httpsUrl(env, "TELEGRAM_BOT_WEBHOOK_URL"),
+      }),
       serverPolicy: Object.freeze({
         host: host(env),
         port: integer(env, "PORT", 1, 65_535),
@@ -197,6 +228,7 @@ export class ProductionApiConfig {
   databaseUrl(): string { return this.#databaseUrl; }
   telegramBotToken(): string { return this.#telegramBotToken; }
   telegramApiHash(): string { return this.#telegramApiHash; }
+  telegramWebhookSecret(): string { return this.#telegramWebhookSecret; }
   telegramSessionKeyRing(): TelegramSessionKeyRing { return this.#telegramSessionKeyRing; }
 
   toJSON(): Readonly<Record<string, unknown>> {
@@ -205,6 +237,7 @@ export class ProductionApiConfig {
       databasePolicy: this.databasePolicy,
       authPolicy: this.authPolicy,
       telegramAuthorizationPolicy: this.telegramAuthorizationPolicy,
+      telegramBotPolicy: this.telegramBotPolicy,
       serverPolicy: this.serverPolicy,
       telegramApiId: this.telegramApiId,
     });

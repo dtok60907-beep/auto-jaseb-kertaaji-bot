@@ -30,6 +30,8 @@ import type { TelegramAccountLifecycleRepository } from "./telegram-accounts/rep
 import { registerCurrentUserRoutes } from "./http/current-user-routes.ts";
 import type { AdminUserRepository } from "./admin-users/repository.ts";
 import { registerAdminUserRoutes } from "./http/admin-user-routes.ts";
+import { registerTelegramBotWebhookRoutes } from "./http/telegram-bot-webhook-routes.ts";
+import type { TelegramStartResponder } from "./telegram-bot/start-responder.ts";
 
 type CommonApiOptions = {
   packages: PackageRepository;
@@ -43,6 +45,7 @@ type CommonApiOptions = {
   telegramAuthorization?: TelegramAuthorizationUseCase;
   telegramAccounts?: TelegramAccountLifecycleRepository;
   adminUsers?: AdminUserRepository;
+  telegramBot?: Readonly<{ webhookSecret: string; responder: TelegramStartResponder }>;
 };
 
 type ApiOptions = CommonApiOptions & (
@@ -88,6 +91,10 @@ export function createApi(options: ApiOptions) {
     return reply.send(error);
   });
   if (options.telegramSessionIssuer) registerTelegramAuthRoutes(app, { issuer: options.telegramSessionIssuer });
+  if (options.telegramBot) registerTelegramBotWebhookRoutes(app, {
+    secret: options.telegramBot.webhookSecret,
+    responder: options.telegramBot.responder,
+  });
   registerCurrentUserRoutes(app, { authorizeUser, authorizeAdmin });
   if (options.telegramAuthorization) {
     registerTelegramAccountAuthRoutes(app, {

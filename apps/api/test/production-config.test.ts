@@ -8,6 +8,7 @@ const DATABASE_SECRET = "postgresql://api_user:database-password@pooler.example.
 const BOT_SECRET = "123456789:telegram-bot-secret-token";
 const API_HASH_SECRET = "ab".repeat(16);
 const SESSION_KEY_SECRET = "cd".repeat(32);
+const WEBHOOK_SECRET = "ef".repeat(32);
 
 function validEnvironment(): Record<string, string> {
   return {
@@ -18,6 +19,9 @@ function validEnvironment(): Record<string, string> {
     TELEGRAM_SESSION_ACTIVE_KEY_VERSION: "1",
     TELEGRAM_SESSION_KEYS: JSON.stringify({ 1: SESSION_KEY_SECRET }),
     TELEGRAM_AUTH_FLOW_TTL_SECONDS: "600",
+    TELEGRAM_MINI_APP_URL: "https://mini.example.com/app",
+    TELEGRAM_BOT_WEBHOOK_URL: "https://api.example.com/v1/telegram/bot/webhook",
+    TELEGRAM_WEBHOOK_SECRET: WEBHOOK_SECRET,
     API_DATABASE_MAX_CONNECTIONS: "5",
     API_DATABASE_CONNECT_TIMEOUT_SECONDS: "10",
     API_DATABASE_IDLE_TIMEOUT_SECONDS: "30",
@@ -52,8 +56,13 @@ test("parses a complete explicit production policy and freezes public views", ()
     initDataClockSkewSeconds: 30,
   });
   assert.deepEqual(config.telegramAuthorizationPolicy, { flowTtlSeconds: 600 });
+  assert.deepEqual(config.telegramBotPolicy, {
+    miniAppUrl: "https://mini.example.com/app",
+    webhookUrl: "https://api.example.com/v1/telegram/bot/webhook",
+  });
   assert.equal(config.telegramApiId, 12345);
   assert.equal(config.telegramApiHash(), API_HASH_SECRET);
+  assert.equal(config.telegramWebhookSecret(), WEBHOOK_SECRET);
   assert.equal(config.telegramSessionKeyRing().activeKeyVersion, 1);
   assert.deepEqual(config.serverPolicy, {
     host: "0.0.0.0",
@@ -77,12 +86,14 @@ test("redacts both production secrets from JSON, string, and inspect", () => {
   assert.equal(rendered.includes(BOT_SECRET), false);
   assert.equal(rendered.includes(API_HASH_SECRET), false);
   assert.equal(rendered.includes(SESSION_KEY_SECRET), false);
+  assert.equal(rendered.includes(WEBHOOK_SECRET), false);
   assert.equal(rendered.includes("telegram-bot-secret-token"), false);
   assert.deepEqual(JSON.parse(JSON.stringify(config)), {
     redacted: true,
     databasePolicy: config.databasePolicy,
     authPolicy: config.authPolicy,
     telegramAuthorizationPolicy: config.telegramAuthorizationPolicy,
+    telegramBotPolicy: config.telegramBotPolicy,
     serverPolicy: config.serverPolicy,
     telegramApiId: 12345,
   });
@@ -94,6 +105,9 @@ test("rejects missing or malformed secret, host, boolean, and timeout relation b
     ["DATABASE_URL", "https://example.com/db", "DATABASE_URL"],
     ["TELEGRAM_BOT_TOKEN", "bad token", "TELEGRAM_BOT_TOKEN"],
     ["TELEGRAM_API_HASH", "bad", "TELEGRAM_API_HASH"],
+    ["TELEGRAM_WEBHOOK_SECRET", "too-short", "TELEGRAM_WEBHOOK_SECRET"],
+    ["TELEGRAM_MINI_APP_URL", "http://mini.example.com", "TELEGRAM_MINI_APP_URL"],
+    ["TELEGRAM_BOT_WEBHOOK_URL", "not-a-url", "TELEGRAM_BOT_WEBHOOK_URL"],
     ["TELEGRAM_SESSION_KEYS", "not-json", "TELEGRAM_SESSION_KEYRING"],
     ["API_DATABASE_PREPARE_STATEMENTS", "yes", "API_DATABASE_PREPARE_STATEMENTS"],
     ["API_HOST", "0.0.0.0/path", "API_HOST"],
@@ -113,6 +127,7 @@ test("rejects missing or malformed secret, host, boolean, and timeout relation b
     assert.equal(rendered.includes(BOT_SECRET), false);
     assert.equal(rendered.includes(API_HASH_SECRET), false);
     assert.equal(rendered.includes(SESSION_KEY_SECRET), false);
+    assert.equal(rendered.includes(WEBHOOK_SECRET), false);
   }
 });
 

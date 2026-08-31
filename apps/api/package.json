@@ -10,7 +10,8 @@
     "test": "node --experimental-strip-types --test",
     "check": "node --experimental-strip-types --check src/domain/package-catalog.ts && node --experimental-strip-types --check src/production/config.ts && node --experimental-strip-types --check src/production/composition.ts && node --experimental-strip-types --check src/production/database.ts && node --experimental-strip-types --check src/production/application.ts && node --experimental-strip-types --check src/production/process-handlers.ts && node --experimental-strip-types --check src/production/main.ts",
     "typecheck": "tsc --noEmit",
-    "canary:operator": "node --experimental-strip-types src/operations/canary-operator-cli.ts"
+    "canary:operator": "node --experimental-strip-types src/operations/canary-operator-cli.ts",
+    "bot:webhook:configure": "node --experimental-strip-types src/operations/telegram-bot-webhook-cli.ts"
   },
   "devDependencies": {
     "@types/node": "22.15.21",

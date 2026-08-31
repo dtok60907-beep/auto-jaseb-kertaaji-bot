@@ -14,6 +14,7 @@ import { PostgresUserbotProfileRepository } from "../userbot-profiles/postgres-r
 import { PostgresWorkerAccountSettingsRepository } from "../workers/postgres-repository.ts";
 import { PostgresTelegramAccountLifecycleRepository } from "../telegram-accounts/postgres-repository.ts";
 import { PostgresAdminUserRepository } from "../admin-users/postgres-repository.ts";
+import { TelegramBotStartResponder } from "../telegram-bot/start-responder.ts";
 import { TelegramAuthorizationService } from "../telegram-authorization/service.ts";
 import { TeleprotoAuthorizationTransport } from "../telegram-authorization/teleproto-transport.ts";
 import type { ProductionApiConfig } from "./config.ts";
@@ -67,5 +68,12 @@ export function composeProductionApi(config: ProductionApiConfig, sql: Sql) {
     telegramAuthorization,
     telegramAccounts,
     adminUsers: new PostgresAdminUserRepository(sql),
+    telegramBot: {
+      webhookSecret: config.telegramWebhookSecret(),
+      responder: new TelegramBotStartResponder({
+        botToken: config.telegramBotToken(),
+        miniAppUrl: config.telegramBotPolicy.miniAppUrl,
+      }),
+    },
   });
 }
