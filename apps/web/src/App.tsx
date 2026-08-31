@@ -13,6 +13,7 @@ import {
   switchTelegramAccount,
 } from "./api";
 import type { AuthFlow, AuthorizationResult, IssuedSession, TelegramAccount } from "./types";
+import { readTelegramInitData } from "./telegram";
 
 const SESSION_STORAGE_KEY = "jaseb.telegram.api-session";
 
@@ -358,10 +359,11 @@ export default function App() {
     const stored = readStoredSession();
     if (stored) { setSession(stored); setAuthStatus("READY"); await loadAccounts(stored.accessToken); return; }
     clearSession();
-    if (!webApp?.initData) { setAuthStatus("TELEGRAM_REQUIRED"); return; }
+    const initData = readTelegramInitData();
+    if (!initData) { setAuthStatus("TELEGRAM_REQUIRED"); return; }
     setAuthStatus("CHECKING");
     try {
-      const issued = await exchangeTelegramInitData(webApp.initData);
+      const issued = await exchangeTelegramInitData(initData);
       saveSession(issued); setSession(issued); setAuthStatus("READY"); await loadAccounts(issued.accessToken);
     } catch { setAuthStatus("ERROR"); }
   }, [loadAccounts]);
