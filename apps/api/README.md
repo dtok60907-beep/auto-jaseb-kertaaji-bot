@@ -15,6 +15,10 @@ npm test
 npm run check
 ```
 
+Production starts through `npm start` or the API Dockerfile. Deployment settings,
+health semantics, and Railway drain requirements are documented in
+[`RAILWAY_DEPLOYMENT.md`](./RAILWAY_DEPLOYMENT.md).
+
 Controlled owner/tester admission is documented in
 [`CANARY_BOOTSTRAP_RUNBOOK.md`](./CANARY_BOOTSTRAP_RUNBOOK.md). The operator is a
 deployment tool, not a public API or Mini App feature.

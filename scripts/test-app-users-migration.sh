@@ -124,7 +124,8 @@ PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
       test/api-session-postgres.integration.test.ts \
       test/admin-access-postgres.integration.test.ts \
       test/canary-operator-postgres.integration.test.ts \
-      test/production-composition-postgres.integration.test.ts
+      test/production-composition-postgres.integration.test.ts \
+      test/production-application-postgres.integration.test.ts
 )
 
 (

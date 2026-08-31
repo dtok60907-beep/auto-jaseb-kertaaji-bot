@@ -9,6 +9,13 @@ apps/engine/*
 !apps/engine/src
 !apps/engine/src/**
 
+!apps/api
+apps/api/*
+!apps/api/package.json
+!apps/api/package-lock.json
+!apps/api/src
+!apps/api/src/**
+
 !packages
 packages/*
 !packages/telegram-contract
