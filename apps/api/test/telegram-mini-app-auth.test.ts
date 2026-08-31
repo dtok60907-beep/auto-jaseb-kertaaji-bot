@@ -66,6 +66,29 @@ test("accepts an unknown Telegram field when it is covered by the signature", ()
   assert.equal(verifier().verify(valid({ future_telegram_field: "supported" })).telegramUserId, "4503599627370495");
 });
 
+test("ignores malformed optional profile metadata after verifying Telegram's signature", () => {
+  const identity = verifier().verify(valid({ user: JSON.stringify({
+    id: 4_503_599_627_370_495,
+    first_name: "Kertaaji",
+    last_name: "",
+    username: 42,
+    language_code: [],
+    is_premium: "yes",
+    allows_write_to_pm: null,
+  }) }));
+  assert.deepEqual(identity, {
+    telegramUserId: "4503599627370495",
+    authDateSeconds: NOW_SECONDS - 10,
+    queryId: "AAHdF6IQAAAAAN0X-test",
+    firstName: "Kertaaji",
+    lastName: null,
+    username: null,
+    languageCode: null,
+    isPremium: false,
+    allowsWriteToPm: false,
+  });
+});
+
 test("rejects tampering and a hash made with another bot token", () => {
   const raw = valid();
   const tampered = raw.replace("kertaaji_test", "attacker_name");

@@ -62,17 +62,14 @@ function fail(code: TelegramMiniAppAuthErrorCode): never {
 }
 
 function optionalText(value: unknown, maximumLength: number): string | null {
-  if (value === undefined) return null;
-  if (typeof value !== "string" || !value.trim() || value.length > maximumLength || /[\0\r\n]/.test(value)) {
-    fail("TELEGRAM_INIT_DATA_USER_INVALID");
-  }
-  return value;
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  if (!normalized || normalized.length > maximumLength || /[\0\r\n]/.test(normalized)) return null;
+  return normalized;
 }
 
 function optionalBoolean(value: unknown): boolean {
-  if (value === undefined) return false;
-  if (typeof value !== "boolean") fail("TELEGRAM_INIT_DATA_USER_INVALID");
-  return value;
+  return value === true;
 }
 
 function parseUser(serialized: string): TelegramUser {
@@ -85,11 +82,6 @@ function parseUser(serialized: string): TelegramUser {
   if (typeof user.first_name !== "string" || !user.first_name.trim() || user.first_name.length > 256 || /[\0\r\n]/.test(user.first_name)) {
     fail("TELEGRAM_INIT_DATA_USER_INVALID");
   }
-  optionalText(user.last_name, 256);
-  optionalText(user.username, 64);
-  optionalText(user.language_code, 35);
-  optionalBoolean(user.is_premium);
-  optionalBoolean(user.allows_write_to_pm);
   return user as TelegramUser;
 }
 
