@@ -13,6 +13,11 @@ export default defineRailway(() => {
       builder: "DOCKERFILE",
       buildEnvironment: "V3",
       dockerfilePath: "/apps/api/Dockerfile",
+      watchPatterns: [
+        "/.dockerignore",
+        "/apps/api/**",
+        "/packages/telegram-contract/**",
+      ],
     },
     deploy: {
       numReplicas: 1,

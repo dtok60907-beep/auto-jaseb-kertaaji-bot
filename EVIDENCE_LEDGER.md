@@ -1860,6 +1860,9 @@ Penutupan:
   - manifest sukses menunjukkan Dockerfile `/apps/api/Dockerfile`, build V3, satu
     replica, healthcheck `/health/ready` timeout 300s, overlap 5s, drain 35s,
     runtime V2, restart `ON_FAILURE`, dan application tidak sleep;
+  - watch paths membatasi GitHub auto-deploy pada `.dockerignore`, `apps/api/**`,
+    dan `packages/telegram-contract/**`, sehingga perubahan frontend/docs/ledger
+    tidak membakar build API yang tidak relevan;
   - deploy log hanya menunjukkan `API_READINESS_CHANGED ready=true` dan
     `API_APPLICATION_STARTED host=0.0.0.0 port=8080`, tanpa credential/error;
   - public domain `https://kertaaji-api-production.up.railway.app` mengembalikan
