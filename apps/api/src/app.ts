@@ -58,6 +58,18 @@ type ApiOptions = CommonApiOptions & (
 
 export function createApi(options: ApiOptions) {
   const app = Fastify({ logger: false });
+  // The Mini App is deployed separately from the API. Authentication uses an
+  // explicit bearer token, never cookies, so wildcard origin is safe here and
+  // keeps Telegram's changing WebApp origin from breaking preflight requests.
+  app.addHook("onRequest", async (request, reply) => {
+    if (!request.headers.origin) return;
+    reply
+      .header("access-control-allow-origin", "*")
+      .header("access-control-allow-headers", "authorization, content-type")
+      .header("access-control-allow-methods", "GET, POST, DELETE, OPTIONS")
+      .header("access-control-max-age", "600");
+    if (request.method === "OPTIONS") return reply.code(204).send();
+  });
   const authorizeUser = options.apiSessions
     ? createApiSessionUserAuthorizer(options.apiSessions)
     : options.authorizeUser;
