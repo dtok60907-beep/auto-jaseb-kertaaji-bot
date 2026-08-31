@@ -102,9 +102,12 @@ Login Telegram nyata tetap harus dimulai oleh owner dari Mini App.
 - Dependency: D1 dan D3 selesai, serta user memberi otoritas untuk memakai akun uji.
 - Preflight evidence: operator `admit` mengembalikan `ALREADY_ADMITTED` pada slot 1;
   operator `list` mengonfirmasi admission aktif tanpa app user atau admin grant.
-- Next action: owner membuka Mini App dari Telegram di
-  `https://kertaaji-web-production.up.railway.app`, menyelesaikan login Mini App,
-  lalu memberi konfirmasi agar smoke connect akun userbot dimulai.
+- Bot API `getMe` valid untuk `@DjaruumUserbot`; default menu button `Buka Kertaaji`
+  sudah diarahkan ke URL Mini App production dan diverifikasi dengan `getChatMenuButton`.
+- Next action: owner membuka menu `Buka Kertaaji` pada `@DjaruumUserbot` di Telegram,
+  lalu menyelesaikan login Mini App dari
+  `https://kertaaji-web-production.up.railway.app` dan memberi konfirmasi agar
+  smoke connect akun userbot dimulai.
 
 ### D5 — Userbot Jaseb configuration flow
 
