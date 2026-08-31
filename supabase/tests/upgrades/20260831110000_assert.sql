@@ -36,3 +36,7 @@ select 1 / case when exists (
 
 select 1 / case when to_regclass('public.telegram_account_auth_flows') is not null
 then 1 else 0 end;
+
+select 1 / case when to_regclass(
+  'public.telegram_account_auth_flows_completed_account_idx'
+) is not null then 1 else 0 end;

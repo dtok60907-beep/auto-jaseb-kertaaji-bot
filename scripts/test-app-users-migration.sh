@@ -113,6 +113,8 @@ PGDATABASE=telegram_account_lifecycle_upgrade psql -v ON_ERROR_STOP=1 \
 PGDATABASE=telegram_account_lifecycle_upgrade psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/migrations/20260831110000_telegram_account_lifecycle.sql" >/dev/null
 PGDATABASE=telegram_account_lifecycle_upgrade psql -v ON_ERROR_STOP=1 \
+  -f "${PROJECT_ROOT}/supabase/migrations/20260831120000_telegram_account_lifecycle_indexes.sql" >/dev/null
+PGDATABASE=telegram_account_lifecycle_upgrade psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/upgrades/20260831110000_assert.sql" >/dev/null
 
 PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
