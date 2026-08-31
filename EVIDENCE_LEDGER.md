@@ -1809,6 +1809,83 @@ Penutupan:
 - Follow-up units: deploy contract verification di Railway, lalu R2-003B actual owner
   admission/first login/admin grant; setelah itu R3 account lifecycle.
 
+### R1-004D — Railway production deployment verification
+
+- Status: VERIFIED
+- Parent: R1-004 — Production API entrypoint
+- Outcome: API production aktif pada project Railway khusus Kertaaji, bersumber dari
+  GitHub `main`, dibangun oleh Dockerfile API, lolos database-backed readiness, dan
+  dapat diakses melalui TLS public domain dengan auth boundary tetap tertutup.
+- Goal trace: lifecycle lokal R1-004C harus dibuktikan pada environment Railway dan
+  Supabase nyata sebelum owner/canary bootstrap dilakukan.
+- Acceptance criteria:
+  - [x] Project/service production terpisah dari project benchmark dan Nexo.
+  - [x] GitHub source, Docker build, healthcheck, replica, overlap, drain, dan runtime
+    policy dikelola oleh Railway IaC modern, bukan Config-as-Code deprecated atau
+    dashboard-only setting.
+  - [x] DATABASE_URL dan bot token tetap hanya di Railway sebagai `preserve()`;
+    plan/log/repository tidak memuat nilainya.
+  - [x] Railway image build, startup PostgreSQL probe, dan `/health/ready` deploy gate
+    lulus pada commit yang sama dengan executable terverifikasi.
+  - [x] Public TLS live/ready/package route 200; user route tanpa session 401 dan
+    admin route tanpa admin session 403.
+  - [x] IaC plan setelah apply bersih dan dependency IaC tidak memiliki vulnerability.
+- Non-goal: owner admission/login/admin grant, Telegram account connection, frontend,
+  continuous monitoring, custom domain, payment, dan engine production deploy.
+- Dependencies: R1-004C dan Railway/Supabase production credentials.
+- Risks/failure modes: secret tercatat di source/log, Docker context tidak lengkap,
+  health hanya menguji process bukan DB, deploy menimpa Nexo/benchmark, drain lebih
+  pendek dari application grace, IaC drift, atau public domain melewati authorizer.
+- Test plan: redacted variable presence; dry-run no destroy; apply; inspect deployment
+  manifest/build/start logs; public HTTP live/ready/package; unauthenticated user/admin;
+  second plan drift; dependency audit; repository secret scan.
+- Rollback/recovery: Railway dapat rollback ke successful deployment digest; IaC
+  source/health changes dapat di-plan/revert tanpa mengubah Supabase data atau secret.
+- Expected touch points: `.railway/railway.ts`, pinned IaC package/lock, deployment
+  runbook, Railway project/service state, ledger.
+- Required evidence: plan/apply diff, image digest, deployment status/manifest,
+  startup event, public status/body, auth denials, clean plan, zero secret match.
+- Commit/diff: `da97c06` (`infra: codify Railway API deployment`).
+- Acceptance evidence:
+  - dedicated project `Auto Jaseb Kertaaji Production` memiliki satu service
+    `kertaaji-api`; active benchmark dan Nexo project tidak disentuh;
+  - initial IaC plan hanya menunjukkan GitHub source + `/health/ready`, 0 destroy;
+    native policy plan berikutnya mengganti empat redundant platform variables dengan
+    Docker/deploy fields eksplisit dan tidak menghapus secret/resource;
+  - first release membuktikan image dapat dibangun tetapi fail closed pada quoted
+    DATABASE_URL sebagai stable `API_CONFIG_INVALID:DATABASE_URL`; URL diparse ulang
+    dari local env tanpa dicetak, lalu release berikutnya sukses;
+  - successful deployment `36f3b054-f7a4-4b64-90c9-974b7084f340` memakai image
+    digest `sha256:ce2d541f29a182ad9082998d5a1b54bbdbaa99388d49fc31918fbf6422f25b4d`;
+  - manifest sukses menunjukkan Dockerfile `/apps/api/Dockerfile`, build V3, satu
+    replica, healthcheck `/health/ready` timeout 300s, overlap 5s, drain 35s,
+    runtime V2, restart `ON_FAILURE`, dan application tidak sleep;
+  - deploy log hanya menunjukkan `API_READINESS_CHANGED ready=true` dan
+    `API_APPLICATION_STARTED host=0.0.0.0 port=8080`, tanpa credential/error;
+  - public domain `https://kertaaji-api-production.up.railway.app` mengembalikan
+    HTTP/2 200 untuk live, ready RUNNING, dan empty package catalog; broadcast route
+    tanpa bearer menghasilkan 401 `USER_REQUIRED`, admin package route menghasilkan
+    403 `ADMIN_REQUIRED`.
+- Commands/tests:
+  - `railway config plan --verbose` setelah apply: already up to date;
+  - Railway build: `npm ci --omit=dev`, 0 vulnerability, image export/push pass;
+  - public HTTP: live 200, ready 200, packages 200, user unauthenticated 401,
+    admin unauthenticated 403;
+  - pinned `railway@3.11.0`: `npm audit --omit=dev` found 0 vulnerabilities;
+  - secret scan hanya menemukan `TELEGRAM_BOT_TOKEN: preserve()`, tidak ada URL,
+    token value, session, atau password di `.railway` tracked files;
+  - `git diff --check`: pass.
+- Result summary: production API kini benar-benar aktif di Railway dengan Supabase
+  dependency readiness dan reproducible project-level IaC; kegagalan config pertama
+  juga membuktikan fail-closed/error redaction berjalan pada platform nyata.
+- Remaining risk: Railway healthcheck hanya deployment gate; continuous monitoring
+  masih R10. Belum ada owner/canary identity nyata, package publik memang masih kosong,
+  dan engine Telegram belum dideploy sebagai runtime production.
+- Rollback note: rollback service ke deployment sukses di atas atau revert/apply
+  `da97c06`; tidak ada database migration/data rollback.
+- Follow-up units: R2-003B admit owner → first Mini App login → grant admin, lalu R3
+  account lifecycle. Owner numeric Telegram user ID diperlukan untuk memulai bootstrap.
+
 ## Template penutupan unit
 
 ```markdown
