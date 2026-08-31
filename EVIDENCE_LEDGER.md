@@ -2132,13 +2132,17 @@ Penutupan:
     redaction tetap teruji;
   - R3-003 switch/detach/logout meng-expire lease sehingga stale runner tidak dapat
     memperoleh load atau write yang lolos fencing.
-- Remaining risk: engine production service belum dirilis sebagai deployment client
-  yang terpisah; belum ada authenticated real-user Telegram session, controlled
+  - Railway production service `kertaaji-engine` deployment
+    `b43de48e-bc9e-4008-add3-41a70202d524` dari commit `11e159d` berstatus
+    `SUCCESS` dengan instance `RUNNING`; service memakai database dan shared
+    session key references dari API.
+- Remaining risk: belum ada authenticated real-user Telegram session, controlled
   multi-session Telegram test, 24-hour soak, atau capacity promise. Semua itu adalah
   gate F5.7c/F5.7d dan D4, bukan alasan menambah code pada unit ini.
 - Rollback note: code engine dan composition dapat direvert tanpa migration rollback;
   lease expiry tetap menjadi recovery bila process mati sebelum cleanup.
-- Follow-up unit: D3 Mini App UI untuk connect/list/switch/detach/logout.
+- Follow-up unit: D3 Mini App UI sudah diimplementasikan dan dideploy; gate berikutnya
+  adalah D4 controlled production smoke dengan user canary yang diotorisasi.
 
 ## Template penutupan unit
 

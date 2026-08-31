@@ -19,8 +19,8 @@ tanpa runner lama dapat memakai session yang sudah dilepas.
 | R3-001 lifecycle account | Verified | Session/profile/entitlement dipisahkan. |
 | R3-002 connect API | Verified | OTP/2FA API terenkripsi dan durable. Real-user production login belum dilakukan. |
 | R3-003 list/switch/detach/logout API | Verified production | Commit `1de0de7`; release `4a15d37` deployed successfully, migration applied, health and anonymous guard verified. |
-| R3-004 engine session handoff | Implemented and regression-verified | Engine sudah melakukan discovery → lease/fencing → load ciphertext → decrypt → connect; 29 focused tests lulus. Closure evidence belum dirapikan di ledger. |
-| Mini App UI | Not started | Tidak ada frontend aplikasi saat ini. |
+| R3-004 engine session handoff | Verified, deployed | Engine sudah melakukan discovery → lease/fencing → load ciphertext → decrypt → connect; 29 focused tests lulus; service engine production sudah `RUNNING`. |
+| Mini App UI | Implemented, deployed, unverified | Web production sudah `RUNNING` di `https://kertaaji-web-production.up.railway.app`; E2E Telegram nyata belum dilakukan. |
 
 ## Urutan kerja yang dikunci
 
@@ -69,9 +69,9 @@ Status: **IMPLEMENTED_UNVERIFIED**
 
 Implementasi commit `35c7e1f` di `apps/web` memakai React, Vite, TypeScript, dan
 container Nginx. Test API client `3/3`, production build Vite, dependency audit
-`0 vulnerabilities`, serta API CORS preflight `4/4` lulus. Docker image belum
-dibuild karena Docker daemon lokal tidak aktif. Uji Telegram nyata dan deployment
-frontend menunggu service/domain web.
+`0 vulnerabilities`, serta API CORS preflight dan API test suite lulus. Image
+production dibuild Railway dari commit `4186a3e`; healthcheck `/health` lulus.
+Domain web aktif, tetapi uji Telegram nyata belum dilakukan.
 
 - Outcome: user dapat memulai connect, memasukkan OTP/2FA, melihat akun aman,
   switch, detach, dan logout melalui mobile Telegram.
@@ -85,6 +85,10 @@ frontend menunggu service/domain web.
 - Dependency: D1 selesai.
 
 ### D4 — Controlled production smoke
+
+Status saat ini: **NEXT** setelah D3 deployment. Jalur ini membutuhkan satu user
+canary dan otorisasi eksplisit sebelum login Telegram nyata, sehingga belum boleh
+dijalankan otomatis.
 
 - Outcome: satu user canary melakukan login nyata yang disetujui secara eksplisit
   dan memastikan session dapat dipakai engine lalu dilepas.
