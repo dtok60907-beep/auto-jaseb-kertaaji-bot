@@ -93,7 +93,10 @@ export class TeleprotoAuthorizationTransport implements TelegramAuthorizationTra
       this.#apiHash,
       {
         connectionRetries: 3,
-        requestRetries: 1,
+        // The first auth.sendCode commonly returns PHONE_MIGRATE_X. Teleproto
+        // consumes one attempt while switching DC, so a second attempt is required
+        // to send the code on the destination DC.
+        requestRetries: 2,
         reconnectRetries: 2,
         timeout: 10,
         autoReconnect: false,
