@@ -1730,6 +1730,85 @@ Penutupan:
 - Follow-up units: R1-004C executable lifecycle/health/Railway start contract, lalu
   R2-003B actual owner admit/login/admin grant.
 
+### R1-004C — Production API executable lifecycle and Railway contract
+
+- Status: VERIFIED
+- Parent: R1-004 — Production API entrypoint
+- Outcome: production API kini membuka koneksi PostgreSQL dan port HTTP melalui satu
+  executable path, menyediakan liveness/readiness yang dependency-aware, serta
+  melakukan drain idempotent saat Railway mengirim `SIGTERM`.
+- Goal trace: owner/canary tidak boleh dijalankan pada composition-only app yang
+  tidak memiliki startup probe, deployment gate, atau bounded shutdown.
+- Acceptance criteria:
+  - [x] Startup database probe harus lulus sebelum readiness menjadi 200; kegagalan
+    membuka/probe DB, composition, listen, atau monitor menghasilkan stable code dan
+    membersihkan resource yang sudah terbuka.
+  - [x] `/health/live` hanya membuktikan proses HTTP hidup, sedangkan
+    `/health/ready` merefleksikan startup, runtime DB failure threshold, recovery,
+    dan draining tanpa mengekspos raw provider/config detail.
+  - [x] Probe database mempunyai timeout dan cancellation; pool close idempotent dan
+    memakai close timeout yang sudah divalidasi config.
+  - [x] `SIGTERM`, `SIGINT`, uncaught exception, dan unhandled rejection masuk ke
+    satu drain; monitor berhenti, HTTP berhenti menerima request, koneksi aktif
+    dipaksa tutup setelah grace, lalu pool database ditutup.
+  - [x] Docker entrypoint menjalankan Node langsung sebagai PID 1 dan deployment
+    runbook menetapkan Dockerfile path, readiness healthcheck, restart policy, serta
+    Railway draining time yang lebih panjang dari application grace.
+  - [x] Unit lifecycle, full API regression, PostgreSQL/socket integration,
+    migration regression, typecheck, syntax, dan diff check lulus.
+- Non-goal: membuat Railway service, mengisi production variables, actual deploy,
+  continuous monitoring, owner admission/login, frontend, dan payment.
+- Dependencies: R1-004A dan R1-004B.
+- Risks/failure modes: DB lambat membuat release gagal readiness, readiness tetap
+  hijau setelah dependency gagal, signal dipotong package manager, request menggantung
+  melewati grace, pool tidak tertutup, atau startup error membocorkan credential.
+- Test plan: health state matrix; DB timeout/cancel/close; startup rollback; runtime
+  threshold/recovery; idempotent/error-tolerant shutdown; forced HTTP close; repeated
+  and fatal signals; real PostgreSQL + real socket; invalid executable config.
+- Rollback/recovery: executable/Dockerfile additive; revert kembali ke composition-
+  only tanpa mengubah schema, user, settings, admission, session, atau entitlement.
+- Expected touch points: production database/application/health/process/main,
+  Dockerfile, package scripts, Railway runbook, PostgreSQL runner, tests, ledger.
+- Required evidence: stable health bodies/status, ordered cleanup, no raw error,
+  real network response, closed port after stop, full regression counts, diff/commit.
+- Commit/diff: `282a69d` (`feat: run production API lifecycle`).
+- Acceptance evidence:
+  - executable membaca satu `ProductionApiConfig`, membuka bounded PostgreSQL pool,
+    menjalankan cancellable startup probe, memasang seluruh production composition,
+    register health routes, lalu listen pada exact `API_HOST` + Railway `PORT`;
+  - dua kegagalan DB berturut-turut pada threshold 2 mengubah readiness 200 menjadi
+    503 `DATABASE_UNAVAILABLE`; probe sukses berikutnya memulihkan 200 tanpa restart;
+  - stop berulang mengembalikan promise yang sama dan urutannya terbukti monitor →
+    HTTP → database; cleanup failure dikumpulkan sebagai code tanpa menghentikan
+    cleanup berikutnya atau menampilkan raw exception;
+  - forced-close test membuktikan koneksi tersisa baru diputus setelah grace habis;
+    process handler test membuktikan repeated signal hanya memulai satu drain dan
+    fatal event menetapkan exit non-zero;
+  - executable dengan environment kosong gagal tertutup sebagai JSON
+    `API_CONFIG_INVALID` + field saja, tanpa value/stack/credential;
+  - real PostgreSQL integration membuka socket HTTP, menerima 200 dari live, ready,
+    dan package route, lalu `SIGTERM` summary bersih dan port tidak dapat diakses lagi.
+- Commands/tests:
+  - focused production lifecycle: 7/7 pass;
+  - full API: 95 pass, 0 fail, 6 PostgreSQL integration opt-in skip;
+  - ephemeral PostgreSQL API integration: 6/6 pass, termasuk composition E2E dan
+    executable real-socket lifecycle; engine PostgreSQL regression: 2/2 pass;
+  - seluruh fresh/upgrade migration marker app user/session/admin/canary pass;
+  - `npm run typecheck`, `npm run check`, dan `git diff --check`: pass;
+  - Docker image build tidak dapat dijalankan karena Docker/Colima daemon lokal tidak
+    aktif; CLI tersedia tetapi socket daemon tidak ada. Ini dicatat sebagai external
+    deployment proof yang harus ditutup pada deploy Railway pertama.
+- Result summary: R1-004 kini mempunyai production-only executable yang fail closed,
+  dependency-aware, signal-aware, dan telah dibuktikan pada PostgreSQL serta HTTP
+  socket nyata; bukan lagi sekadar kumpulan route yang hanya dapat di-inject test.
+- Remaining risk: image dan environment nyata Railway belum dibangun/dijalankan;
+  healthcheck Railway hanya deploy gate, bukan continuous monitor. Nilai pool/probe/
+  drain perlu dibuktikan lagi pada service Railway, dan draining time dashboard wajib
+  melebihi `API_SHUTDOWN_GRACE_MS`.
+- Rollback note: revert commit `282a69d`; tidak ada rollback database atau data user.
+- Follow-up units: deploy contract verification di Railway, lalu R2-003B actual owner
+  admission/first login/admin grant; setelah itu R3 account lifecycle.
+
 ## Template penutupan unit
 
 ```markdown
