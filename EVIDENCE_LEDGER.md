@@ -2044,6 +2044,102 @@ Penutupan:
 - Follow-up units: R3-003 account list/switch/detach/logout API, kemudian R3-004
   encrypted-session handoff ke engine.
 
+### R3-003 — Telegram account management API
+
+- Final status: VERIFIED
+- Parent: Userbot lifecycle milestone
+- Outcome: user yang sudah terautentikasi dapat melihat metadata akun Telegram
+  miliknya, mengganti akun aktif, detach tanpa menghapus session, dan melakukan
+  explicit logout tanpa kehilangan profile, setting, atau subscription.
+- Goal trace: lifecycle account yang durable harus dapat dipakai dan dihentikan
+  melalui kontrak user-only sebelum UI dan live Userbot flow dibuka.
+- Acceptance criteria:
+  - [x] List hanya mengembalikan metadata aman; ciphertext, key, OTP, dan provider
+    object tidak pernah menjadi response.
+  - [x] Switch hanya menerima UUID valid, memeriksa ownership + `READY` account,
+    mengubah active pointer dan account-bound execution setting secara atomik.
+  - [x] Detach mempertahankan session, profile, setting, dan subscription, tetapi
+    memutus active pointer dan segera meng-expire lease runtime.
+  - [x] Explicit logout bersifat idempotent, menghapus session runtime melalui
+    repository lifecycle, dan stale runner tidak dapat melanjutkan dengan lease lama.
+  - [x] Semua route user-only memakai `no-store`, menolak body yang tidak diperlukan,
+    dan memetakan ownership/readiness/dependency failure ke stable error code.
+  - [x] Fresh/upgrade migration serta route negative-path test lulus.
+- Non-goal: UI, login Telegram nyata, billing, dan perubahan engine runtime.
+- Dependencies: R3-001 lifecycle foundation dan R3-002 durable connect API.
+- Commit/diff: `1de0de7` (`feat: manage userbot telegram accounts`).
+- Acceptance evidence:
+  - focused route suite `3/3` lulus; typecheck lulus; response error tidak membawa
+    detail Fastify atau dependency mentah;
+  - full local migration runner lulus dengan marker
+    `TELEGRAM_ACCOUNT_MANAGEMENT_OK`, termasuk fresh schema dan integration engine;
+  - Railway deployment `7d3089f4-6990-4e86-9126-1a47f70b87c9` dari release `4a15d37`
+    berstatus `SUCCESS` dan instance `RUNNING`;
+  - migration `20260831150000_telegram_account_management.sql` berhasil diterapkan
+    ke production dan kedua function management terdeteksi;
+  - production `/health/live` = `alive`, `/health/ready` = `ready/RUNNING`, dan
+    `GET /v1/userbot/telegram-accounts` tanpa bearer = HTTP `401 USER_REQUIRED`;
+  - evidence release disimpan dalam commit `e85a83b`.
+- Remaining risk: belum ada authenticated production request karena itu membutuhkan
+  user canary dan otorisasi eksplisit; UI menjadi gate berikutnya.
+- Rollback note: route dapat dilepas dan migration additive dipertahankan; jangan
+  menghapus key version selama ciphertext account masih tersimpan.
+- Follow-up unit: R3-004 encrypted-session handoff ke engine, lalu frontend account flow.
+
+### R3-004 — Encrypted-session handoff ke engine
+
+- Final status: VERIFIED (engine contract dan production composition; belum live Telegram).
+- Parent: Userbot lifecycle milestone
+- Outcome: engine hanya menjalankan akun yang ditemukan eligible, memperoleh account
+  lease/fencing lebih dulu, baru memuat dan mendekripsi session di process engine,
+  menjalankan adapter secara bounded, lalu merekam state dan membersihkan resource.
+- Goal trace: session Telegram adalah execution credential yang dapat diganti; API
+  tidak boleh menjadi loader session dan runner lama tidak boleh melewati switch,
+  detach, logout, expiry, atau lease takeover.
+- Acceptance criteria:
+  - [x] Discovery mengembalikan metadata aman untuk account `READY` dengan entitlement,
+    profile/assignment aktif, work eligible, shard yang benar, dan retry/backoff yang
+    masih berlaku.
+  - [x] Lease owner + fencing token diperoleh sebelum ciphertext dapat dimuat; caller
+    tanpa lease, lease expired, dan token lama ditolak oleh database.
+  - [x] Decrypt terjadi hanya di engine memakai account-specific key-ring domain;
+    ciphertext copy dihapus segera dan session plaintext tidak dikembalikan ke API,
+    log, snapshot, atau observer.
+  - [x] Lease heartbeat serial; kehilangan lease menghentikan work berikutnya dan
+    completion/runtime state stale ditolak oleh fencing.
+  - [x] Connect, retry, revoked, degraded, disconnect, dan release mempunyai stable
+    state/error mapping; cleanup dijalankan pada seluruh exit path.
+  - [x] Supervisor membatasi concurrency, mendedupe account in-flight, pulih dari
+    lost wake-up lewat reconciliation, dan graceful stop menunggu runner aktif.
+- Non-goal: memilih capacity final, live Telegram side effect, Auto Komentar runtime,
+  UI, atau soak 1/24 jam.
+- Dependencies: F5.2 session key-ring, F5.3 runtime discovery, F5.4 account runner,
+  F5.5 supervisor, F5.6 production composition, dan R3-003 account management.
+- Commits/diff: `2488acf` discovery, `339362d` bounded runner, `ceb037a` supervisor,
+  `ae6f3ed` production composition.
+- Acceptance evidence:
+  - focused account-runner/supervisor/core/repository suite `29/29` lulus;
+  - full engine suite `122 pass`, `0 fail`, `3 optional PostgreSQL skip`, dan
+    engine typecheck lulus ketika dijalankan dengan izin listener localhost;
+  - focused coverage membuktikan held lease tidak load/decrypt, lease loss saat
+    connect/send mem-fence work, key/session failure dipetakan stabil, action budget
+    bounded, cleanup observable, wake-up dedupe, wrong-shard rejection, dan stop
+    idempotent;
+  - engine `npm run typecheck` lulus; local full migration/integration runner
+    PostgreSQL engine `2/2` lulus; API typecheck tetap lulus;
+  - production composition meneruskan satu instance UUID, shard/policy, repository,
+    key-ring, lease repository, runner, dan supervisor yang sama; config/inspect/log
+    redaction tetap teruji;
+  - R3-003 switch/detach/logout meng-expire lease sehingga stale runner tidak dapat
+    memperoleh load atau write yang lolos fencing.
+- Remaining risk: engine production service belum dirilis sebagai deployment client
+  yang terpisah; belum ada authenticated real-user Telegram session, controlled
+  multi-session Telegram test, 24-hour soak, atau capacity promise. Semua itu adalah
+  gate F5.7c/F5.7d dan D4, bukan alasan menambah code pada unit ini.
+- Rollback note: code engine dan composition dapat direvert tanpa migration rollback;
+  lease expiry tetap menjadi recovery bila process mati sebelum cleanup.
+- Follow-up unit: D3 Mini App UI untuk connect/list/switch/detach/logout.
+
 ## Template penutupan unit
 
 ```markdown
