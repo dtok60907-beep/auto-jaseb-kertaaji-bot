@@ -1,0 +1,8 @@
+{
+  "name": "kertaaji-railway-infrastructure",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "railway": "3.11.0"
+  }
+}
