@@ -17,4 +17,5 @@ interface TelegramWebApp {
 
 interface Window {
   Telegram?: { WebApp?: TelegramWebApp };
+  __JASEB_RUNTIME_CONFIG__?: { apiBaseUrl?: string };
 }

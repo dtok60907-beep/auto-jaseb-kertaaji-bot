@@ -12,5 +12,7 @@ RUN npm run build
 FROM nginx:1.27-alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker-entrypoint.sh /usr/local/bin/kertaaji-web-entrypoint
+RUN chmod +x /usr/local/bin/kertaaji-web-entrypoint
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+ENTRYPOINT ["/usr/local/bin/kertaaji-web-entrypoint"]

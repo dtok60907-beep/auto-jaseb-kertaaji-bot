@@ -1,6 +1,7 @@
 import type { AuthFlow, AuthorizationResult, IssuedSession, TelegramAccount } from "./types";
 
-const API_ROOT = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+const runtimeApiBase = typeof window !== "undefined" ? window.__JASEB_RUNTIME_CONFIG__?.apiBaseUrl : undefined;
+const API_ROOT = (runtimeApiBase ?? import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
 export class ApiError extends Error {
   readonly status: number;

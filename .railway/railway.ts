@@ -4,6 +4,7 @@ import {
   preserve,
   project,
   service,
+  ref,
 } from "railway/iac";
 
 export default defineRailway(() => {
@@ -56,7 +57,90 @@ export default defineRailway(() => {
     },
   });
 
+  const web = service("kertaaji-web", {
+    source: github("dtok60907-beep/auto-jaseb-kertaaji-bot", { branch: "main" }),
+    build: {
+      builder: "DOCKERFILE",
+      buildEnvironment: "V3",
+      dockerfilePath: "/apps/web/Dockerfile",
+      watchPatterns: [
+        "/.dockerignore",
+        "/apps/web/**",
+      ],
+    },
+    deploy: {
+      numReplicas: 1,
+      healthcheckPath: "/health",
+      healthcheckTimeout: 60,
+      overlapSeconds: 5,
+      drainingSeconds: 20,
+      runtime: "V2",
+      restartPolicyType: "ON_FAILURE",
+    },
+    env: {
+      API_BASE_URL: "https://kertaaji-api-production.up.railway.app",
+    },
+  });
+
+  const engine = service("kertaaji-engine", {
+    source: github("dtok60907-beep/auto-jaseb-kertaaji-bot", { branch: "main" }),
+    build: {
+      builder: "DOCKERFILE",
+      buildEnvironment: "V3",
+      dockerfilePath: "/apps/engine/Dockerfile",
+      watchPatterns: [
+        "/apps/engine/Dockerfile",
+        "/apps/engine/package.json",
+        "/apps/engine/package-lock.json",
+        "/apps/engine/src/**",
+        "/packages/telegram-contract/**",
+        "/packages/telegram-session-crypto/**",
+      ],
+    },
+    deploy: {
+      numReplicas: 1,
+      healthcheckPath: "/health/ready",
+      healthcheckTimeout: 120,
+      overlapSeconds: 5,
+      drainingSeconds: 60,
+      runtime: "V2",
+      restartPolicyType: "ON_FAILURE",
+    },
+    env: {
+      DATABASE_URL: ref(api, "DATABASE_URL"),
+      TELEGRAM_API_ID: ref(api, "TELEGRAM_API_ID"),
+      TELEGRAM_API_HASH: ref(api, "TELEGRAM_API_HASH"),
+      TELEGRAM_SESSION_ACTIVE_KEY_VERSION: ref(api, "TELEGRAM_SESSION_ACTIVE_KEY_VERSION"),
+      TELEGRAM_SESSION_KEYS: ref(api, "TELEGRAM_SESSION_KEYS"),
+      TELEGRAM_OPERATION_TIMEOUT_MS: "30000",
+      SHARD_COUNT: "1",
+      SHARD_INDEX: "0",
+      ENGINE_ACCOUNT_LEASE_SECONDS: "120",
+      ENGINE_HEARTBEAT_INTERVAL_MS: "30000",
+      ENGINE_MAX_ACTIONS_PER_RUN: "20",
+      ENGINE_COMMAND_LEASE_SECONDS: "60",
+      ENGINE_RUNTIME_RETRY_SECONDS: "60",
+      ENGINE_MAX_CONCURRENT_ACCOUNTS: "1",
+      ENGINE_DISCOVERY_BATCH_SIZE: "10",
+      ENGINE_RECONCILIATION_INTERVAL_MS: "30000",
+      ENGINE_SUBSCRIPTION_RETRY_MS: "5000",
+      ENGINE_CONTENDED_ACCOUNT_RETRY_MS: "5000",
+      ENGINE_FAILED_ACCOUNT_RETRY_MS: "60000",
+      ENGINE_DATABASE_MAX_CONNECTIONS: "5",
+      ENGINE_DATABASE_CONNECT_TIMEOUT_SECONDS: "10",
+      ENGINE_DATABASE_IDLE_TIMEOUT_SECONDS: "30",
+      ENGINE_DATABASE_MAX_LIFETIME_SECONDS: "1800",
+      ENGINE_DATABASE_CLOSE_TIMEOUT_SECONDS: "10",
+      ENGINE_DATABASE_PREPARE_STATEMENTS: "false",
+      ENGINE_HEALTH_HOST: "0.0.0.0",
+      ENGINE_HEALTH_PORT: "8080",
+      ENGINE_READINESS_PROBE_INTERVAL_MS: "5000",
+      ENGINE_READINESS_PROBE_TIMEOUT_MS: "2000",
+      ENGINE_READINESS_FAILURE_THRESHOLD: "3",
+    },
+  });
+
   return project("Auto Jaseb Kertaaji Production", {
-    resources: [api],
+    resources: [api, web, engine],
   });
 });

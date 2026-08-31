@@ -10,4 +10,4 @@ COPY apps/engine/src ./src
 COPY packages/telegram-contract /workspace/packages/telegram-contract
 COPY packages/telegram-session-crypto /workspace/packages/telegram-session-crypto
 
-CMD ["npm", "run", "benchmark:railway"]
+CMD ["npm", "run", "start:production"]
