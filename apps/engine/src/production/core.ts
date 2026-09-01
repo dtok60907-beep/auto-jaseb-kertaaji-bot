@@ -12,6 +12,7 @@ import type {
   AccountSupervisorSummary,
 } from "../account-supervisor/contracts.ts";
 import { startBroadcastShardSupervisor } from "../account-supervisor/service.ts";
+import { PostgresAutoCommentPreparationRepository } from "../auto-comment-preparation/postgres-repository.ts";
 import {
   createPostgresBroadcastCampaignCycleRunner,
   PostgresBroadcastCampaignSource,
@@ -150,6 +151,7 @@ export async function startProductionEngineCore(
       accountLeases: new PostgresRuntimeAccountLeaseRepository(sql),
       preparations: new PostgresBroadcastPreparationRepository(sql),
       executor: new PostgresBroadcastExecutorRepository(sql),
+      autoCommentPreparations: new PostgresAutoCommentPreparationRepository(sql),
       sessionKeyRing: config.sessionKeyRing(),
       adapterFactory: new TeleprotoRuntimeAdapterFactory({
         apiId: config.telegramApiId,

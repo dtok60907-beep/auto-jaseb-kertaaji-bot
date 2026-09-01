@@ -1,8 +1,9 @@
-import { Api, Logger, TelegramClient, sessions } from "teleproto";
+import { Api, events, Logger, TelegramClient, sessions } from "teleproto";
 import { LogLevel } from "teleproto/extensions/Logger.js";
 import {
   TelegramAdapterError,
   telegramDeliveryReceipt,
+  type IncomingChannelMessage,
   type NativeForwardRequest,
   type TelegramDeliveryAdapter,
   type TelegramDeliveryReceipt,
@@ -31,6 +32,7 @@ export interface TeleprotoClientPort {
   sendMessage(entity: string, params: Readonly<{ message: string; linkPreview: false }>): Promise<unknown>;
   getMessages(entity: unknown, params: Readonly<{ ids: readonly number[] }>): Promise<unknown>;
   forwardMessages(entity: string, params: Readonly<{ messages: readonly number[]; fromPeer: unknown; dropAuthor: boolean }>): Promise<unknown>;
+  onNewMessage(chatRef: string, handler: (message: unknown) => void): () => void;
 }
 
 function asRecord(value: unknown): ProviderRecord | null {
@@ -107,6 +109,12 @@ function createPort(client: TelegramClient): TeleprotoClientPort {
     sendMessage: async (entity, params) => client.sendMessage(entity, params),
     getMessages: async (entity, params) => client.getMessages(entity as never, { ids: [...params.ids] }),
     forwardMessages: async (entity, params) => client.forwardMessages(entity, { messages: [...params.messages], fromPeer: params.fromPeer as never, dropAuthor: params.dropAuthor }),
+    onNewMessage: (chatRef, handler) => {
+      const builder = new events.NewMessage({ chats: [chatRef], incoming: true });
+      const callback = (event: { message: unknown }) => handler(event.message);
+      client.addEventHandler(callback, builder);
+      return () => client.removeEventHandler(callback, builder);
+    },
   };
 }
 
@@ -326,6 +334,19 @@ export class TeleprotoProductionAdapter implements TelegramDeliveryAdapter {
         dropAuthor: input.sourceAttribution === "HIDE_SOURCE",
       }));
       return receiptFromProvider(response, prepared.messageIds.length);
+    });
+  }
+
+  async onChannelMessage(channelRef: string, handler: (message: IncomingChannelMessage) => void): Promise<() => void> {
+    const target = validateRef(channelRef, "INVALID_TARGET_REF");
+    if (this.#state !== "READY") throw new TelegramAdapterError({ code: "ADAPTER_NOT_READY", retryable: true });
+    return this.#client.onNewMessage(target, (raw) => {
+      const record = asRecord(raw);
+      if (!record || !Number.isInteger(record.id) || Number(record.id) <= 0) return;
+      handler(Object.freeze({
+        channelPostId: String(record.id),
+        text: typeof record.message === "string" ? record.message : "",
+      }));
     });
   }
 }

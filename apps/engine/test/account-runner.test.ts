@@ -21,6 +21,10 @@ import { runBroadcastAccount } from "../src/account-runner/service.ts";
 import { SerialRuntimeRepeatingTaskScheduler } from "../src/account-runner/serial-scheduler.ts";
 import { TeleprotoRuntimeAdapterFactory } from "../src/account-runner/teleproto-factory.ts";
 import type {
+  AutoCommentPreparationRepository,
+  ClaimedAutoCommentPreparation,
+} from "../src/auto-comment-preparation/repository.ts";
+import type {
   BroadcastExecutorRepository,
   ClaimedBroadcastCommand,
 } from "../src/broadcast-executor/repository.ts";
@@ -163,6 +167,21 @@ class FakePreparationRepository implements BroadcastPreparationRepository {
   }
 }
 
+class FakeAutoCommentPreparationRepository implements AutoCommentPreparationRepository {
+  claims: Array<ClaimedAutoCommentPreparation | null> = [null];
+  claimCalls = 0;
+  transitions: Array<Parameters<AutoCommentPreparationRepository["transition"]>[0]> = [];
+
+  async claimNext() {
+    this.claimCalls += 1;
+    return this.claims.length ? this.claims.shift() ?? null : null;
+  }
+  async transition(input: Parameters<AutoCommentPreparationRepository["transition"]>[0]) {
+    this.transitions.push(input);
+    return true;
+  }
+}
+
 function command(id: string): ClaimedBroadcastCommand {
   return Object.freeze({
     id,
@@ -238,6 +257,7 @@ class FakeAdapter implements TelegramDeliveryAdapter {
     return telegramDeliveryReceipt([String(100 + this.sendCalls)], "2030-01-01T00:00:01.000Z");
   }
   async forwardNative() { return telegramDeliveryReceipt(["200"], "2030-01-01T00:00:01.000Z"); }
+  async onChannelMessage() { return () => {}; }
 }
 
 class FakeAdapterFactory implements TelegramRuntimeAdapterFactory {
@@ -255,13 +275,14 @@ class FakeAdapterFactory implements TelegramRuntimeAdapterFactory {
   }
 }
 
-function harness() {
+function harness(input: Readonly<{ autoCommentPreparations?: FakeAutoCommentPreparationRepository }> = {}) {
   const runtimeAccounts = new FakeRuntimeRepository();
   const accountLeases = new FakeLeaseRepository();
   const preparations = new FakePreparationRepository();
   const executor = new FakeExecutorRepository();
   const adapterFactory = new FakeAdapterFactory();
   const scheduler = new ManualScheduler();
+  const autoCommentPreparations = input.autoCommentPreparations;
   let decryptCalls = 0;
   const sessionKeyRing = {
     decrypt(context: unknown, encrypted: unknown) {
@@ -279,6 +300,7 @@ function harness() {
     sessionKeyRing,
     adapterFactory,
     scheduler,
+    ...(autoCommentPreparations ? { autoCommentPreparations } : {}),
   };
   return {
     dependencies,
@@ -288,6 +310,7 @@ function harness() {
     executor,
     adapterFactory,
     scheduler,
+    autoCommentPreparations,
     decryptCalls: () => decryptCalls,
   };
 }
@@ -373,6 +396,39 @@ test("happy path drains preparation and delivery then cleans up in order", async
   assert.equal(context.executor.finishes[0]?.outcome.status, "SUCCEEDED");
   assert.equal(context.scheduler.stops, 1);
   assert.equal(context.accountLeases.releaseCalls, 1);
+});
+
+test("auto-comment discussion preparation only runs once broadcast work is exhausted, and counts toward the budget", async () => {
+  const autoCommentPreparations = new FakeAutoCommentPreparationRepository();
+  autoCommentPreparations.claims = [{
+    channelTargetId: "channel-target-1",
+    sourceChannelRef: "@menfess",
+    discussionTargetRef: null,
+    previousStatus: "QUEUED",
+  }, null];
+  const context = harness({ autoCommentPreparations });
+
+  const result = await run(context);
+  assert.deepEqual(result, {
+    accountId: account.accountId,
+    status: "DRAINED",
+    actions: 1,
+    errorCode: null,
+    disconnected: true,
+    leaseReleased: true,
+    cleanupErrorCodes: [],
+  });
+  assert.equal(context.preparations.claimCalls, 2);
+  assert.equal(context.executor.claimCalls, 2);
+  assert.equal(autoCommentPreparations.claimCalls, 2);
+  assert.deepEqual(autoCommentPreparations.transitions.map((item) => item.status), ["READY"]);
+});
+
+test("broadcast dependencies alone (no autoCommentPreparations) behave exactly as before", async () => {
+  const context = harness();
+  const result = await run(context);
+  assert.equal(result.status, "DRAINED");
+  assert.equal(result.actions, 0);
 });
 
 test("heartbeat lease loss while connecting prevents state and workflow writes", async () => {

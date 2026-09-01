@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { prepareNextAutoCommentDiscussion } from "../src/auto-comment-preparation/service.ts";
 import type { AutoCommentPreparationRepository, AutoCommentResolutionStatus } from "../src/auto-comment-preparation/repository.ts";
-import { TelegramAdapterError, telegramDeliveryReceipt, type TelegramDeliveryAdapter } from "../src/telegram/adapter.ts";
+import { TelegramAdapterError, telegramDeliveryReceipt, type TelegramDeliveryAdapter } from "../../../packages/telegram-contract/src/index.ts";
 
 const lease = { accountId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", leaseOwner: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", accountFencingToken: 9n };
 class FakeRepository implements AutoCommentPreparationRepository {
@@ -32,6 +32,7 @@ class FakeAdapter implements TelegramDeliveryAdapter {
   async joinPublicTarget() { this.joinCalls += 1; if (this.joinError) throw this.joinError; return { state: this.joinState }; }
   async sendText() { return telegramDeliveryReceipt(["1"], new Date().toISOString()); }
   async forwardNative() { return telegramDeliveryReceipt(["1"], new Date().toISOString()); }
+  async onChannelMessage() { return () => {}; }
 }
 
 test("linked discussion already joined becomes ready without a join call", async () => { const repository = new FakeRepository(); const adapter = new FakeAdapter(); const result = await prepareNextAutoCommentDiscussion(adapter, repository, lease); assert.deepEqual(result, { status: "READY", channelTargetId: "channel-target-1", discussionTargetRef: "@menfess_discussion", errorCode: null, retryAfterSeconds: null }); assert.equal(adapter.joinCalls, 0); });

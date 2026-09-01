@@ -45,6 +45,8 @@ class FakeClient implements TeleprotoClientPort {
   sendCalls: Array<Readonly<{ entity: string; params: Readonly<{ message: string; linkPreview: false }> }>> = [];
   forwardCalls: ForwardCall[] = [];
   getMessagesCalls: Array<Readonly<{ entity: unknown; ids: readonly number[] }>> = [];
+  newMessageSubscriptions: Array<Readonly<{ chatRef: string; handler: (message: unknown) => void }>> = [];
+  newMessageUnsubscribed = 0;
   entities = new Map<string, unknown>();
   invokeImpl: (request: unknown) => Promise<unknown> = async (request) => {
     if (requestName(request) === "channels.GetParticipant") return { participant: { className: "ChannelParticipantSelf" } };
@@ -78,6 +80,10 @@ class FakeClient implements TeleprotoClientPort {
   async forwardMessages(entity: string, params: ForwardCall["params"]) {
     this.forwardCalls.push({ entity, params });
     return this.forwardImpl(entity, params);
+  }
+  onNewMessage(chatRef: string, handler: (message: unknown) => void) {
+    this.newMessageSubscriptions.push({ chatRef, handler });
+    return () => { this.newMessageUnsubscribed += 1; };
   }
 }
 
@@ -310,4 +316,31 @@ test("serializes concurrent operations for one account and isolates fatal state"
     sentAt: "2027-01-15T08:00:00.000Z",
   });
   assert.equal(isolated.adapter.state, "READY");
+});
+
+test("onChannelMessage subscribes for a channel, extracts post id and text, and unsubscribes cleanly", async () => {
+  const { adapter, client } = await ready();
+  const received: unknown[] = [];
+  const unsubscribe = await adapter.onChannelMessage("@menfess", (message) => received.push(message));
+
+  assert.equal(client.newMessageSubscriptions.length, 1);
+  assert.equal(client.newMessageSubscriptions[0]?.chatRef, "@menfess");
+
+  client.newMessageSubscriptions[0]?.handler({ id: 42, message: "keyword cari admin" });
+  client.newMessageSubscriptions[0]?.handler({ id: 0, message: "malformed, ignored" });
+  client.newMessageSubscriptions[0]?.handler({ id: 43 });
+
+  assert.deepEqual(received, [
+    { channelPostId: "42", text: "keyword cari admin" },
+    { channelPostId: "43", text: "" },
+  ]);
+
+  await unsubscribe();
+  assert.equal(client.newMessageUnsubscribed, 1);
+});
+
+test("onChannelMessage refuses to subscribe before the adapter is ready", async () => {
+  const client = new FakeClient();
+  const adapter = new TeleprotoProductionAdapter(client);
+  await expectAdapterError(() => adapter.onChannelMessage("@menfess", () => {}), { code: "ADAPTER_NOT_READY" });
 });

@@ -1,5 +1,6 @@
 import type { TelegramSessionKeyRing } from "../../../../packages/telegram-session-crypto/src/index.ts";
 import type { TelegramDeliveryAdapter } from "../../../../packages/telegram-contract/src/index.ts";
+import type { AutoCommentPreparationRepository } from "../auto-comment-preparation/repository.ts";
 import type { BroadcastExecutorRepository } from "../broadcast-executor/repository.ts";
 import type { BroadcastPreparationRepository } from "../broadcast-preparation/repository.ts";
 import type { BroadcastRuntimeAccount, BroadcastRuntimeAccountRepository } from "../runtime-accounts/repository.ts";
@@ -58,6 +59,7 @@ export type AccountRunnerDependencies = Readonly<{
   accountLeases: RuntimeAccountLeaseRepository;
   preparations: BroadcastPreparationRepository;
   executor: BroadcastExecutorRepository;
+  autoCommentPreparations?: AutoCommentPreparationRepository;
   sessionKeyRing: Pick<TelegramSessionKeyRing, "decrypt">;
   adapterFactory: TelegramRuntimeAdapterFactory;
   scheduler: RuntimeRepeatingTaskScheduler;

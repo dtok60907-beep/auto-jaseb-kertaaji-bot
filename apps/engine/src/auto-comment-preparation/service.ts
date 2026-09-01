@@ -1,4 +1,8 @@
-import { TelegramAdapterError, type TelegramDeliveryAdapter, type TelegramTarget } from "../telegram/adapter.ts";
+import {
+  TelegramAdapterError,
+  type TelegramDeliveryAdapter,
+  type TelegramTarget,
+} from "../../../../packages/telegram-contract/src/index.ts";
 import type { AutoCommentPreparationRepository, AutoCommentResolutionStatus, ClaimedAutoCommentPreparation } from "./repository.ts";
 
 type LeaseContext = Readonly<{ accountId: string; leaseOwner: string; accountFencingToken: bigint }>;

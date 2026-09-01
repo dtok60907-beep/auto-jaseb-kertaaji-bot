@@ -13,6 +13,7 @@ class RecordingAdapter implements TelegramDeliveryAdapter {
   async joinPublicTarget() { return { state: "ALREADY_MEMBER" as const }; }
   async sendText(input: { targetRef: string; text: string }): Promise<TelegramDeliveryReceipt> { this.texts.push(input); return telegramDeliveryReceipt(["9001"], "2026-08-29T08:00:00.000Z"); }
   async forwardNative(input: NativeForwardRequest): Promise<TelegramDeliveryReceipt> { this.forwards.push(input); return telegramDeliveryReceipt(["9101", "9102", "9103", "9104"], "2026-08-29T08:00:01.000Z"); }
+  async onChannelMessage(): Promise<() => void> { return () => {}; }
 }
 
 test("manual wording uses only the Telegram text operation", async () => {

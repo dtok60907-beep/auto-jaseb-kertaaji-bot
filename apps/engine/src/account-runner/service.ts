@@ -5,6 +5,7 @@ import {
   TelegramAdapterError,
   type TelegramDeliveryAdapter,
 } from "../../../../packages/telegram-contract/src/index.ts";
+import { prepareNextAutoCommentDiscussion } from "../auto-comment-preparation/service.ts";
 import { executeNextBroadcast } from "../broadcast-executor/service.ts";
 import { prepareNextBroadcastTarget } from "../broadcast-preparation/service.ts";
 import type { AccountLease } from "../runtime-leases/repository.ts";
@@ -310,6 +311,29 @@ export async function runBroadcastAccount(
             actions,
             execution.retryAfterSeconds,
           );
+        }
+      }
+
+      if (!progressed && dependencies.autoCommentPreparations && actions < input.policy.maxActionsPerRun) {
+        const commentPreparation = await prepareNextAutoCommentDiscussion(activeAdapter, dependencies.autoCommentPreparations, {
+          accountId: lease.accountId,
+          leaseOwner: lease.leaseOwner,
+          accountFencingToken: lease.fencingToken,
+        });
+        if (commentPreparation.status !== "NO_TARGET") {
+          actions += 1;
+          progressed = true;
+          if (commentPreparation.status === "FENCED_OUT") return core("FENCED_OUT", actions, commentPreparation.errorCode);
+          if (commentPreparation.errorCode === "SESSION_REVOKED" || commentPreparation.errorCode === "SESSION_CONFLICT") {
+            return await persistFailure(new TelegramAdapterError({ code: commentPreparation.errorCode, retryable: false }), actions);
+          }
+          if (commentPreparation.status === "RETRYABLE") {
+            return await persistFailure(
+              new TelegramAdapterError({ code: commentPreparation.errorCode === "FLOOD_WAIT" ? "FLOOD_WAIT" : "TELEGRAM_TRANSIENT", retryable: true }),
+              actions,
+              commentPreparation.retryAfterSeconds,
+            );
+          }
         }
       }
 

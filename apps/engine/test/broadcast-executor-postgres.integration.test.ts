@@ -62,6 +62,7 @@ test("PostgreSQL claim → adapter → aggregation and fencing-safe completion",
         return telegramDeliveryReceipt(["1101", "1102"], "2030-01-01T00:00:00.000Z");
       },
       async forwardNative(_input: NativeForwardRequest): Promise<never> { throw new Error("unused"); },
+      async onChannelMessage(): Promise<() => void> { return () => {}; },
     };
     const repository = new PostgresBroadcastExecutorRepository(sql);
     const result = await executeNextBroadcast(adapter, repository, { accountId, leaseOwner, fencingToken: 1n });

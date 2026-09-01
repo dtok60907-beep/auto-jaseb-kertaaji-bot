@@ -52,6 +52,7 @@ export type NativeForwardRequest = Readonly<{
   source: Readonly<{ channelUsername: string; messageId: number }>;
   sourceAttribution: "SHOW_SOURCE" | "HIDE_SOURCE";
 }>;
+export type IncomingChannelMessage = Readonly<{ channelPostId: string; text: string }>;
 
 export interface TelegramDeliveryAdapter {
   readonly state: TelegramAdapterState;
@@ -66,6 +67,12 @@ export interface TelegramDeliveryAdapter {
    * Telegram's native forward operation once with the full ordered message set.
    */
   forwardNative(input: NativeForwardRequest): Promise<TelegramDeliveryReceipt>;
+  /**
+   * Subscribes to new posts in a channel/group already known to this
+   * connection. Resolves to an unsubscribe function; the handler is called
+   * for each new message until unsubscribed or the adapter disconnects.
+   */
+  onChannelMessage(channelRef: string, handler: (message: IncomingChannelMessage) => void): Promise<() => void>;
 }
 
 export function telegramDeliveryReceipt(providerMessageIds: readonly string[], sentAt: string): TelegramDeliveryReceipt {
