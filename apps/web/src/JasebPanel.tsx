@@ -12,6 +12,8 @@ import {
   getBroadcastSettings,
   listBroadcastCampaigns,
   stopBroadcastCampaign,
+  updateForwardBroadcastMaterial,
+  updateTextBroadcastMaterial,
 } from "./api";
 import type { BroadcastCampaign, BroadcastHistoryEntry, BroadcastLpmTarget, BroadcastMaterial, BroadcastOperation } from "./types";
 
@@ -75,6 +77,7 @@ export function JasebPanel({ token }: { token: string }) {
   const [target, setTarget] = useState<BroadcastLpmTarget | null>(null);
   const [accountMode, setAccountMode] = useState<"JASEB_WORKER" | "USERBOT" | null>(null);
   const [materialKindChoice, setMaterialKindChoice] = useState<"TEXT" | "FORWARD" | null>(null);
+  const [editingMaterial, setEditingMaterial] = useState(false);
   const [materialText, setMaterialText] = useState("");
   const [forwardLink, setForwardLink] = useState("");
   const [forwardShowSource, setForwardShowSource] = useState(true);
@@ -140,11 +143,30 @@ export function JasebPanel({ token }: { token: string }) {
     void tick();
   }, [stopPolling, token]);
 
+  const openMaterialEditor = () => {
+    if (!material) return;
+    if (material.kind === "TEXT") { setMaterialText(material.text); setForwardLink(""); setForwardShowSource(true); }
+    else { setForwardLink(material.source.canonicalLink); setForwardShowSource(material.sourceAttribution === "SHOW_SOURCE"); setMaterialText(""); }
+    setMaterialKindChoice(material.kind);
+    setEditingMaterial(true);
+  };
+
+  const cancelMaterialEdit = () => {
+    setEditingMaterial(false);
+    setMaterialKindChoice(null);
+  };
+
   const submitMaterial = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setCreatingMaterial(true); setPageError(null);
-    try { setMaterial(await createTextBroadcastMaterial(token, materialText.trim())); }
-    catch (cause) { setPageError(jasebErrorLabel(cause)); }
+    try {
+      const saved = editingMaterial && material
+        ? await updateTextBroadcastMaterial(token, material.id, materialText.trim())
+        : await createTextBroadcastMaterial(token, materialText.trim());
+      setMaterial(saved);
+      setEditingMaterial(false);
+      setMaterialKindChoice(null);
+    } catch (cause) { setPageError(jasebErrorLabel(cause)); }
     finally { setCreatingMaterial(false); }
   };
 
@@ -152,7 +174,13 @@ export function JasebPanel({ token }: { token: string }) {
     event.preventDefault();
     setCreatingMaterial(true); setPageError(null);
     try {
-      setMaterial(await createForwardBroadcastMaterial(token, forwardLink.trim(), forwardShowSource ? "SHOW_SOURCE" : "HIDE_SOURCE"));
+      const attribution = forwardShowSource ? "SHOW_SOURCE" : "HIDE_SOURCE";
+      const saved = editingMaterial && material
+        ? await updateForwardBroadcastMaterial(token, material.id, forwardLink.trim(), attribution)
+        : await createForwardBroadcastMaterial(token, forwardLink.trim(), attribution);
+      setMaterial(saved);
+      setEditingMaterial(false);
+      setMaterialKindChoice(null);
     } catch (cause) { setPageError(jasebErrorLabel(cause)); }
     finally { setCreatingMaterial(false); }
   };
@@ -238,13 +266,14 @@ export function JasebPanel({ token }: { token: string }) {
         <div className="empty-card"><h3>Belum ada paket Jasa Sebar aktif</h3></div>
       )}
 
-      {accountMode !== null && !material && materialKindChoice === null && (
+      {accountMode !== null && (!material || editingMaterial) && materialKindChoice === null && (
         <div className="empty-card">
           <div>
             <h3>Pilih materi Jasa Sebar</h3>
             <p>Tulis wording sendiri, atau forward dari post yang sudah ada pakai link-nya.</p>
           </div>
           <div className="account-card__actions">
+            {editingMaterial && <button className="button button--ghost" type="button" onClick={cancelMaterialEdit}>Batal</button>}
             <button className="button button--ghost" type="button" onClick={() => setMaterialKindChoice("FORWARD")}>
               Forward dari Post
             </button>
@@ -255,7 +284,7 @@ export function JasebPanel({ token }: { token: string }) {
         </div>
       )}
 
-      {accountMode !== null && !material && materialKindChoice === "TEXT" && (
+      {accountMode !== null && (!material || editingMaterial) && materialKindChoice === "TEXT" && (
         <form className="stack-form" onSubmit={submitMaterial}>
           <label htmlFor="jaseb-material-text">Materi wording</label>
           <textarea
@@ -268,7 +297,7 @@ export function JasebPanel({ token }: { token: string }) {
             required
           />
           <div className="account-card__actions">
-            <button className="button button--ghost" type="button" onClick={() => setMaterialKindChoice(null)} disabled={creatingMaterial}>Kembali</button>
+            <button className="button button--ghost" type="button" onClick={() => (editingMaterial ? cancelMaterialEdit() : setMaterialKindChoice(null))} disabled={creatingMaterial}>Kembali</button>
             <button className="button button--primary" type="submit" disabled={creatingMaterial || !materialText.trim()}>
               {creatingMaterial ? "Menyimpan materi" : "Simpan materi"}
             </button>
@@ -276,7 +305,7 @@ export function JasebPanel({ token }: { token: string }) {
         </form>
       )}
 
-      {accountMode !== null && !material && materialKindChoice === "FORWARD" && (
+      {accountMode !== null && (!material || editingMaterial) && materialKindChoice === "FORWARD" && (
         <form className="stack-form" onSubmit={submitForwardMaterial}>
           <label htmlFor="jaseb-forward-link">Link post yang akan di-forward</label>
           <input
@@ -297,7 +326,7 @@ export function JasebPanel({ token }: { token: string }) {
             Tampilkan sumber ("Diteruskan dari...")
           </label>
           <div className="account-card__actions">
-            <button className="button button--ghost" type="button" onClick={() => setMaterialKindChoice(null)} disabled={creatingMaterial}>Kembali</button>
+            <button className="button button--ghost" type="button" onClick={() => (editingMaterial ? cancelMaterialEdit() : setMaterialKindChoice(null))} disabled={creatingMaterial}>Kembali</button>
             <button className="button button--primary" type="submit" disabled={creatingMaterial || !forwardLink.trim()}>
               {creatingMaterial ? "Menyimpan materi" : "Simpan materi"}
             </button>
@@ -305,7 +334,7 @@ export function JasebPanel({ token }: { token: string }) {
         </form>
       )}
 
-      {material && !target && (
+      {material && !editingMaterial && !target && (
         <form className="stack-form" onSubmit={submitTarget}>
           <label htmlFor="jaseb-target-ref">Target Grup LPM (username/link Telegram)</label>
           <input
@@ -323,7 +352,7 @@ export function JasebPanel({ token }: { token: string }) {
         </form>
       )}
 
-      {material && target && campaign && (
+      {material && target && campaign && !editingMaterial && (
         <div className="empty-card">
           <div>
             <h3>Berjalan otomatis</h3>
@@ -338,13 +367,16 @@ export function JasebPanel({ token }: { token: string }) {
         </div>
       )}
 
-      {material && target && !campaign && !repeatFormOpen && (
+      {material && target && !campaign && !repeatFormOpen && !editingMaterial && (
         <div className="empty-card">
           <div>
             <h3>Siap disebar</h3>
             <p>Kirim {materialSummary(material)} ke {target.label ?? target.telegramTargetRef}.</p>
           </div>
           <div className="account-card__actions">
+            <button className="button button--ghost" type="button" onClick={openMaterialEditor} disabled={launching}>
+              Ganti Materi
+            </button>
             <button className="button button--ghost" type="button" onClick={() => setRepeatFormOpen(true)} disabled={launching}>
               Sebar Otomatis
             </button>

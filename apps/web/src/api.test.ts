@@ -14,6 +14,7 @@ import {
   listBroadcastCampaigns,
   listTelegramAccounts,
   stopBroadcastCampaign,
+  updateTextBroadcastMaterial,
 } from "./api";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -90,6 +91,17 @@ describe("web API client", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(createForwardBroadcastMaterial("jas_test", "https://t.me/contoh/123", "HIDE_SOURCE")).resolves.toMatchObject({ id: "material-2", kind: "FORWARD" });
+  });
+
+  it("updates an existing material in place instead of creating a new one", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe("PUT");
+      expect(JSON.parse(String(init?.body))).toEqual({ kind: "TEXT", text: "wording baru", active: true });
+      return new Response(JSON.stringify({ material: { id: "material-1", kind: "TEXT", text: "wording baru", active: true } }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(updateTextBroadcastMaterial("jas_test", "material-1", "wording baru")).resolves.toMatchObject({ text: "wording baru" });
   });
 
   it("creates an LPM target", async () => {

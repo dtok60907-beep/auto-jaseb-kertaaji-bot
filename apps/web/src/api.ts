@@ -208,6 +208,24 @@ export async function createForwardBroadcastMaterial(
   return result.material;
 }
 
+export async function updateTextBroadcastMaterial(token: string, materialId: string, text: string): Promise<BroadcastMaterial> {
+  const result = await request<{ material: BroadcastMaterial }>(`/v1/broadcast/materials/${materialId}`, {
+    method: "PUT",
+    body: JSON.stringify({ kind: "TEXT", text, active: true }),
+  }, token);
+  return result.material;
+}
+
+export async function updateForwardBroadcastMaterial(
+  token: string, materialId: string, sourceLink: string, sourceAttribution: "SHOW_SOURCE" | "HIDE_SOURCE",
+): Promise<BroadcastMaterial> {
+  const result = await request<{ material: BroadcastMaterial }>(`/v1/broadcast/materials/${materialId}`, {
+    method: "PUT",
+    body: JSON.stringify({ kind: "FORWARD", sourceLink, sourceAttribution, active: true }),
+  }, token);
+  return result.material;
+}
+
 export async function createBroadcastLpmTarget(
   token: string, target: Readonly<{ telegramTargetRef: string; label: string | null }>,
 ): Promise<BroadcastLpmTarget> {
