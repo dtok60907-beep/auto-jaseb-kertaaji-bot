@@ -270,7 +270,7 @@ export function JasebPanel({ token }: { token: string }) {
           </div>
           <div className="account-card__actions">
             <button className="button button--ghost" type="button" onClick={() => setRepeatFormOpen(true)} disabled={launching}>
-              Ulangi otomatis
+              Sebar Otomatis
             </button>
             <button
               className="button button--primary"
@@ -278,7 +278,7 @@ export function JasebPanel({ token }: { token: string }) {
               onClick={() => void launchOnce()}
               disabled={launching || (operation !== null && !OPERATION_TERMINAL_STATUSES.has(operation.status))}
             >
-              {launching ? "Memulai" : "Kirim sekali"}
+              {launching ? "Memulai" : "Sebar Sekali"}
             </button>
           </div>
         </div>
