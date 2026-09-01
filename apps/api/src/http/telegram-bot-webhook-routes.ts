@@ -9,7 +9,7 @@ const START_COMMAND = /^\/start(?:@[A-Za-z0-9_]{5,32})?(?:\s|$)/;
 const CALLBACK_DATA = /^autocomment:([0-9a-fA-F-]{36}):(TEPAT|OOT)$/;
 
 const DECISION_OUTCOME_TEXT: Readonly<Record<string, string>> = {
-  COMMENT_QUEUED: "✅ Ditandai Tepat. Komentar sudah diantre untuk dikirim.",
+  COMMENT_QUEUED: "✅ Ditandai Tepat. Balasan belum otomatis terkirim — fitur kirim otomatis belum aktif, kirim manual dulu ya.",
   OOT: "🚫 Ditandai OOT (di luar topik). Tidak ada komentar yang dikirim.",
   ALREADY_DECIDED: "Kandidat ini sudah pernah direview sebelumnya.",
   NOT_AWAITING_REVIEW: "Kandidat ini sudah tidak menunggu review.",

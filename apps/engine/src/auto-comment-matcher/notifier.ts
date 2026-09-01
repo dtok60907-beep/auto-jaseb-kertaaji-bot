@@ -4,6 +4,7 @@ export interface AutoCommentNotificationResponder {
     candidateId: string;
     channelLabel: string;
     matchedKeywords: readonly string[];
+    postLink: string;
     postPreview: string;
     templateText: string;
   }>): Promise<number>;
@@ -47,6 +48,7 @@ export class TelegramAutoCommentNotifier implements AutoCommentNotificationRespo
       "",
       `Channel: ${input.channelLabel}`,
       `Keyword cocok: ${input.matchedKeywords.join(", ")}`,
+      `Link MF : ${input.postLink}`,
       "",
       "Post:",
       truncate(input.postPreview, PREVIEW_MAX_LENGTH),

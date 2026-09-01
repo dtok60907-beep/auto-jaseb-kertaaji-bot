@@ -206,6 +206,7 @@ test("an approval-required match notifies the division owner and records the res
     candidateId: "candidate-1",
     channelLabel: "@menfess",
     matchedKeywords: ["promo"],
+    postLink: "https://t.me/menfess/101",
     postPreview: "cari admin promo dong",
     templateText: "Komentar promo otomatis",
   });

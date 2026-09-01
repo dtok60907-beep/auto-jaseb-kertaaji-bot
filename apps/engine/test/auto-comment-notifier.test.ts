@@ -9,6 +9,7 @@ function candidate(overrides: Partial<Parameters<TelegramAutoCommentNotifier["se
     candidateId: "11111111-1111-1111-1111-111111111111",
     channelLabel: "@menfess",
     matchedKeywords: ["promo"],
+    postLink: "https://t.me/menfess/101",
     postPreview: "cari admin promo dong",
     templateText: "Komentar promo otomatis",
     ...overrides,
@@ -38,6 +39,7 @@ test("sends the Tepat/OOT keyboard with a bounded callback_data and returns the 
   assert.equal(body.chat_id, 555);
   assert.ok(body.text.includes("@menfess"));
   assert.ok(body.text.includes("promo"));
+  assert.ok(body.text.includes("Link MF : https://t.me/menfess/101"));
   const buttons = body.reply_markup.inline_keyboard[0];
   assert.deepEqual(buttons.map((button: { text: string }) => button.text), ["✅ Tepat", "🚫 OOT"]);
   for (const button of buttons) assert.ok(Buffer.byteLength(button.callback_data, "utf8") <= 64);

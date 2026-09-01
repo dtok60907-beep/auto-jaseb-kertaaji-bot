@@ -145,7 +145,7 @@ test("a Tepat callback resolves the pressing user, decides the candidate, and ed
   assert.deepEqual(autoComments.decideCalls, [{ userId: "owner-1", candidateId: CANDIDATE_ID, decision: "TEPAT" }]);
   assert.equal(callbackResponder.answered.length, 1);
   assert.equal(callbackResponder.answered[0]?.callbackQueryId, "cbq-1");
-  assert.deepEqual(callbackResponder.edited, [{ chatId: 555, messageId: 999, text: "✅ Ditandai Tepat. Komentar sudah diantre untuk dikirim." }]);
+  assert.deepEqual(callbackResponder.edited, [{ chatId: 555, messageId: 999, text: "✅ Ditandai Tepat. Balasan belum otomatis terkirim — fitur kirim otomatis belum aktif, kirim manual dulu ya." }]);
 });
 
 test("an OOT callback records the decision and shows the OOT outcome", async (t) => {

@@ -9,7 +9,7 @@ import type { AutoCommentMatcherRepository, ClaimedAutoCommentMonitoringTarget, 
 
 type LeaseContext = Readonly<{ accountId: string; leaseOwner: string; accountFencingToken: bigint }>;
 
-const DEFAULT_POLL_INTERVAL_SECONDS = 20;
+const DEFAULT_POLL_INTERVAL_SECONDS = 5;
 const DEFAULT_POSTS_PER_POLL = 20;
 
 export type AutoCommentMatcherResult =
@@ -41,6 +41,10 @@ function result(
 function matchedKeywords(post: IncomingChannelMessage, division: DivisionMatchConfig): readonly string[] {
   const haystack = post.text.toLocaleLowerCase("id-ID");
   return division.keywords.filter((keyword) => haystack.includes(keyword.toLocaleLowerCase("id-ID")));
+}
+
+function postLink(sourceChannelRef: string, channelPostId: string): string {
+  return `https://t.me/${sourceChannelRef.replace(/^@/, "")}/${channelPostId}`;
 }
 
 async function recordMatch(
@@ -99,6 +103,7 @@ async function recordMatch(
         candidateId: created.candidateId,
         channelLabel: target.sourceChannelRef,
         matchedKeywords: keywords,
+        postLink: postLink(target.sourceChannelRef, post.channelPostId),
         postPreview: post.text,
         templateText: candidate.candidate.template.text,
       });
