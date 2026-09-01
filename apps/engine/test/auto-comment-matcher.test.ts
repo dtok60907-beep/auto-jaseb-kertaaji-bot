@@ -75,6 +75,8 @@ class FakeRepository implements AutoCommentMatcherRepository {
 class FakeAdapter implements TelegramDeliveryAdapter {
   readonly state = "READY" as const;
   posts: readonly IncomingChannelMessage[] = [];
+  /** When set, one array is returned per successive listNewChannelPosts call instead of the fixed `posts` batch. */
+  postsByCall: readonly (readonly IncomingChannelMessage[])[] | null = null;
   latest: string | null = "500";
   postsError: unknown = null;
   latestError: unknown = null;
@@ -89,8 +91,10 @@ class FakeAdapter implements TelegramDeliveryAdapter {
   async sendText(): Promise<never> { throw new Error("unused"); }
   async forwardNative(): Promise<never> { throw new Error("unused"); }
   async listNewChannelPosts(channelRef: string, input: Readonly<{ afterMessageId: number; limit: number }>) {
+    const callIndex = this.listCalls.length;
     this.listCalls.push({ channelRef, ...input });
     if (this.postsError) throw this.postsError;
+    if (this.postsByCall) return this.postsByCall[callIndex] ?? [];
     return this.posts;
   }
   async latestChannelPostId(channelRef: string) {
@@ -158,7 +162,7 @@ test("no new posts is a checked action that never queries divisions", async () =
   const outcome = await checkNextAutoCommentChannel(adapter, repository, lease);
 
   assert.deepEqual(outcome, { status: "CHECKED", channelTargetId: "channel-target-1", errorCode: null, retryAfterSeconds: null, postsScanned: 0, candidatesCreated: 0 });
-  assert.deepEqual(adapter.listCalls, [{ channelRef: "@menfess", afterMessageId: 100, limit: 20 }]);
+  assert.deepEqual(adapter.listCalls, [{ channelRef: "@menfess", afterMessageId: 100, limit: 50 }]);
   assert.equal(repository.divisionsCalls.length, 0);
   assert.equal(repository.advanceCalls.length, 0);
 });
@@ -277,6 +281,37 @@ test("posts that match no division keyword and empty posts still advance the che
   if (outcome.status === "CHECKED") assert.equal(outcome.candidatesCreated, 0);
   assert.equal(repository.createCalls.length, 0);
   assert.deepEqual(repository.advanceCalls, [{ ...lease, channelTargetId: "channel-target-1", lastPostId: 102 }]);
+});
+
+test("a burst larger than one batch is drained fully in the same check instead of waiting another poll interval", async () => {
+  const repository = new FakeRepository();
+  const adapter = new FakeAdapter();
+  adapter.postsByCall = [
+    [post("101", "cari admin promo dong"), post("102", "obrolan biasa")],
+    [post("103", "obrolan biasa")],
+  ];
+
+  const outcome = await checkNextAutoCommentChannel(adapter, repository, lease, { postsPerPoll: 2 });
+
+  assert.deepEqual(outcome, { status: "CHECKED", channelTargetId: "channel-target-1", errorCode: null, retryAfterSeconds: null, postsScanned: 3, candidatesCreated: 1 });
+  assert.deepEqual(adapter.listCalls, [
+    { channelRef: "@menfess", afterMessageId: 100, limit: 2 },
+    { channelRef: "@menfess", afterMessageId: 102, limit: 2 },
+  ]);
+  assert.deepEqual(repository.advanceCalls, [{ ...lease, channelTargetId: "channel-target-1", lastPostId: 103 }]);
+});
+
+test("a channel that never stops posting cannot hold one check forever", async () => {
+  const repository = new FakeRepository();
+  const adapter = new FakeAdapter();
+  adapter.postsByCall = Array.from({ length: 10 }, (_unused, index) => [post(String(101 + index), "obrolan biasa")]);
+
+  const outcome = await checkNextAutoCommentChannel(adapter, repository, lease, { postsPerPoll: 1 });
+
+  assert.equal(outcome.status, "CHECKED");
+  if (outcome.status === "CHECKED") assert.equal(outcome.postsScanned, 5);
+  assert.equal(adapter.listCalls.length, 5);
+  assert.deepEqual(repository.advanceCalls, [{ ...lease, channelTargetId: "channel-target-1", lastPostId: 105 }]);
 });
 
 test("a division with no active template never creates a candidate even on a keyword match", async () => {

@@ -10,7 +10,14 @@ import type { AutoCommentMatcherRepository, ClaimedAutoCommentMonitoringTarget, 
 type LeaseContext = Readonly<{ accountId: string; leaseOwner: string; accountFencingToken: bigint }>;
 
 const DEFAULT_POLL_INTERVAL_SECONDS = 5;
-const DEFAULT_POSTS_PER_POLL = 20;
+const DEFAULT_POSTS_PER_POLL = 50;
+/**
+ * A burst larger than one batch is drained fully within the same check
+ * (up to this many batches) instead of waiting another poll interval per
+ * batch, bounded so a channel that never stops posting cannot hold one
+ * account's turn forever.
+ */
+const MAX_BATCHES_PER_CHECK = 5;
 
 export type AutoCommentMatcherResult =
   | Readonly<{ status: "NO_TARGET" }>
@@ -147,27 +154,35 @@ export async function checkNextAutoCommentChannel(
   try {
     if (target.monitoringLastPostId === null) return await seedCheckpoint(adapter, repository, lease, target);
 
-    const posts = await adapter.listNewChannelPosts(target.sourceChannelRef, { afterMessageId: target.monitoringLastPostId, limit: postsPerPoll });
-    if (posts.length === 0) return result("CHECKED", target, null, null);
-
-    const divisions = await repository.divisionsFor(target.channelTargetId);
+    let divisions: readonly DivisionMatchConfig[] | null = null;
     let candidatesCreated = 0;
+    let postsScanned = 0;
     let highestPostId = target.monitoringLastPostId;
 
-    for (const post of posts) {
-      const postId = Number(post.channelPostId);
-      if (Number.isSafeInteger(postId) && postId > highestPostId) highestPostId = postId;
-      if (!post.text.trim()) continue;
-      for (const division of divisions) {
-        if (await recordMatch(repository, options.notifier, target, post, division)) candidatesCreated += 1;
+    for (let batch = 0; batch < MAX_BATCHES_PER_CHECK; batch += 1) {
+      const posts = await adapter.listNewChannelPosts(target.sourceChannelRef, { afterMessageId: highestPostId, limit: postsPerPoll });
+      if (posts.length === 0) break;
+      if (divisions === null) divisions = await repository.divisionsFor(target.channelTargetId);
+
+      for (const post of posts) {
+        const postId = Number(post.channelPostId);
+        if (Number.isSafeInteger(postId) && postId > highestPostId) highestPostId = postId;
+        if (!post.text.trim()) continue;
+        for (const division of divisions) {
+          if (await recordMatch(repository, options.notifier, target, post, division)) candidatesCreated += 1;
+        }
       }
+      postsScanned += posts.length;
+      // A partial batch means the channel is caught up; a full batch means
+      // there is likely more waiting right now, so drain it immediately.
+      if (posts.length < postsPerPoll) break;
     }
 
     if (highestPostId > target.monitoringLastPostId) {
       const advanced = await repository.advanceCheckpoint({ ...lease, channelTargetId: target.channelTargetId, lastPostId: highestPostId });
-      if (!advanced) return result("FENCED_OUT", target, "MONITORING_FENCED", null, posts.length, candidatesCreated);
+      if (!advanced) return result("FENCED_OUT", target, "MONITORING_FENCED", null, postsScanned, candidatesCreated);
     }
-    return result("CHECKED", target, null, null, posts.length, candidatesCreated);
+    return result("CHECKED", target, null, null, postsScanned, candidatesCreated);
   } catch (rawError) {
     const error = normalizedError(rawError);
     if (error.retryable) return result("RETRYABLE", target, error.code, error.retryAfterSeconds ?? 1);
