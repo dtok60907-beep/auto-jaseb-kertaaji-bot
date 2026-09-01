@@ -47,7 +47,7 @@ function app(sessions: ApiSessionRepository, seenUsers: string[] = []) {
     packages: {} as PackageRepository,
     broadcasts,
     autoComments: {} as AutoCommentSettingsRepository,
-    entitlements: {} as EntitlementRepository,
+    entitlements: { list: async () => [] } as unknown as EntitlementRepository,
     apiSessions: sessions,
     adminAccess: { findActiveByTokenHash: async () => null } as AdminAccessRepository,
   });
@@ -66,7 +66,7 @@ test("uses only the SHA-256 bearer hash to resolve the canonical user", async (t
   });
 
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json(), { materials: [], lpmTargets: [] });
+  assert.deepEqual(response.json(), { materials: [], lpmTargets: [], accountMode: null });
   assert.deepEqual(seenUsers, [USER_ID, USER_ID]);
   assert.equal(sessions.hashes.length, 1);
   assert.deepEqual(sessions.hashes[0], hashApiSessionToken(TOKEN));
@@ -148,7 +148,7 @@ test("keeps the injected authorizer available only for legacy and isolated tests
     packages: {} as PackageRepository,
     broadcasts,
     autoComments: {} as AutoCommentSettingsRepository,
-    entitlements: {} as EntitlementRepository,
+    entitlements: { list: async () => [] } as unknown as EntitlementRepository,
     authorizeAdmin: async () => null,
     authorizeUser: async () => ({ id: USER_ID }),
   });

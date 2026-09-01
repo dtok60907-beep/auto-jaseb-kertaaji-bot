@@ -64,6 +64,7 @@ export function JasebPanel({ token }: { token: string }) {
   const [pageError, setPageError] = useState<string | null>(null);
   const [material, setMaterial] = useState<BroadcastMaterial | null>(null);
   const [target, setTarget] = useState<BroadcastLpmTarget | null>(null);
+  const [accountMode, setAccountMode] = useState<"JASEB_WORKER" | "USERBOT" | null>(null);
   const [materialText, setMaterialText] = useState("");
   const [targetRef, setTargetRef] = useState("");
   const [targetLabel, setTargetLabel] = useState("");
@@ -93,6 +94,7 @@ export function JasebPanel({ token }: { token: string }) {
       ]);
       setMaterial(settings.materials.find((item) => item.active) ?? null);
       setTarget(settings.lpmTargets.find((item) => item.active) ?? null);
+      setAccountMode(settings.accountMode);
       setCampaign(campaigns[0] ?? null);
       setHistory(historyPage.entries);
       setHistoryCursor(historyPage.nextCursor);
@@ -143,11 +145,11 @@ export function JasebPanel({ token }: { token: string }) {
   };
 
   const launchOnce = async () => {
-    if (!material || !target || launching) return;
+    if (!material || !target || !accountMode || launching) return;
     setLaunching(true); setPageError(null);
     try {
       const created = await createBroadcastOperation(token, {
-        accountMode: "USERBOT",
+        accountMode,
         materialId: material.id,
         targetIds: [target.id],
         idempotencyKey: newIdempotencyKey(),
@@ -160,12 +162,12 @@ export function JasebPanel({ token }: { token: string }) {
 
   const startRepeat = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!material || !target || startingCampaign) return;
+    if (!material || !target || !accountMode || startingCampaign) return;
     const minutes = Number(repeatMinutes);
     setStartingCampaign(true); setPageError(null);
     try {
       const created = await createBroadcastCampaign(token, {
-        accountMode: "USERBOT",
+        accountMode,
         materialId: material.id,
         targetIds: [target.id],
         intervalSeconds: minutes * 60,
@@ -211,7 +213,11 @@ export function JasebPanel({ token }: { token: string }) {
       <div className="section-heading"><h2 id="jaseb-heading">Jasa Sebar</h2></div>
       {pageError && <div className="notice notice--error" role="alert"><span>{pageError}</span><button className="text-button" type="button" onClick={() => setPageError(null)}>Tutup</button></div>}
 
-      {!material && (
+      {accountMode === null && (
+        <div className="empty-card"><h3>Belum ada paket Jasa Sebar aktif</h3></div>
+      )}
+
+      {accountMode !== null && !material && (
         <form className="stack-form" onSubmit={submitMaterial}>
           <label htmlFor="jaseb-material-text">Materi wording</label>
           <textarea

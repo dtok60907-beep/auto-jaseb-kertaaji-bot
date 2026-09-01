@@ -117,16 +117,18 @@ function app({
   userId = "11111111-1111-1111-1111-111111111111",
   adminId = "",
   broadcasts = new FakeBroadcastSettings(),
+  entitlements = new EmptyEntitlements(),
 }: {
   userId?: string;
   adminId?: string;
   broadcasts?: BroadcastSettingsRepository;
+  entitlements?: EntitlementRepository;
 } = {}) {
   return createApi({
     packages: new EmptyPackages(),
     broadcasts,
     autoComments: new EmptyAutoComments(),
-    entitlements: new EmptyEntitlements(),
+    entitlements,
     authorizeAdmin: async () => adminId ? { id: adminId } : null,
     authorizeUser: async () => userId ? { id: userId } : null,
   });
@@ -185,6 +187,38 @@ test("broadcast settings requires a user actor", async (t) => {
   assert.deepEqual(result.json(), { code: "USER_REQUIRED" });
 });
 
+function entitlementView(overrides: Partial<{ packageType: "JASEB_WORKER" | "USERBOT"; status: string; expiresAt: string }>) {
+  return {
+    id: "00000000-0000-0000-0000-000000000777", userId: "", packageId: "",
+    packageType: "USERBOT" as const, status: "ACTIVE", startsAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 86400000).toISOString(), maxLpmGroups: 1, maxChannelTargets: 1,
+    ...overrides,
+  };
+}
+class FakeEntitlements implements EntitlementRepository {
+  rows: ReturnType<typeof entitlementView>[];
+  constructor(rows: ReturnType<typeof entitlementView>[]) { this.rows = rows; }
+  async grant(): Promise<never> { throw new Error("not used"); }
+  async list() { return this.rows; }
+  async extend(): Promise<null> { return null; }
+  async revoke(): Promise<boolean> { return false; }
+}
+
+test("settings resolve the caller's Jasa Sebar account mode from active entitlements, preferring USERBOT", async (t) => {
+  const userbot = app({ entitlements: new FakeEntitlements([entitlementView({ packageType: "USERBOT" })]) });
+  const worker = app({ entitlements: new FakeEntitlements([entitlementView({ packageType: "JASEB_WORKER" })]) });
+  const both = app({ entitlements: new FakeEntitlements([entitlementView({ packageType: "JASEB_WORKER" }), entitlementView({ packageType: "USERBOT" })]) });
+  const expired = app({ entitlements: new FakeEntitlements([entitlementView({ packageType: "USERBOT", expiresAt: new Date(Date.now() - 1000).toISOString() })]) });
+  const none = app({ entitlements: new FakeEntitlements([]) });
+  for (const server of [userbot, worker, both, expired, none]) t.after(() => server.close());
+
+  assert.equal((await userbot.inject({ method: "GET", url: "/v1/broadcast/settings" })).json().accountMode, "USERBOT");
+  assert.equal((await worker.inject({ method: "GET", url: "/v1/broadcast/settings" })).json().accountMode, "JASEB_WORKER");
+  assert.equal((await both.inject({ method: "GET", url: "/v1/broadcast/settings" })).json().accountMode, "USERBOT");
+  assert.equal((await expired.inject({ method: "GET", url: "/v1/broadcast/settings" })).json().accountMode, null);
+  assert.equal((await none.inject({ method: "GET", url: "/v1/broadcast/settings" })).json().accountMode, null);
+});
+
 test("a different user cannot observe or mutate another user's material", async (t) => {
   const shared = new FakeBroadcastSettings();
   const owner = app({ broadcasts: shared });
@@ -196,7 +230,7 @@ test("a different user cannot observe or mutate another user's material", async 
   const settings = await other.inject({ method: "GET", url: "/v1/broadcast/settings" });
   const mutate = await other.inject({ method: "PUT", url: `/v1/broadcast/materials/${id}`, payload: { kind: "TEXT", text: "ambil alih", active: true } });
 
-  assert.deepEqual(settings.json(), { materials: [], lpmTargets: [] });
+  assert.deepEqual(settings.json(), { materials: [], lpmTargets: [], accountMode: "JASEB_WORKER" });
   assert.deepEqual(mutate.json(), { code: "MATERIAL_NOT_FOUND" });
 });
 

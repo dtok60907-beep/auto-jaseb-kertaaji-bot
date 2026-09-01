@@ -3,8 +3,16 @@ import { BroadcastMaterialValidationError, validateBroadcastMaterial } from "../
 import { BroadcastTargetValidationError, validateBroadcastLpmTarget } from "../domain/broadcast-target.ts";
 import type { BroadcastSettingsRepository } from "../broadcast/repository.ts";
 import type { AdminAuthorizer } from "./package-routes.ts";
-import type { EntitlementRepository } from "../entitlements/repository.ts";
+import type { EntitlementRepository, EntitlementView } from "../entitlements/repository.ts";
 import { resolveEntitlementAccess } from "../entitlements/access.ts";
+
+function resolveJasebAccountMode(entitlements: readonly EntitlementView[]): "JASEB_WORKER" | "USERBOT" | null {
+  const now = Date.now();
+  const active = entitlements.filter((item) => item.status === "ACTIVE" && Date.parse(item.expiresAt) > now);
+  if (active.some((item) => item.packageType === "USERBOT")) return "USERBOT";
+  if (active.some((item) => item.packageType === "JASEB_WORKER")) return "JASEB_WORKER";
+  return null;
+}
 
 type UserActor = { id: string };
 export type UserAuthorizer = (request: FastifyRequest) => Promise<UserActor | null>;
@@ -115,11 +123,12 @@ export function registerBroadcastSettingRoutes(app: FastifyInstance, options: Ro
   const listSettings = (resolveSubject: typeof userSubject) => async (request: FastifyRequest, reply: Parameters<typeof userSubject>[1]) => {
     const userId = await resolveSubject(request, reply);
     if (!userId) return;
-    const [materials, lpmTargets] = await Promise.all([
+    const [materials, lpmTargets, entitlements] = await Promise.all([
       options.broadcasts.listMaterials(userId),
       options.broadcasts.listLpmTargets(userId),
+      options.entitlements.list(userId),
     ]);
-    return { materials, lpmTargets };
+    return { materials, lpmTargets, accountMode: resolveJasebAccountMode(entitlements) };
   };
 
   const createMaterial = (resolveSubject: typeof userSubject) => async (request: FastifyRequest, reply: Parameters<typeof userSubject>[1]) => {

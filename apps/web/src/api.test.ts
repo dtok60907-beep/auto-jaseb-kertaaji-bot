@@ -62,10 +62,10 @@ describe("web API client", () => {
     await expect(listTelegramAccounts("expired-token")).rejects.toEqual(new ApiError(401, "USER_REQUIRED"));
   });
 
-  it("loads Jasa Sebar settings", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ materials: [], lpmTargets: [] }), { status: 200 })));
+  it("loads Jasa Sebar settings including the resolved account mode", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ materials: [], lpmTargets: [], accountMode: "USERBOT" }), { status: 200 })));
 
-    await expect(getBroadcastSettings("jas_test")).resolves.toEqual({ materials: [], lpmTargets: [] });
+    await expect(getBroadcastSettings("jas_test")).resolves.toEqual({ materials: [], lpmTargets: [], accountMode: "USERBOT" });
   });
 
   it("creates a TEXT broadcast material", async () => {

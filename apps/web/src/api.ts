@@ -178,10 +178,14 @@ export function revokeEntitlement(token: string, entitlementId: string): Promise
   return request<void>(`/v1/admin/entitlements/${entitlementId}/revoke`, { method: "POST" }, token);
 }
 
-export async function getBroadcastSettings(
-  token: string,
-): Promise<Readonly<{ materials: readonly BroadcastMaterial[]; lpmTargets: readonly BroadcastLpmTarget[] }>> {
-  return request<{ materials: readonly BroadcastMaterial[]; lpmTargets: readonly BroadcastLpmTarget[] }>(
+export type BroadcastSettings = Readonly<{
+  materials: readonly BroadcastMaterial[];
+  lpmTargets: readonly BroadcastLpmTarget[];
+  accountMode: "JASEB_WORKER" | "USERBOT" | null;
+}>;
+
+export async function getBroadcastSettings(token: string): Promise<BroadcastSettings> {
+  return request<BroadcastSettings>(
     "/v1/broadcast/settings", {}, token,
   );
 }
