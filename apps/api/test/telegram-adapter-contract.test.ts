@@ -14,6 +14,7 @@ class RecordingAdapter implements TelegramDeliveryAdapter {
   async sendText(input: { targetRef: string; text: string }): Promise<TelegramDeliveryReceipt> { this.texts.push(input); return telegramDeliveryReceipt(["9001"], "2026-08-29T08:00:00.000Z"); }
   async forwardNative(input: NativeForwardRequest): Promise<TelegramDeliveryReceipt> { this.forwards.push(input); return telegramDeliveryReceipt(["9101", "9102", "9103", "9104"], "2026-08-29T08:00:01.000Z"); }
   async listNewChannelPosts() { return []; }
+  async latestChannelPostId() { return null; }
 }
 
 test("manual wording uses only the Telegram text operation", async () => {

@@ -80,6 +80,7 @@ class FakeAdapter implements TelegramDeliveryAdapter {
   async sendText() { return telegramDeliveryReceipt(["1"], new Date().toISOString()); }
   async forwardNative() { return telegramDeliveryReceipt(["1"], new Date().toISOString()); }
   async listNewChannelPosts() { return []; }
+  async latestChannelPostId() { return null; }
 }
 
 test("an existing public-group member becomes ready without joining", async () => {

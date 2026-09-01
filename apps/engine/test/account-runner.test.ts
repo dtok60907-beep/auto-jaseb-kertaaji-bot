@@ -258,6 +258,7 @@ class FakeAdapter implements TelegramDeliveryAdapter {
   }
   async forwardNative() { return telegramDeliveryReceipt(["200"], "2030-01-01T00:00:01.000Z"); }
   async listNewChannelPosts() { return []; }
+  async latestChannelPostId() { return null; }
 }
 
 class FakeAdapterFactory implements TelegramRuntimeAdapterFactory {

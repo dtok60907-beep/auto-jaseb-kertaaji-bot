@@ -346,3 +346,17 @@ test("listNewChannelPosts validates its bounds and refuses to run before the ada
   const notReady = new TeleprotoProductionAdapter(client);
   await expectAdapterError(() => notReady.listNewChannelPosts("@menfess", { afterMessageId: 0, limit: 50 }), { code: "ADAPTER_NOT_READY" });
 });
+
+test("latestChannelPostId peeks the newest post without paging through history, and is null for an empty channel", async () => {
+  const { adapter, client } = await ready();
+  client.historyImpl = async () => [{ id: 77, date: 1_800_000_003, message: "post terbaru" }];
+
+  const latest = await adapter.latestChannelPostId("@menfess");
+
+  assert.equal(client.getHistoryCalls.length, 1);
+  assert.deepEqual(client.getHistoryCalls[0], { entity: "@menfess", minId: undefined, limit: 1 });
+  assert.equal(latest, "77");
+
+  client.historyImpl = async () => [];
+  assert.equal(await adapter.latestChannelPostId("@menfess"), null);
+});

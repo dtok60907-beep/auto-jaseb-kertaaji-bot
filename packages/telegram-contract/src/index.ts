@@ -73,6 +73,12 @@ export interface TelegramDeliveryAdapter {
    * it fits the engine's connect-drain-disconnect per-account cycle.
    */
   listNewChannelPosts(channelRef: string, input: Readonly<{ afterMessageId: number; limit: number }>): Promise<readonly IncomingChannelMessage[]>;
+  /**
+   * The id of the most recent post in a channel/group, or null if it has
+   * none yet. Used once to seed a monitoring checkpoint without backfilling
+   * a channel's entire history.
+   */
+  latestChannelPostId(channelRef: string): Promise<string | null>;
 }
 
 export function telegramDeliveryReceipt(providerMessageIds: readonly string[], sentAt: string): TelegramDeliveryReceipt {

@@ -63,6 +63,7 @@ test("PostgreSQL claim → adapter → aggregation and fencing-safe completion",
       },
       async forwardNative(_input: NativeForwardRequest): Promise<never> { throw new Error("unused"); },
       async listNewChannelPosts() { return []; },
+      async latestChannelPostId() { return null; },
     };
     const repository = new PostgresBroadcastExecutorRepository(sql);
     const result = await executeNextBroadcast(adapter, repository, { accountId, leaseOwner, fencingToken: 1n });

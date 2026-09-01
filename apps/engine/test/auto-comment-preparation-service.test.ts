@@ -33,6 +33,7 @@ class FakeAdapter implements TelegramDeliveryAdapter {
   async sendText() { return telegramDeliveryReceipt(["1"], new Date().toISOString()); }
   async forwardNative() { return telegramDeliveryReceipt(["1"], new Date().toISOString()); }
   async listNewChannelPosts() { return []; }
+  async latestChannelPostId() { return null; }
 }
 
 test("linked discussion already joined becomes ready without a join call", async () => { const repository = new FakeRepository(); const adapter = new FakeAdapter(); const result = await prepareNextAutoCommentDiscussion(adapter, repository, lease); assert.deepEqual(result, { status: "READY", channelTargetId: "channel-target-1", discussionTargetRef: "@menfess_discussion", errorCode: null, retryAfterSeconds: null }); assert.equal(adapter.joinCalls, 0); });

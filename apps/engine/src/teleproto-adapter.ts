@@ -32,7 +32,7 @@ export interface TeleprotoClientPort {
   sendMessage(entity: string, params: Readonly<{ message: string; linkPreview: false }>): Promise<unknown>;
   getMessages(entity: unknown, params: Readonly<{ ids: readonly number[] }>): Promise<unknown>;
   forwardMessages(entity: string, params: Readonly<{ messages: readonly number[]; fromPeer: unknown; dropAuthor: boolean }>): Promise<unknown>;
-  getHistory(entity: unknown, params: Readonly<{ minId: number; limit: number }>): Promise<unknown>;
+  getHistory(entity: unknown, params: Readonly<{ minId?: number; limit: number }>): Promise<unknown>;
 }
 
 function asRecord(value: unknown): ProviderRecord | null {
@@ -109,7 +109,7 @@ function createPort(client: TelegramClient): TeleprotoClientPort {
     sendMessage: async (entity, params) => client.sendMessage(entity, params),
     getMessages: async (entity, params) => client.getMessages(entity as never, { ids: [...params.ids] }),
     forwardMessages: async (entity, params) => client.forwardMessages(entity, { messages: [...params.messages], fromPeer: params.fromPeer as never, dropAuthor: params.dropAuthor }),
-    getHistory: async (entity, params) => client.getMessages(entity as never, { minId: params.minId, limit: params.limit, reverse: true }),
+    getHistory: async (entity, params) => client.getMessages(entity as never, { minId: params.minId, limit: params.limit, reverse: params.minId !== undefined }),
   };
 }
 
@@ -346,6 +346,17 @@ export class TeleprotoProductionAdapter implements TelegramDeliveryAdapter {
           text: typeof record.message === "string" ? record.message : "",
         }));
       return Object.freeze(posts);
+    }));
+  }
+
+  async latestChannelPostId(channelRef: string): Promise<string | null> {
+    const target = validateRef(channelRef, "INVALID_TARGET_REF");
+    return this.#ready(() => this.#provider("LIST_CHANNEL_POSTS", async () => {
+      const response = await this.#client.getHistory(target, { limit: 1 });
+      const latest = flatten(response)
+        .map((raw) => asRecord(raw))
+        .find((record): record is ProviderRecord => record !== null && Number.isInteger(record.id) && Number(record.id) > 0);
+      return latest ? String(latest.id) : null;
     }));
   }
 }

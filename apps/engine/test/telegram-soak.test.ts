@@ -100,6 +100,7 @@ class FakeAdapter implements TelegramDeliveryAdapter {
   async sendText(): Promise<TelegramDeliveryReceipt> { throw new Error("unused"); }
   async forwardNative(): Promise<TelegramDeliveryReceipt> { throw new Error("unused"); }
   async listNewChannelPosts() { return []; }
+  async latestChannelPostId() { return null; }
 }
 
 test("controlled disconnect injection reaches every created adapter and contains raw failures", async () => {
