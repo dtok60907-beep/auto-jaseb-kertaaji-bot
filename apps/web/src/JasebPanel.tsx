@@ -149,7 +149,7 @@ export function JasebPanel({ token }: { token: string }) {
     if (!material) return;
     if (material.kind === "TEXT") { setMaterialText(material.text); setForwardLink(""); setForwardShowSource(true); }
     else { setForwardLink(material.source.canonicalLink); setForwardShowSource(material.sourceAttribution === "SHOW_SOURCE"); setMaterialText(""); }
-    setMaterialKindChoice(material.kind);
+    setMaterialKindChoice(null);
     setEditingMaterial(true);
   };
 
@@ -226,12 +226,21 @@ export function JasebPanel({ token }: { token: string }) {
     finally { setLaunching(false); }
   };
 
+  const openIntervalEditor = () => {
+    if (!campaign) return;
+    setRepeatMinutes(String(Math.round(campaign.intervalSeconds / 60)));
+    setRepeatFormOpen(true);
+  };
+
   const startRepeat = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!material || !target || !accountMode || startingCampaign) return;
     const minutes = Number(repeatMinutes);
     setStartingCampaign(true); setPageError(null);
     try {
+      // Jeda tidak bisa diubah di tempat — hanya create/stop yang ada di backend.
+      // Ganti jeda berarti hentikan campaign lama dulu, baru buat yang baru.
+      if (campaign) await stopBroadcastCampaign(token, campaign.id);
       const created = await createBroadcastCampaign(token, {
         accountMode,
         materialId: material.id,
@@ -370,7 +379,7 @@ export function JasebPanel({ token }: { token: string }) {
         </form>
       )}
 
-      {material && target && campaign && !editingMaterial && !editingTarget && (
+      {material && target && campaign && !repeatFormOpen && !editingMaterial && !editingTarget && (
         <div className="empty-card">
           <div>
             <h3>Berjalan otomatis</h3>
@@ -379,9 +388,14 @@ export function JasebPanel({ token }: { token: string }) {
               {campaign.lastCycleAt ? ` Terakhir: ${formatDateTime(campaign.lastCycleAt)}.` : ""}
             </p>
           </div>
-          <button className="button button--danger-ghost" type="button" onClick={() => void stopRepeat()} disabled={stoppingCampaign}>
-            {stoppingCampaign ? "Menghentikan" : "Hentikan"}
-          </button>
+          <div className="account-card__actions">
+            <button className="button button--ghost" type="button" onClick={openIntervalEditor} disabled={stoppingCampaign}>
+              Ubah Jeda
+            </button>
+            <button className="button button--danger-ghost" type="button" onClick={() => void stopRepeat()} disabled={stoppingCampaign}>
+              {stoppingCampaign ? "Menghentikan" : "Hentikan"}
+            </button>
+          </div>
         </div>
       )}
 
@@ -398,7 +412,7 @@ export function JasebPanel({ token }: { token: string }) {
             <button className="button button--ghost" type="button" onClick={openTargetEditor} disabled={launching}>
               Ganti Target
             </button>
-            <button className="button button--ghost" type="button" onClick={() => setRepeatFormOpen(true)} disabled={launching}>
+            <button className="button button--ghost" type="button" onClick={() => { setRepeatMinutes(String(MINIMUM_REPEAT_MINUTES)); setRepeatFormOpen(true); }} disabled={launching}>
               Sebar Otomatis
             </button>
             <button
@@ -413,7 +427,7 @@ export function JasebPanel({ token }: { token: string }) {
         </div>
       )}
 
-      {material && target && !campaign && repeatFormOpen && (
+      {material && target && repeatFormOpen && (
         <form className="stack-form" onSubmit={startRepeat}>
           <label htmlFor="jaseb-repeat-minutes">Ulangi tiap berapa menit</label>
           <input
@@ -429,7 +443,7 @@ export function JasebPanel({ token }: { token: string }) {
           <div className="account-card__actions">
             <button className="button button--ghost" type="button" onClick={() => setRepeatFormOpen(false)} disabled={startingCampaign}>Batal</button>
             <button className="button button--primary" type="submit" disabled={startingCampaign || Number(repeatMinutes) < MINIMUM_REPEAT_MINUTES}>
-              {startingCampaign ? "Memulai" : "Mulai"}
+              {startingCampaign ? "Menyimpan" : campaign ? "Simpan Jeda" : "Mulai"}
             </button>
           </div>
         </form>
