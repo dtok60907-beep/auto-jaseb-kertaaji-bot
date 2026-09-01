@@ -21,6 +21,10 @@ import { runBroadcastAccount } from "../src/account-runner/service.ts";
 import { SerialRuntimeRepeatingTaskScheduler } from "../src/account-runner/serial-scheduler.ts";
 import { TeleprotoRuntimeAdapterFactory } from "../src/account-runner/teleproto-factory.ts";
 import type {
+  AutoCommentMatcherRepository,
+  ClaimedAutoCommentMonitoringTarget,
+} from "../src/auto-comment-matcher/repository.ts";
+import type {
   AutoCommentPreparationRepository,
   ClaimedAutoCommentPreparation,
 } from "../src/auto-comment-preparation/repository.ts";
@@ -182,6 +186,23 @@ class FakeAutoCommentPreparationRepository implements AutoCommentPreparationRepo
   }
 }
 
+class FakeAutoCommentMatcherRepository implements AutoCommentMatcherRepository {
+  claims: Array<ClaimedAutoCommentMonitoringTarget | null> = [null];
+  claimCalls = 0;
+  advanceCalls: Array<Parameters<AutoCommentMatcherRepository["advanceCheckpoint"]>[0]> = [];
+
+  async claimNext() {
+    this.claimCalls += 1;
+    return this.claims.length ? this.claims.shift() ?? null : null;
+  }
+  async divisionsFor() { return []; }
+  async createCandidate(): Promise<never> { throw new Error("unused"); }
+  async advanceCheckpoint(input: Parameters<AutoCommentMatcherRepository["advanceCheckpoint"]>[0]) {
+    this.advanceCalls.push(input);
+    return true;
+  }
+}
+
 function command(id: string): ClaimedBroadcastCommand {
   return Object.freeze({
     id,
@@ -276,7 +297,10 @@ class FakeAdapterFactory implements TelegramRuntimeAdapterFactory {
   }
 }
 
-function harness(input: Readonly<{ autoCommentPreparations?: FakeAutoCommentPreparationRepository }> = {}) {
+function harness(input: Readonly<{
+  autoCommentPreparations?: FakeAutoCommentPreparationRepository;
+  autoCommentMatcher?: FakeAutoCommentMatcherRepository;
+}> = {}) {
   const runtimeAccounts = new FakeRuntimeRepository();
   const accountLeases = new FakeLeaseRepository();
   const preparations = new FakePreparationRepository();
@@ -284,6 +308,7 @@ function harness(input: Readonly<{ autoCommentPreparations?: FakeAutoCommentPrep
   const adapterFactory = new FakeAdapterFactory();
   const scheduler = new ManualScheduler();
   const autoCommentPreparations = input.autoCommentPreparations;
+  const autoCommentMatcher = input.autoCommentMatcher;
   let decryptCalls = 0;
   const sessionKeyRing = {
     decrypt(context: unknown, encrypted: unknown) {
@@ -302,6 +327,7 @@ function harness(input: Readonly<{ autoCommentPreparations?: FakeAutoCommentPrep
     adapterFactory,
     scheduler,
     ...(autoCommentPreparations ? { autoCommentPreparations } : {}),
+    ...(autoCommentMatcher ? { autoCommentMatcher } : {}),
   };
   return {
     dependencies,
@@ -312,6 +338,7 @@ function harness(input: Readonly<{ autoCommentPreparations?: FakeAutoCommentPrep
     adapterFactory,
     scheduler,
     autoCommentPreparations,
+    autoCommentMatcher,
     decryptCalls: () => decryptCalls,
   };
 }
@@ -426,6 +453,38 @@ test("auto-comment discussion preparation only runs once broadcast work is exhau
 });
 
 test("broadcast dependencies alone (no autoCommentPreparations) behave exactly as before", async () => {
+  const context = harness();
+  const result = await run(context);
+  assert.equal(result.status, "DRAINED");
+  assert.equal(result.actions, 0);
+});
+
+test("auto-comment channel monitoring only runs once broadcast and discussion-preparation work is exhausted, and counts toward the budget", async () => {
+  const autoCommentMatcher = new FakeAutoCommentMatcherRepository();
+  autoCommentMatcher.claims = [{
+    channelTargetId: "channel-target-1",
+    sourceChannelRef: "@menfess",
+    discussionTargetRef: "@menfess_discussion",
+    monitoringLastPostId: null,
+  }, null];
+  const context = harness({ autoCommentMatcher });
+
+  const result = await run(context);
+  assert.deepEqual(result, {
+    accountId: account.accountId,
+    status: "DRAINED",
+    actions: 1,
+    errorCode: null,
+    disconnected: true,
+    leaseReleased: true,
+    cleanupErrorCodes: [],
+  });
+  assert.equal(context.preparations.claimCalls, 2);
+  assert.equal(context.executor.claimCalls, 2);
+  assert.equal(autoCommentMatcher.claimCalls, 2);
+});
+
+test("broadcast dependencies alone (no autoCommentMatcher) behave exactly as before", async () => {
   const context = harness();
   const result = await run(context);
   assert.equal(result.status, "DRAINED");

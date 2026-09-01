@@ -5,6 +5,7 @@ import {
   TelegramAdapterError,
   type TelegramDeliveryAdapter,
 } from "../../../../packages/telegram-contract/src/index.ts";
+import { checkNextAutoCommentChannel } from "../auto-comment-matcher/service.ts";
 import { prepareNextAutoCommentDiscussion } from "../auto-comment-preparation/service.ts";
 import { executeNextBroadcast } from "../broadcast-executor/service.ts";
 import { prepareNextBroadcastTarget } from "../broadcast-preparation/service.ts";
@@ -332,6 +333,29 @@ export async function runBroadcastAccount(
               new TelegramAdapterError({ code: commentPreparation.errorCode === "FLOOD_WAIT" ? "FLOOD_WAIT" : "TELEGRAM_TRANSIENT", retryable: true }),
               actions,
               commentPreparation.retryAfterSeconds,
+            );
+          }
+        }
+      }
+
+      if (!progressed && dependencies.autoCommentMatcher && actions < input.policy.maxActionsPerRun) {
+        const matcherResult = await checkNextAutoCommentChannel(activeAdapter, dependencies.autoCommentMatcher, {
+          accountId: lease.accountId,
+          leaseOwner: lease.leaseOwner,
+          accountFencingToken: lease.fencingToken,
+        });
+        if (matcherResult.status !== "NO_TARGET") {
+          actions += 1;
+          progressed = true;
+          if (matcherResult.status === "FENCED_OUT") return core("FENCED_OUT", actions, matcherResult.errorCode);
+          if (matcherResult.errorCode === "SESSION_REVOKED" || matcherResult.errorCode === "SESSION_CONFLICT") {
+            return await persistFailure(new TelegramAdapterError({ code: matcherResult.errorCode, retryable: false }), actions);
+          }
+          if (matcherResult.status === "RETRYABLE") {
+            return await persistFailure(
+              new TelegramAdapterError({ code: matcherResult.errorCode === "FLOOD_WAIT" ? "FLOOD_WAIT" : "TELEGRAM_TRANSIENT", retryable: true }),
+              actions,
+              matcherResult.retryAfterSeconds,
             );
           }
         }
