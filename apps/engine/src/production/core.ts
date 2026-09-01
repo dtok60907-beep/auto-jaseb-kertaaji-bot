@@ -23,6 +23,11 @@ import {
 } from "../broadcast-campaign/scheduler.ts";
 import { PostgresBroadcastExecutorRepository } from "../broadcast-executor/postgres-repository.ts";
 import { PostgresBroadcastPreparationRepository } from "../broadcast-preparation/postgres-repository.ts";
+import {
+  PostgresDataRetentionSource,
+  startDataRetentionScheduler,
+  type DataRetentionSchedulerHandle,
+} from "../data-retention/scheduler.ts";
 import { PostgresBroadcastRuntimeAccountRepository } from "../runtime-accounts/postgres-repository.ts";
 import { PostgresRuntimeAccountLeaseRepository } from "../runtime-leases/postgres-repository.ts";
 import type { ShardConfig } from "../runtime-sharding/shard.ts";
@@ -57,7 +62,8 @@ export type ProductionEngineStartErrorCode =
   | "INSTANCE_ID_INVALID"
   | "ENGINE_COMPOSITION_FAILED"
   | "SUPERVISOR_START_FAILED"
-  | "CAMPAIGN_SCHEDULER_START_FAILED";
+  | "CAMPAIGN_SCHEDULER_START_FAILED"
+  | "DATA_RETENTION_SCHEDULER_START_FAILED";
 
 export class ProductionEngineStartError extends Error {
   readonly code: ProductionEngineStartErrorCode;
@@ -89,6 +95,7 @@ type SupervisorStarter = (
 ) => Promise<AccountSupervisorHandle>;
 
 type CampaignSchedulerStarter = (sql: ReturnType<ProductionDatabase["client"]>) => BroadcastCampaignSchedulerHandle;
+type DataRetentionSchedulerStarter = (sql: ReturnType<ProductionDatabase["client"]>) => DataRetentionSchedulerHandle;
 
 export type ProductionEngineCoreFactories = Readonly<{
   openDatabase(config: ProductionEngineConfig): Promise<ProductionDatabase>;
@@ -96,6 +103,7 @@ export type ProductionEngineCoreFactories = Readonly<{
   runAccount: typeof runBroadcastAccount;
   createInstanceId(): string;
   startCampaignScheduler: CampaignSchedulerStarter;
+  startDataRetentionScheduler: DataRetentionSchedulerStarter;
 }>;
 
 const defaultFactories: ProductionEngineCoreFactories = Object.freeze({
@@ -106,6 +114,9 @@ const defaultFactories: ProductionEngineCoreFactories = Object.freeze({
   startCampaignScheduler: (sql) => startBroadcastCampaignScheduler({
     source: new PostgresBroadcastCampaignSource(sql),
     runCycle: createPostgresBroadcastCampaignCycleRunner(sql),
+  }),
+  startDataRetentionScheduler: (sql) => startDataRetentionScheduler({
+    source: new PostgresDataRetentionSource(sql),
   }),
 });
 
@@ -197,6 +208,17 @@ export async function startProductionEngineCore(
     throw new ProductionEngineStartError("CAMPAIGN_SCHEDULER_START_FAILED", cleanupErrorCodes);
   }
 
+  let dataRetentionScheduler: DataRetentionSchedulerHandle;
+  try {
+    dataRetentionScheduler = factories.startDataRetentionScheduler(database.client());
+  } catch {
+    const cleanupErrorCodes: string[] = [];
+    try { await campaignScheduler.stop(); } catch { cleanupErrorCodes.push("CAMPAIGN_SCHEDULER_STOP_FAILED"); }
+    try { await supervisor.stop(); } catch { cleanupErrorCodes.push("SUPERVISOR_STOP_FAILED"); }
+    cleanupErrorCodes.push(...await closeAfterFailedStart(database));
+    throw new ProductionEngineStartError("DATA_RETENTION_SCHEDULER_START_FAILED", cleanupErrorCodes);
+  }
+
   let state: ProductionEngineCoreState = "RUNNING";
   let stopPromise: Promise<ProductionEngineCoreSummary> | null = null;
   const snapshot = (): ProductionEngineCoreSnapshot => Object.freeze({
@@ -211,6 +233,8 @@ export async function startProductionEngineCore(
     state = "STOPPING";
     stopPromise = (async () => {
       const cleanupErrorCodes: string[] = [];
+      try { await dataRetentionScheduler.stop(); }
+      catch { cleanupErrorCodes.push("DATA_RETENTION_SCHEDULER_STOP_FAILED"); }
       try { await campaignScheduler.stop(); }
       catch { cleanupErrorCodes.push("CAMPAIGN_SCHEDULER_STOP_FAILED"); }
       let supervisorSummary: AccountSupervisorSummary | null = null;
