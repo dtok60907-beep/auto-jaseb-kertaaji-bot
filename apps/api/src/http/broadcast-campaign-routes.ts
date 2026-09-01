@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import type { BroadcastCampaignRepository } from "../broadcast-campaigns/repository.ts";
 import type { AccountMode } from "../workflows/core-workflows.ts";
+import type { AdminAuthorizer } from "./package-routes.ts";
 import type { UserAuthorizer } from "./broadcast-setting-routes.ts";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -29,6 +30,11 @@ function campaignId(request: FastifyRequest): string | null {
   return typeof value === "string" && uuid.test(value) ? value : null;
 }
 
+function subjectUserId(request: FastifyRequest): string | null {
+  const value = (request.params as { userId?: unknown }).userId;
+  return typeof value === "string" && uuid.test(value) ? value : null;
+}
+
 function errorCode(error: unknown): string | null { return error instanceof Error ? error.message : null; }
 
 function replyError(reply: FastifyReply, code: string) {
@@ -39,34 +45,55 @@ function replyError(reply: FastifyReply, code: string) {
   return reply.code(422).send({ code: "INVALID_BROADCAST_CAMPAIGN", issues: [{ field: "body", code }] });
 }
 
-export function registerBroadcastCampaignRoutes(app: FastifyInstance, options: { campaigns: BroadcastCampaignRepository; authorizeUser: UserAuthorizer }) {
-  const user = async (request: FastifyRequest, reply: FastifyReply) => {
+export function registerBroadcastCampaignRoutes(app: FastifyInstance, options: {
+  campaigns: BroadcastCampaignRepository;
+  authorizeUser: UserAuthorizer;
+  authorizeAdmin: AdminAuthorizer;
+}) {
+  const userSubject = async (request: FastifyRequest, reply: FastifyReply): Promise<string | null> => {
     const actor = await options.authorizeUser(request);
     if (actor) return actor.id;
     reply.code(401).send({ code: "USER_REQUIRED" });
     return null;
   };
 
-  app.post("/v1/broadcast/campaigns", async (request, reply) => {
-    const userId = await user(request, reply); if (!userId) return;
+  const adminSubject = async (request: FastifyRequest, reply: FastifyReply): Promise<string | null> => {
+    const actor = await options.authorizeAdmin(request);
+    if (!actor) { reply.code(403).send({ code: "ADMIN_REQUIRED" }); return null; }
+    const userId = subjectUserId(request);
+    if (userId) return userId;
+    reply.code(400).send({ code: "INVALID_USER_ID" });
+    return null;
+  };
+
+  const create = (resolveSubject: typeof userSubject) => async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = await resolveSubject(request, reply); if (!userId) return;
     const input = parseCreate(request.body);
     if (!input) return reply.code(422).send({ code: "INVALID_BROADCAST_CAMPAIGN", issues: [{ field: "body", code: "INVALID_INPUT" }] });
     try {
       const campaign = await options.campaigns.create({ userId, ...input });
       return reply.code(201).send({ campaign });
     } catch (error) { return replyError(reply, errorCode(error) ?? "UNKNOWN"); }
-  });
+  };
 
-  app.get("/v1/broadcast/campaigns", async (request, reply) => {
-    const userId = await user(request, reply); if (!userId) return;
+  const getCurrent = (resolveSubject: typeof userSubject) => async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = await resolveSubject(request, reply); if (!userId) return;
     return { campaign: await options.campaigns.getCurrent(userId) };
-  });
+  };
 
-  app.post("/v1/broadcast/campaigns/:id/stop", async (request, reply) => {
-    const userId = await user(request, reply); if (!userId) return;
+  const stop = (resolveSubject: typeof userSubject) => async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = await resolveSubject(request, reply); if (!userId) return;
     const id = campaignId(request);
     if (!id) return reply.code(400).send({ code: "INVALID_CAMPAIGN_ID" });
     await options.campaigns.stop({ userId, campaignId: id });
     return reply.code(204).send(null);
-  });
+  };
+
+  app.post("/v1/broadcast/campaigns", create(userSubject));
+  app.get("/v1/broadcast/campaigns", getCurrent(userSubject));
+  app.post("/v1/broadcast/campaigns/:id/stop", stop(userSubject));
+
+  app.post("/v1/admin/users/:userId/broadcast/campaigns", create(adminSubject));
+  app.get("/v1/admin/users/:userId/broadcast/campaigns", getCurrent(adminSubject));
+  app.post("/v1/admin/users/:userId/broadcast/campaigns/:id/stop", stop(adminSubject));
 }

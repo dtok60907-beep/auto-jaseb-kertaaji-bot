@@ -2,18 +2,24 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ApiError,
+  createAdminBroadcastCampaign,
+  createAdminTextBroadcastMaterial,
   createBroadcastCampaign,
   createBroadcastLpmTarget,
   createBroadcastOperation,
   createForwardBroadcastMaterial,
   createTextBroadcastMaterial,
   exchangeTelegramInitData,
+  getAdminBroadcastSettings,
   getBroadcastHistory,
   getBroadcastOperation,
   getBroadcastSettings,
+  getCurrentAdminBroadcastCampaign,
   getCurrentBroadcastCampaign,
   listTelegramAccounts,
+  stopAdminBroadcastCampaign,
   stopBroadcastCampaign,
+  updateAdminBroadcastLpmTarget,
   updateBroadcastLpmTarget,
   updateTextBroadcastMaterial,
 } from "./api";
@@ -177,5 +183,51 @@ describe("web API client", () => {
       return new Response(null, { status: 204 });
     }));
     await expect(stopBroadcastCampaign("jas_test", "campaign-1")).resolves.toBeNull();
+  });
+
+  it("manages a user's Jasa Sebar as admin, scoped by userId in the URL", async () => {
+    const USER_ID = "target-user-1";
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toContain(`/v1/admin/users/${USER_ID}/broadcast/settings`);
+      return new Response(JSON.stringify({ materials: [], lpmTargets: [], accountMode: "USERBOT" }), { status: 200 });
+    }));
+    await expect(getAdminBroadcastSettings("jas_admin", USER_ID)).resolves.toMatchObject({ accountMode: "USERBOT" });
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toContain(`/v1/admin/users/${USER_ID}/broadcast/materials`);
+      expect(JSON.parse(String(init?.body))).toEqual({ kind: "TEXT", text: "materi admin", active: true });
+      return new Response(JSON.stringify({ material: { id: "material-9", kind: "TEXT", text: "materi admin", active: true } }), { status: 201 });
+    }));
+    await expect(createAdminTextBroadcastMaterial("jas_admin", USER_ID, "materi admin")).resolves.toMatchObject({ id: "material-9" });
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toContain(`/v1/admin/users/${USER_ID}/broadcast/lpm-targets/target-9`);
+      return new Response(JSON.stringify({ target: { id: "target-9", telegramTargetRef: "@lain", label: null, active: true } }), { status: 200 });
+    }));
+    await expect(updateAdminBroadcastLpmTarget("jas_admin", USER_ID, "target-9", { telegramTargetRef: "@lain", label: null })).resolves.toMatchObject({ id: "target-9" });
+
+    const campaign = {
+      id: "campaign-9", accountMode: "USERBOT", materialId: "material-9", targetIds: ["target-9"],
+      intervalSeconds: 300, status: "ACTIVE", errorCode: null, lastCycleAt: null, nextCycleAt: "2026-09-02T00:00:00.000Z",
+      lastOperationId: null,
+    };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toContain(`/v1/admin/users/${USER_ID}/broadcast/campaigns`);
+      return new Response(JSON.stringify({ campaign }), { status: 201 });
+    }));
+    await expect(createAdminBroadcastCampaign("jas_admin", USER_ID, {
+      accountMode: "USERBOT", materialId: "material-9", targetIds: ["target-9"], intervalSeconds: 300,
+    })).resolves.toMatchObject({ id: "campaign-9" });
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ campaign }), { status: 200 })));
+    await expect(getCurrentAdminBroadcastCampaign("jas_admin", USER_ID)).resolves.toMatchObject({ id: "campaign-9" });
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toContain(`/v1/admin/users/${USER_ID}/broadcast/campaigns/campaign-9/stop`);
+      expect(init?.method).toBe("POST");
+      return new Response(null, { status: 204 });
+    }));
+    await expect(stopAdminBroadcastCampaign("jas_admin", USER_ID, "campaign-9")).resolves.toBeNull();
   });
 });

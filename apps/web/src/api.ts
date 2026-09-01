@@ -190,6 +190,12 @@ export async function getBroadcastSettings(token: string): Promise<BroadcastSett
   );
 }
 
+export async function getAdminBroadcastSettings(token: string, userId: string): Promise<BroadcastSettings> {
+  return request<BroadcastSettings>(
+    `/v1/admin/users/${userId}/broadcast/settings`, {}, token,
+  );
+}
+
 export async function createTextBroadcastMaterial(token: string, text: string): Promise<BroadcastMaterial> {
   const result = await request<{ material: BroadcastMaterial }>("/v1/broadcast/materials", {
     method: "POST",
@@ -226,6 +232,44 @@ export async function updateForwardBroadcastMaterial(
   return result.material;
 }
 
+export async function createAdminTextBroadcastMaterial(token: string, userId: string, text: string): Promise<BroadcastMaterial> {
+  const result = await request<{ material: BroadcastMaterial }>(`/v1/admin/users/${userId}/broadcast/materials`, {
+    method: "POST",
+    body: JSON.stringify({ kind: "TEXT", text, active: true }),
+  }, token);
+  return result.material;
+}
+
+export async function createAdminForwardBroadcastMaterial(
+  token: string, userId: string, sourceLink: string, sourceAttribution: "SHOW_SOURCE" | "HIDE_SOURCE",
+): Promise<BroadcastMaterial> {
+  const result = await request<{ material: BroadcastMaterial }>(`/v1/admin/users/${userId}/broadcast/materials`, {
+    method: "POST",
+    body: JSON.stringify({ kind: "FORWARD", sourceLink, sourceAttribution, active: true }),
+  }, token);
+  return result.material;
+}
+
+export async function updateAdminTextBroadcastMaterial(
+  token: string, userId: string, materialId: string, text: string,
+): Promise<BroadcastMaterial> {
+  const result = await request<{ material: BroadcastMaterial }>(`/v1/admin/users/${userId}/broadcast/materials/${materialId}`, {
+    method: "PUT",
+    body: JSON.stringify({ kind: "TEXT", text, active: true }),
+  }, token);
+  return result.material;
+}
+
+export async function updateAdminForwardBroadcastMaterial(
+  token: string, userId: string, materialId: string, sourceLink: string, sourceAttribution: "SHOW_SOURCE" | "HIDE_SOURCE",
+): Promise<BroadcastMaterial> {
+  const result = await request<{ material: BroadcastMaterial }>(`/v1/admin/users/${userId}/broadcast/materials/${materialId}`, {
+    method: "PUT",
+    body: JSON.stringify({ kind: "FORWARD", sourceLink, sourceAttribution, active: true }),
+  }, token);
+  return result.material;
+}
+
 export async function createBroadcastLpmTarget(
   token: string, target: Readonly<{ telegramTargetRef: string; label: string | null }>,
 ): Promise<BroadcastLpmTarget> {
@@ -240,6 +284,26 @@ export async function updateBroadcastLpmTarget(
   token: string, targetId: string, target: Readonly<{ telegramTargetRef: string; label: string | null }>,
 ): Promise<BroadcastLpmTarget> {
   const result = await request<{ target: BroadcastLpmTarget }>(`/v1/broadcast/lpm-targets/${targetId}`, {
+    method: "PUT",
+    body: JSON.stringify({ ...target, active: true }),
+  }, token);
+  return result.target;
+}
+
+export async function createAdminBroadcastLpmTarget(
+  token: string, userId: string, target: Readonly<{ telegramTargetRef: string; label: string | null }>,
+): Promise<BroadcastLpmTarget> {
+  const result = await request<{ target: BroadcastLpmTarget }>(`/v1/admin/users/${userId}/broadcast/lpm-targets`, {
+    method: "POST",
+    body: JSON.stringify({ ...target, active: true }),
+  }, token);
+  return result.target;
+}
+
+export async function updateAdminBroadcastLpmTarget(
+  token: string, userId: string, targetId: string, target: Readonly<{ telegramTargetRef: string; label: string | null }>,
+): Promise<BroadcastLpmTarget> {
+  const result = await request<{ target: BroadcastLpmTarget }>(`/v1/admin/users/${userId}/broadcast/lpm-targets/${targetId}`, {
     method: "PUT",
     body: JSON.stringify({ ...target, active: true }),
   }, token);
@@ -288,6 +352,26 @@ export async function createBroadcastCampaign(
 
 export function stopBroadcastCampaign(token: string, campaignId: string): Promise<void> {
   return request<void>(`/v1/broadcast/campaigns/${campaignId}/stop`, { method: "POST" }, token);
+}
+
+export async function getCurrentAdminBroadcastCampaign(token: string, userId: string): Promise<BroadcastCampaign | null> {
+  const result = await request<{ campaign: BroadcastCampaign | null }>(`/v1/admin/users/${userId}/broadcast/campaigns`, {}, token);
+  return result.campaign;
+}
+
+export async function createAdminBroadcastCampaign(
+  token: string, userId: string,
+  input: Readonly<{ accountMode: "JASEB_WORKER" | "USERBOT"; materialId: string; targetIds: readonly string[]; intervalSeconds: number }>,
+): Promise<BroadcastCampaign> {
+  const result = await request<{ campaign: BroadcastCampaign }>(`/v1/admin/users/${userId}/broadcast/campaigns`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  }, token);
+  return result.campaign;
+}
+
+export function stopAdminBroadcastCampaign(token: string, userId: string, campaignId: string): Promise<void> {
+  return request<void>(`/v1/admin/users/${userId}/broadcast/campaigns/${campaignId}/stop`, { method: "POST" }, token);
 }
 
 export async function listWorkerAccounts(token: string): Promise<readonly WorkerAccount[]> {

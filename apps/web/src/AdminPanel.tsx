@@ -2,18 +2,30 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 
 import {
   ApiError,
+  createAdminBroadcastCampaign,
+  createAdminBroadcastLpmTarget,
+  createAdminForwardBroadcastMaterial,
   createAdminPackage,
+  createAdminTextBroadcastMaterial,
   extendEntitlement,
+  getAdminBroadcastSettings,
+  getCurrentAdminBroadcastCampaign,
   grantEntitlement,
   listAdminPackages,
   listAdminUsers,
   listEntitlements,
   listWorkerAccounts,
   revokeEntitlement,
+  stopAdminBroadcastCampaign,
+  updateAdminBroadcastLpmTarget,
+  updateAdminForwardBroadcastMaterial,
   updateAdminPackage,
+  updateAdminTextBroadcastMaterial,
   updateWorkerAccount,
 } from "./api";
-import type { AdminUser, Entitlement, PackageInput, ServicePackage, WorkerAccount } from "./types";
+import type { AdminUser, BroadcastCampaign, BroadcastLpmTarget, BroadcastMaterial, Entitlement, PackageInput, ServicePackage, WorkerAccount } from "./types";
+
+const ADMIN_JASEB_MIN_REPEAT_MINUTES = 5;
 
 type AdminSection = "USERS" | "PACKAGES" | "WORKERS";
 
@@ -53,6 +65,17 @@ const API_ERROR_LABEL: Record<string, string> = {
   INVALID_ENTITLEMENT: "Data akses belum sesuai.",
   ENTITLEMENT_NOT_FOUND: "Akses tidak ditemukan.",
   INVALID_WORKER_ACCOUNT_SETTING: "Pengaturan akun worker belum sesuai.",
+  SUBSCRIPTION_REQUIRED: "Pengguna ini belum punya paket Jasa Sebar aktif.",
+  SUBSCRIPTION_EXPIRED: "Paket Jasa Sebar pengguna ini sudah berakhir.",
+  INVALID_BROADCAST_MATERIAL: "Materi belum valid. Periksa lagi link atau wording-nya.",
+  BROADCAST_MATERIAL_NOT_FOUND_OR_INACTIVE: "Materi belum tersedia. Buat materi baru dulu.",
+  LPM_TARGET_NOT_FOUND_OR_INACTIVE: "Target belum tersedia. Buat target baru dulu.",
+  USERBOT_NOT_CONNECTED: "Akun Telegram pengguna belum tersambung.",
+  WORKER_UNAVAILABLE: "Belum ada akun worker yang tersedia.",
+  LPM_GROUP_LIMIT_REACHED: "Batas jumlah target Grup LPM paket pengguna ini sudah tercapai.",
+  LPM_TARGET_EXISTS: "Target itu sudah ditambahkan sebelumnya.",
+  CAMPAIGN_ALREADY_ACTIVE: "Sudah ada Jasa Sebar berulang yang sedang berjalan untuk pengguna ini.",
+  INTERVAL_TOO_SHORT: `Jeda pengulangan minimal ${ADMIN_JASEB_MIN_REPEAT_MINUTES} menit.`,
 };
 
 function errorLabel(error: unknown): string {
@@ -206,6 +229,204 @@ function PackageDialog({ current, token, onClose, onSaved, onError }: { current:
   );
 }
 
+function UserJasebPanel({ user, token, onError }: { user: AdminUser; token: string; onError: (error: unknown) => void }) {
+  const [loading, setLoading] = useState(true);
+  const [material, setMaterial] = useState<BroadcastMaterial | null>(null);
+  const [target, setTarget] = useState<BroadcastLpmTarget | null>(null);
+  const [accountMode, setAccountMode] = useState<"JASEB_WORKER" | "USERBOT" | null>(null);
+  const [campaign, setCampaign] = useState<BroadcastCampaign | null>(null);
+
+  const [editingMaterial, setEditingMaterial] = useState(false);
+  const [materialKind, setMaterialKind] = useState<"TEXT" | "FORWARD">("TEXT");
+  const [materialText, setMaterialText] = useState("");
+  const [forwardLink, setForwardLink] = useState("");
+  const [forwardShowSource, setForwardShowSource] = useState(true);
+  const [savingMaterial, setSavingMaterial] = useState(false);
+
+  const [editingTarget, setEditingTarget] = useState(false);
+  const [targetRef, setTargetRef] = useState("");
+  const [targetLabel, setTargetLabel] = useState("");
+  const [savingTarget, setSavingTarget] = useState(false);
+
+  const [repeatFormOpen, setRepeatFormOpen] = useState(false);
+  const [repeatMinutes, setRepeatMinutes] = useState(String(ADMIN_JASEB_MIN_REPEAT_MINUTES));
+  const [savingCampaign, setSavingCampaign] = useState(false);
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [settings, current] = await Promise.all([
+        getAdminBroadcastSettings(token, user.id),
+        getCurrentAdminBroadcastCampaign(token, user.id),
+      ]);
+      setMaterial(settings.materials.find((item) => item.active) ?? null);
+      setTarget(settings.lpmTargets.find((item) => item.active) ?? null);
+      setAccountMode(settings.accountMode);
+      setCampaign(current);
+    } catch (error) { onError(error); }
+    finally { setLoading(false); }
+  }, [onError, token, user.id]);
+
+  useEffect(() => { void reload(); }, [reload]);
+
+  const openMaterialEditor = () => {
+    if (material?.kind === "TEXT") { setMaterialKind("TEXT"); setMaterialText(material.text); }
+    else if (material?.kind === "FORWARD") { setMaterialKind("FORWARD"); setForwardLink(material.source.canonicalLink); setForwardShowSource(material.sourceAttribution === "SHOW_SOURCE"); }
+    else { setMaterialKind("TEXT"); setMaterialText(""); setForwardLink(""); setForwardShowSource(true); }
+    setEditingMaterial(true);
+  };
+
+  const saveMaterial = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSavingMaterial(true);
+    try {
+      const saved = materialKind === "TEXT"
+        ? material
+          ? await updateAdminTextBroadcastMaterial(token, user.id, material.id, materialText.trim())
+          : await createAdminTextBroadcastMaterial(token, user.id, materialText.trim())
+        : material
+          ? await updateAdminForwardBroadcastMaterial(token, user.id, material.id, forwardLink.trim(), forwardShowSource ? "SHOW_SOURCE" : "HIDE_SOURCE")
+          : await createAdminForwardBroadcastMaterial(token, user.id, forwardLink.trim(), forwardShowSource ? "SHOW_SOURCE" : "HIDE_SOURCE");
+      setMaterial(saved);
+      setEditingMaterial(false);
+    } catch (error) { onError(error); }
+    finally { setSavingMaterial(false); }
+  };
+
+  const openTargetEditor = () => {
+    setTargetRef(target?.telegramTargetRef ?? "");
+    setTargetLabel(target?.label ?? "");
+    setEditingTarget(true);
+  };
+
+  const saveTarget = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSavingTarget(true);
+    const input = { telegramTargetRef: targetRef.trim(), label: targetLabel.trim() || null };
+    try {
+      const saved = target
+        ? await updateAdminBroadcastLpmTarget(token, user.id, target.id, input)
+        : await createAdminBroadcastLpmTarget(token, user.id, input);
+      setTarget(saved);
+      setEditingTarget(false);
+    } catch (error) { onError(error); }
+    finally { setSavingTarget(false); }
+  };
+
+  const openIntervalEditor = () => {
+    setRepeatMinutes(String(campaign ? Math.round(campaign.intervalSeconds / 60) : ADMIN_JASEB_MIN_REPEAT_MINUTES));
+    setRepeatFormOpen(true);
+  };
+
+  const saveCampaign = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!material || !target || !accountMode) return;
+    const minutes = Number(repeatMinutes);
+    setSavingCampaign(true);
+    try {
+      if (campaign?.status === "ACTIVE") await stopAdminBroadcastCampaign(token, user.id, campaign.id);
+      const created = await createAdminBroadcastCampaign(token, user.id, {
+        accountMode, materialId: material.id, targetIds: [target.id], intervalSeconds: minutes * 60,
+      });
+      setCampaign(created);
+      setRepeatFormOpen(false);
+    } catch (error) { onError(error); }
+    finally { setSavingCampaign(false); }
+  };
+
+  const stopCampaign = async () => {
+    if (!campaign) return;
+    setSavingCampaign(true);
+    try {
+      await stopAdminBroadcastCampaign(token, user.id, campaign.id);
+      setCampaign(await getCurrentAdminBroadcastCampaign(token, user.id));
+    } catch (error) { onError(error); }
+    finally { setSavingCampaign(false); }
+  };
+
+  if (loading) return <section className="admin-detail"><p className="admin-muted">Memuat Jasa Sebar.</p></section>;
+
+  return (
+    <section className="admin-detail" aria-label={`Jasa Sebar ${userName(user)}`}>
+      <div className="admin-detail__head"><h3>Jasa Sebar</h3></div>
+
+      {accountMode === null && <p className="admin-muted">Belum ada paket Jasa Sebar aktif untuk pengguna ini.</p>}
+
+      {accountMode !== null && (!material || editingMaterial) && (
+        <form className="stack-form" onSubmit={saveMaterial}>
+          <div className="account-card__actions">
+            <button className="button button--ghost" type="button" onClick={() => setMaterialKind("TEXT")} disabled={materialKind === "TEXT"}>Wording</button>
+            <button className="button button--ghost" type="button" onClick={() => setMaterialKind("FORWARD")} disabled={materialKind === "FORWARD"}>Forward</button>
+          </div>
+          {materialKind === "TEXT" ? (
+            <>
+              <label htmlFor={`admin-jaseb-text-${user.id}`}>Materi wording</label>
+              <textarea id={`admin-jaseb-text-${user.id}`} rows={3} maxLength={4096} value={materialText} onChange={(event) => setMaterialText(event.target.value)} required />
+            </>
+          ) : (
+            <>
+              <label htmlFor={`admin-jaseb-link-${user.id}`}>Link post yang akan di-forward</label>
+              <input id={`admin-jaseb-link-${user.id}`} value={forwardLink} onChange={(event) => setForwardLink(event.target.value)} placeholder="https://t.me/nama_channel/123" required />
+              <label htmlFor={`admin-jaseb-source-${user.id}`}><input id={`admin-jaseb-source-${user.id}`} type="checkbox" checked={forwardShowSource} onChange={(event) => setForwardShowSource(event.target.checked)} /> Tampilkan sumber</label>
+            </>
+          )}
+          <div className="account-card__actions">
+            {editingMaterial && <button className="button button--ghost" type="button" onClick={() => setEditingMaterial(false)} disabled={savingMaterial}>Batal</button>}
+            <button className="button button--primary" type="submit" disabled={savingMaterial || (materialKind === "TEXT" ? !materialText.trim() : !forwardLink.trim())}>{savingMaterial ? "Menyimpan" : "Simpan materi"}</button>
+          </div>
+        </form>
+      )}
+
+      {material && !editingMaterial && (!target || editingTarget) && (
+        <form className="stack-form" onSubmit={saveTarget}>
+          <label htmlFor={`admin-jaseb-target-${user.id}`}>Target Grup LPM</label>
+          <input id={`admin-jaseb-target-${user.id}`} value={targetRef} onChange={(event) => setTargetRef(event.target.value)} placeholder="@nama_grup atau https://t.me/nama_grup" required />
+          <label htmlFor={`admin-jaseb-target-label-${user.id}`}>Label (opsional)</label>
+          <input id={`admin-jaseb-target-label-${user.id}`} value={targetLabel} onChange={(event) => setTargetLabel(event.target.value)} />
+          <div className="account-card__actions">
+            {editingTarget && <button className="button button--ghost" type="button" onClick={() => setEditingTarget(false)} disabled={savingTarget}>Batal</button>}
+            <button className="button button--primary" type="submit" disabled={savingTarget || !targetRef.trim()}>{savingTarget ? "Menyimpan" : "Simpan target"}</button>
+          </div>
+        </form>
+      )}
+
+      {material && target && !editingMaterial && !editingTarget && (
+        <>
+          <p className="admin-muted">
+            Materi: {material.kind === "TEXT" ? `"${material.text.slice(0, 60)}${material.text.length > 60 ? "..." : ""}"` : `forward dari ${material.source.canonicalLink}`}
+            {" · "}Target: {target.label ?? target.telegramTargetRef}
+          </p>
+          <div className="account-card__actions">
+            <button className="button button--ghost" type="button" onClick={openMaterialEditor}>Ganti Materi</button>
+            <button className="button button--ghost" type="button" onClick={openTargetEditor}>Ganti Target</button>
+          </div>
+
+          {campaign?.status === "ACTIVE" && !repeatFormOpen ? (
+            <div className="account-card__actions">
+              <span className="admin-muted">Otomatis tiap {Math.round(campaign.intervalSeconds / 60)} menit{campaign.lastCycleAt ? `, terakhir ${formatDate(campaign.lastCycleAt)}` : ""}.</span>
+              <button className="button button--ghost" type="button" onClick={openIntervalEditor} disabled={savingCampaign}>Ubah Jeda</button>
+              <button className="button button--danger-ghost" type="button" onClick={() => void stopCampaign()} disabled={savingCampaign}>{savingCampaign ? "Menghentikan" : "Hentikan"}</button>
+            </div>
+          ) : !repeatFormOpen ? (
+            <div className="account-card__actions">
+              <button className="button button--primary" type="button" onClick={() => { setRepeatMinutes(String(ADMIN_JASEB_MIN_REPEAT_MINUTES)); setRepeatFormOpen(true); }}>Nyalakan Sebar Otomatis</button>
+            </div>
+          ) : (
+            <form className="stack-form" onSubmit={saveCampaign}>
+              <label htmlFor={`admin-jaseb-minutes-${user.id}`}>Ulangi tiap berapa menit</label>
+              <input id={`admin-jaseb-minutes-${user.id}`} type="number" inputMode="numeric" min={ADMIN_JASEB_MIN_REPEAT_MINUTES} value={repeatMinutes} onChange={(event) => setRepeatMinutes(event.target.value)} required />
+              <div className="account-card__actions">
+                <button className="button button--ghost" type="button" onClick={() => setRepeatFormOpen(false)} disabled={savingCampaign}>Batal</button>
+                <button className="button button--primary" type="submit" disabled={savingCampaign || Number(repeatMinutes) < ADMIN_JASEB_MIN_REPEAT_MINUTES}>{savingCampaign ? "Menyimpan" : campaign ? "Simpan Jeda" : "Mulai"}</button>
+              </div>
+            </form>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 function UserAccess({ user, packages, token, onError }: { user: AdminUser; packages: readonly ServicePackage[]; token: string; onError: (error: unknown) => void }) {
   const [entitlements, setEntitlements] = useState<readonly Entitlement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -279,6 +500,7 @@ function UserAccess({ user, packages, token, onError }: { user: AdminUser; packa
           <article key={entitlement.id} className="entitlement-row"><div><strong>{entitlement.packageType === "USERBOT" ? "Userbot" : "Jaseb Worker"}</strong><span>{entitlement.status} sampai {formatDate(entitlement.expiresAt)}</span></div><div className="entitlement-actions"><label>Tambah hari<input inputMode="numeric" value={extensionDays} onChange={(event) => setExtensionDays(event.target.value)} /></label><button className="button button--ghost" type="button" onClick={() => void extend(entitlement)} disabled={busy !== null}>Perpanjang</button><button className="button button--danger-ghost" type="button" onClick={() => void revoke(entitlement)} disabled={busy !== null}>Cabut</button></div></article>
         ))}</div>
       )}
+      <UserJasebPanel key={user.id} user={user} token={token} onError={onError} />
     </section>
   );
 }

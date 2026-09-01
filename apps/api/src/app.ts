@@ -124,6 +124,6 @@ export function createApi(options: ApiOptions) {
   if (options.workers) registerWorkerAccountRoutes(app, { workers: options.workers, authorizeAdmin });
   if (options.broadcastOperations) registerBroadcastOperationRoutes(app, { operations: options.broadcastOperations, authorizeUser });
   if (options.broadcastHistory) registerBroadcastHistoryRoutes(app, { history: options.broadcastHistory, authorizeUser });
-  if (options.broadcastCampaigns) registerBroadcastCampaignRoutes(app, { campaigns: options.broadcastCampaigns, authorizeUser });
+  if (options.broadcastCampaigns) registerBroadcastCampaignRoutes(app, { campaigns: options.broadcastCampaigns, authorizeUser, authorizeAdmin });
   return app;
 }
