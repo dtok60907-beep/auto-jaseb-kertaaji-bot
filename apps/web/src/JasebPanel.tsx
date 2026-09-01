@@ -10,7 +10,7 @@ import {
   getBroadcastHistory,
   getBroadcastOperation,
   getBroadcastSettings,
-  listBroadcastCampaigns,
+  getCurrentBroadcastCampaign,
   stopBroadcastCampaign,
   updateBroadcastLpmTarget,
   updateForwardBroadcastMaterial,
@@ -21,6 +21,7 @@ import type { BroadcastCampaign, BroadcastHistoryEntry, BroadcastLpmTarget, Broa
 const OPERATION_TERMINAL_STATUSES = new Set(["SUCCEEDED", "FAILED_FINAL", "CANCELLED", "SIDE_EFFECT_UNCERTAIN"]);
 const MAX_TEXT_LENGTH = 4096;
 const POLL_INTERVAL_MS = 2_000;
+const CAMPAIGN_REFRESH_INTERVAL_MS = 15_000;
 const MINIMUM_REPEAT_MINUTES = 5;
 const HISTORY_PAGE_SIZE = 20;
 
@@ -33,6 +34,27 @@ const DELIVERY_STATUS_LABEL: Record<string, string> = {
   SIDE_EFFECT_UNCERTAIN: "Status tidak pasti, perlu diperiksa",
   CANCELLED: "Dibatalkan",
 };
+
+const DELIVERY_ERROR_LABEL: Record<string, string> = {
+  ADAPTER_NOT_READY: "Akun belum siap, coba lagi sebentar.",
+  SESSION_REVOKED: "Sesi akun Telegram sudah dicabut. Hubungkan ulang akunnya.",
+  SESSION_CONFLICT: "Akun sedang dipakai proses lain. Coba lagi.",
+  FLOOD_WAIT: "Telegram minta jeda sebentar. Akan dicoba lagi otomatis.",
+  TARGET_NOT_FOUND: "Target grup tidak ditemukan. Periksa lagi link atau username-nya.",
+  SOURCE_NOT_FOUND: "Post sumber forward tidak ditemukan.",
+  JOIN_APPROVAL_REQUIRED: "Perlu persetujuan admin grup buat gabung dulu.",
+  ACCOUNT_GROUP_LIMIT_REACHED: "Akun sudah kena batas jumlah grup dari Telegram.",
+  CHAT_WRITE_FORBIDDEN: "Akun tidak diizinkan mengirim pesan di grup ini.",
+  FORWARD_FORBIDDEN: "Post sumber tidak bisa di-forward — channel asalnya mengaktifkan proteksi konten. Pakai post lain atau materi wording manual.",
+  SOURCE_ATTRIBUTION_UNSUPPORTED: "Pengaturan tampilkan/sembunyikan sumber tidak didukung untuk post ini.",
+  TELEGRAM_TRANSIENT: "Telegram sedang bermasalah sementara. Akan dicoba lagi.",
+  TELEGRAM_UNKNOWN: "Terjadi masalah tak terduga dari Telegram.",
+  LPM_TARGET_NOT_GROUP: "Target itu channel, bukan grup. Jasa Sebar cuma bisa ke grup.",
+};
+
+function deliveryErrorLabel(code: string): string {
+  return DELIVERY_ERROR_LABEL[code] ?? code;
+}
 
 const JASEB_ERROR_LABEL: Record<string, string> = {
   NETWORK_UNAVAILABLE: "Koneksi ke server sedang bermasalah. Coba lagi.",
@@ -49,6 +71,7 @@ const JASEB_ERROR_LABEL: Record<string, string> = {
   LPM_TARGET_EXISTS: "Target itu sudah kamu tambahkan sebelumnya.",
   CAMPAIGN_ALREADY_ACTIVE: "Sudah ada Jasa Sebar berulang yang sedang berjalan.",
   INTERVAL_TOO_SHORT: `Jeda pengulangan minimal ${MINIMUM_REPEAT_MINUTES} menit.`,
+  TOO_MANY_CONSECUTIVE_FAILURES: "Dihentikan otomatis karena gagal terkirim 3 kali berturut-turut.",
 };
 
 function jasebErrorLabel(error: unknown): string {
@@ -92,6 +115,9 @@ export function JasebPanel({ token }: { token: string }) {
   const pollTimer = useRef<number | null>(null);
 
   const [campaign, setCampaign] = useState<BroadcastCampaign | null>(null);
+  const [campaignOperation, setCampaignOperation] = useState<BroadcastOperation | null>(null);
+  const [dismissedStoppedCampaignId, setDismissedStoppedCampaignId] = useState<string | null>(null);
+  const campaignOperationPollTimer = useRef<number | null>(null);
   const [repeatFormOpen, setRepeatFormOpen] = useState(false);
   const [repeatMinutes, setRepeatMinutes] = useState(String(MINIMUM_REPEAT_MINUTES));
   const [startingCampaign, setStartingCampaign] = useState(false);
@@ -104,15 +130,15 @@ export function JasebPanel({ token }: { token: string }) {
   const load = useCallback(async () => {
     setLoading(true); setPageError(null);
     try {
-      const [settings, campaigns, historyPage] = await Promise.all([
+      const [settings, currentCampaign, historyPage] = await Promise.all([
         getBroadcastSettings(token),
-        listBroadcastCampaigns(token),
+        getCurrentBroadcastCampaign(token),
         getBroadcastHistory(token),
       ]);
       setMaterial(settings.materials.find((item) => item.active) ?? null);
       setTarget(settings.lpmTargets.find((item) => item.active) ?? null);
       setAccountMode(settings.accountMode);
-      setCampaign(campaigns[0] ?? null);
+      setCampaign(currentCampaign);
       setHistory(historyPage.entries);
       setHistoryCursor(historyPage.nextCursor);
     } catch (cause) { setPageError(jasebErrorLabel(cause)); }
@@ -144,6 +170,50 @@ export function JasebPanel({ token }: { token: string }) {
     };
     void tick();
   }, [stopPolling, token]);
+
+  // Auto-repeat cycles are created by the engine scheduler, not by this page,
+  // so the only way to see their outcome is polling whichever operation the
+  // campaign most recently produced.
+  useEffect(() => {
+    if (campaignOperationPollTimer.current !== null) {
+      window.clearTimeout(campaignOperationPollTimer.current);
+      campaignOperationPollTimer.current = null;
+    }
+    const operationId = campaign?.lastOperationId ?? null;
+    if (!operationId) { setCampaignOperation(null); return; }
+    const tick = async () => {
+      try {
+        const current = await getBroadcastOperation(token, operationId);
+        setCampaignOperation(current);
+        if (!OPERATION_TERMINAL_STATUSES.has(current.status)) {
+          campaignOperationPollTimer.current = window.setTimeout(() => void tick(), POLL_INTERVAL_MS);
+        }
+      } catch { /* transient; the next campaign refresh or lastOperationId change retries */ }
+    };
+    void tick();
+    return () => {
+      if (campaignOperationPollTimer.current !== null) {
+        window.clearTimeout(campaignOperationPollTimer.current);
+        campaignOperationPollTimer.current = null;
+      }
+    };
+  }, [campaign?.lastOperationId, token]);
+
+  // Cycles happen minutes apart, driven by the engine — refresh periodically
+  // while a campaign is active so a new cycle or an auto-stop shows up here
+  // without the user having to reload the page.
+  useEffect(() => {
+    if (campaign?.status !== "ACTIVE") return;
+    const campaignId = campaign.id;
+    const refresh = async () => {
+      try {
+        const current = await getCurrentBroadcastCampaign(token);
+        if (current?.id === campaignId) setCampaign(current);
+      } catch { /* transient; next tick retries */ }
+    };
+    const timer = window.setInterval(() => void refresh(), CAMPAIGN_REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [campaign?.id, campaign?.status, token]);
 
   const openMaterialEditor = () => {
     if (!material) return;
@@ -258,7 +328,7 @@ export function JasebPanel({ token }: { token: string }) {
     setStoppingCampaign(true); setPageError(null);
     try {
       await stopBroadcastCampaign(token, campaign.id);
-      setCampaign(null);
+      setCampaign(await getCurrentBroadcastCampaign(token));
     } catch (cause) { setPageError(jasebErrorLabel(cause)); }
     finally { setStoppingCampaign(false); }
   };
@@ -379,7 +449,14 @@ export function JasebPanel({ token }: { token: string }) {
         </form>
       )}
 
-      {material && target && campaign && !repeatFormOpen && !editingMaterial && !editingTarget && (
+      {campaign?.status === "STOPPED" && campaign.errorCode && dismissedStoppedCampaignId !== campaign.id && (
+        <div className="notice notice--error" role="alert">
+          <span>Sebar Otomatis dihentikan otomatis: {deliveryErrorLabel(campaign.errorCode)}</span>
+          <button className="text-button" type="button" onClick={() => setDismissedStoppedCampaignId(campaign.id)}>Tutup</button>
+        </div>
+      )}
+
+      {material && target && campaign?.status === "ACTIVE" && !repeatFormOpen && !editingMaterial && !editingTarget && (
         <div className="empty-card">
           <div>
             <h3>Berjalan otomatis</h3>
@@ -399,7 +476,7 @@ export function JasebPanel({ token }: { token: string }) {
         </div>
       )}
 
-      {material && target && !campaign && !repeatFormOpen && !editingMaterial && !editingTarget && (
+      {material && target && campaign?.status !== "ACTIVE" && !repeatFormOpen && !editingMaterial && !editingTarget && (
         <div className="empty-card">
           <div>
             <h3>Siap disebar</h3>
@@ -455,10 +532,25 @@ export function JasebPanel({ token }: { token: string }) {
             <li key={item.id}>
               <span>{item.telegramTargetRef}</span>
               <strong>{DELIVERY_STATUS_LABEL[item.deliveryStatus] ?? item.deliveryStatus}</strong>
-              {item.lastErrorCode && <span className="form-error">{item.lastErrorCode}</span>}
+              {item.lastErrorCode && <span className="form-error">{deliveryErrorLabel(item.lastErrorCode)}</span>}
             </li>
           ))}
         </ul>
+      )}
+
+      {campaign?.status === "ACTIVE" && campaignOperation && (
+        <>
+          <p className="helper-text">Status siklus otomatis terakhir:</p>
+          <ul className="jaseb-operation-status">
+            {campaignOperation.targets.map((item) => (
+              <li key={item.id}>
+                <span>{item.telegramTargetRef}</span>
+                <strong>{DELIVERY_STATUS_LABEL[item.deliveryStatus] ?? item.deliveryStatus}</strong>
+                {item.lastErrorCode && <span className="form-error">{deliveryErrorLabel(item.lastErrorCode)}</span>}
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       <div className="section-heading">

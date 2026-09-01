@@ -270,9 +270,9 @@ export async function getBroadcastHistory(
   );
 }
 
-export async function listBroadcastCampaigns(token: string): Promise<readonly BroadcastCampaign[]> {
-  const result = await request<{ campaigns: readonly BroadcastCampaign[] }>("/v1/broadcast/campaigns", {}, token);
-  return result.campaigns;
+export async function getCurrentBroadcastCampaign(token: string): Promise<BroadcastCampaign | null> {
+  const result = await request<{ campaign: BroadcastCampaign | null }>("/v1/broadcast/campaigns", {}, token);
+  return result.campaign;
 }
 
 export async function createBroadcastCampaign(

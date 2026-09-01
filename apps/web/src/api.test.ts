@@ -11,7 +11,7 @@ import {
   getBroadcastHistory,
   getBroadcastOperation,
   getBroadcastSettings,
-  listBroadcastCampaigns,
+  getCurrentBroadcastCampaign,
   listTelegramAccounts,
   stopBroadcastCampaign,
   updateBroadcastLpmTarget,
@@ -152,10 +152,11 @@ describe("web API client", () => {
     await expect(getBroadcastHistory("jas_test", "2026-09-01T00:00:00.000Z_target-1")).resolves.toEqual({ entries: [], nextCursor: null });
   });
 
-  it("starts and stops a recurring campaign", async () => {
+  it("starts, reads, and stops a recurring campaign", async () => {
     const campaign = {
       id: "campaign-1", accountMode: "USERBOT", materialId: "material-1", targetIds: ["target-1"],
       intervalSeconds: 300, status: "ACTIVE", errorCode: null, lastCycleAt: null, nextCycleAt: "2026-09-01T00:00:00.000Z",
+      lastOperationId: null,
     };
     vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       expect(JSON.parse(String(init?.body))).toEqual({ accountMode: "USERBOT", materialId: "material-1", targetIds: ["target-1"], intervalSeconds: 300 });
@@ -165,8 +166,11 @@ describe("web API client", () => {
       accountMode: "USERBOT", materialId: "material-1", targetIds: ["target-1"], intervalSeconds: 300,
     })).resolves.toMatchObject({ id: "campaign-1", status: "ACTIVE" });
 
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ campaigns: [campaign] }), { status: 200 })));
-    await expect(listBroadcastCampaigns("jas_test")).resolves.toHaveLength(1);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ campaign }), { status: 200 })));
+    await expect(getCurrentBroadcastCampaign("jas_test")).resolves.toMatchObject({ id: "campaign-1" });
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ campaign: null }), { status: 200 })));
+    await expect(getCurrentBroadcastCampaign("jas_test")).resolves.toBeNull();
 
     vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       expect(init?.method).toBe("POST");

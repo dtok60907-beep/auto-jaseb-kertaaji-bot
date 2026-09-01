@@ -16,13 +16,13 @@ class EmptyBroadcasts implements BroadcastSettingsRepository { async listMateria
 class EmptyAutoComments implements AutoCommentSettingsRepository { async listSettings() { return { accounts: [], divisions: [], channelTargets: [] } as const; } async createDivision(): Promise<never> { throw new Error("unused"); } async updateDivision(): Promise<null> { return null; } async deleteDivision(): Promise<boolean> { return false; } async createKeyword(): Promise<null> { return null; } async deleteKeyword(): Promise<boolean> { return false; } async createTemplate(): Promise<null> { return null; } async updateTemplate(): Promise<null> { return null; } async deleteTemplate(): Promise<boolean> { return false; } async createChannelTarget(): Promise<never> { throw new Error("unused"); } async updateChannelTarget(): Promise<null> { return null; } async deleteChannelTarget(): Promise<boolean> { return false; } async attachChannel(): Promise<"NOT_FOUND"> { return "NOT_FOUND"; } async detachChannel(): Promise<boolean> { return false; } async decideCandidate(): Promise<never> { throw new Error("unused"); } }
 class EmptyEntitlements implements EntitlementRepository { async grant(): Promise<never> { throw new Error("unused"); } async list(): Promise<readonly []> { return []; } async extend(): Promise<null> { return null; } async revoke(): Promise<boolean> { return false; } }
 
-const campaign: BroadcastCampaignView = { id: CAMPAIGN, accountMode: "USERBOT", materialId: MATERIAL, targetIds: [TARGET], intervalSeconds: 300, status: "ACTIVE", errorCode: null, lastCycleAt: null, nextCycleAt: "2026-09-01T12:00:00.000Z" };
+const campaign: BroadcastCampaignView = { id: CAMPAIGN, accountMode: "USERBOT", materialId: MATERIAL, targetIds: [TARGET], intervalSeconds: 300, status: "ACTIVE", errorCode: null, lastCycleAt: null, nextCycleAt: "2026-09-01T12:00:00.000Z", lastOperationId: null };
 
 class FakeCampaigns implements BroadcastCampaignRepository {
   failWith: string | null = null;
   stopped: string[] = [];
   async create() { if (this.failWith) throw new Error(this.failWith); return campaign; }
-  async listActive() { return [campaign]; }
+  async getCurrent(): Promise<BroadcastCampaignView | null> { return campaign; }
   async stop({ campaignId }: { userId: string; campaignId: string }) { this.stopped.push(campaignId); return campaignId === CAMPAIGN; }
 }
 
@@ -47,7 +47,7 @@ test("campaign creates, lists, and stops", async (t) => {
 
   const listed = await server.inject({ method: "GET", url: "/v1/broadcast/campaigns" });
   assert.equal(listed.statusCode, 200);
-  assert.equal(listed.json().campaigns.length, 1);
+  assert.equal(listed.json().campaign.id, CAMPAIGN);
 
   const stopped = await server.inject({ method: "POST", url: `/v1/broadcast/campaigns/${CAMPAIGN}/stop` });
   assert.equal(stopped.statusCode, 204);
@@ -74,6 +74,14 @@ test("campaign rejects an interval under the floor and surfaces a conflicting ac
   });
   assert.equal(conflict.statusCode, 409);
   assert.deepEqual(conflict.json(), { code: "CAMPAIGN_ALREADY_ACTIVE" });
+});
+
+test("campaign returns null when the user has never created one", async (t) => {
+  class NoCampaigns extends FakeCampaigns { async getCurrent() { return null; } }
+  const server = app("user-1", new NoCampaigns());
+  t.after(() => server.close());
+  const result = await server.inject({ method: "GET", url: "/v1/broadcast/campaigns" });
+  assert.deepEqual(result.json(), { campaign: null });
 });
 
 test("campaign requires authentication and a valid id", async (t) => {

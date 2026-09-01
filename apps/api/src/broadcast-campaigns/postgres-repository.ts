@@ -12,6 +12,7 @@ type Row = {
   error_code: string | null;
   last_cycle_at: string | null;
   next_cycle_at: string;
+  last_operation_id: string | null;
 };
 
 function view(row: Row): BroadcastCampaignView {
@@ -25,6 +26,7 @@ function view(row: Row): BroadcastCampaignView {
     errorCode: row.error_code,
     lastCycleAt: row.last_cycle_at ? new Date(row.last_cycle_at).toISOString() : null,
     nextCycleAt: new Date(row.next_cycle_at).toISOString(),
+    lastOperationId: row.last_operation_id,
   });
 }
 
@@ -46,15 +48,20 @@ export class PostgresBroadcastCampaignRepository implements BroadcastCampaignRep
     return created;
   }
 
-  async listActive(userId: string): Promise<readonly BroadcastCampaignView[]> {
+  async getCurrent(userId: string): Promise<BroadcastCampaignView | null> {
     const rows = await this.sql<Row[]>`
-      select id::text, account_mode, material_id::text, target_ids::text[], interval_seconds,
-             status, error_code, last_cycle_at::text, next_cycle_at::text
-        from public.broadcast_campaigns
-       where user_id = ${userId}::uuid and status = 'ACTIVE'
-       order by created_at desc
+      select c.id::text, c.account_mode, c.material_id::text, c.target_ids::text[], c.interval_seconds,
+             c.status, c.error_code, c.last_cycle_at::text, c.next_cycle_at::text,
+             (select o.id::text from public.workflow_operations o
+               where o.idempotency_key like ('campaign:' || c.id::text || ':%')
+               order by o.created_at desc limit 1) as last_operation_id
+        from public.broadcast_campaigns c
+       where c.user_id = ${userId}::uuid
+       order by c.created_at desc
+       limit 1
     `;
-    return Object.freeze(rows.map(view));
+    const row = rows[0];
+    return row ? view(row) : null;
   }
 
   async stop(input: Parameters<BroadcastCampaignRepository["stop"]>[0]): Promise<boolean> {
@@ -66,10 +73,13 @@ export class PostgresBroadcastCampaignRepository implements BroadcastCampaignRep
 
   private async get(campaignId: string): Promise<BroadcastCampaignView | null> {
     const rows = await this.sql<Row[]>`
-      select id::text, account_mode, material_id::text, target_ids::text[], interval_seconds,
-             status, error_code, last_cycle_at::text, next_cycle_at::text
-        from public.broadcast_campaigns
-       where id = ${campaignId}::uuid
+      select c.id::text, c.account_mode, c.material_id::text, c.target_ids::text[], c.interval_seconds,
+             c.status, c.error_code, c.last_cycle_at::text, c.next_cycle_at::text,
+             (select o.id::text from public.workflow_operations o
+               where o.idempotency_key like ('campaign:' || c.id::text || ':%')
+               order by o.created_at desc limit 1) as last_operation_id
+        from public.broadcast_campaigns c
+       where c.id = ${campaignId}::uuid
     `;
     const row = rows[0];
     return row ? view(row) : null;

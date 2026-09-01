@@ -164,4 +164,5 @@ export type BroadcastCampaign = Readonly<{
   errorCode: string | null;
   lastCycleAt: string | null;
   nextCycleAt: string;
+  lastOperationId: string | null;
 }>;

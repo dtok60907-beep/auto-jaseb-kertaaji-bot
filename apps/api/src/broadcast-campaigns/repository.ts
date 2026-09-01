@@ -10,6 +10,7 @@ export type BroadcastCampaignView = Readonly<{
   errorCode: string | null;
   lastCycleAt: string | null;
   nextCycleAt: string;
+  lastOperationId: string | null;
 }>;
 
 export interface BroadcastCampaignRepository {
@@ -20,6 +21,6 @@ export interface BroadcastCampaignRepository {
     targetIds: readonly string[];
     intervalSeconds: number;
   }>): Promise<BroadcastCampaignView>;
-  listActive(userId: string): Promise<readonly BroadcastCampaignView[]>;
+  getCurrent(userId: string): Promise<BroadcastCampaignView | null>;
   stop(input: Readonly<{ userId: string; campaignId: string }>): Promise<boolean>;
 }

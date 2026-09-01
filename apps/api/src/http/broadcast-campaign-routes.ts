@@ -59,7 +59,7 @@ export function registerBroadcastCampaignRoutes(app: FastifyInstance, options: {
 
   app.get("/v1/broadcast/campaigns", async (request, reply) => {
     const userId = await user(request, reply); if (!userId) return;
-    return { campaigns: await options.campaigns.listActive(userId) };
+    return { campaign: await options.campaigns.getCurrent(userId) };
   });
 
   app.post("/v1/broadcast/campaigns/:id/stop", async (request, reply) => {
