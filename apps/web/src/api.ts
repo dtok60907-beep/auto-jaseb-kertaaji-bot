@@ -2,6 +2,8 @@ import type {
   AdminUser,
   AuthFlow,
   AuthorizationResult,
+  BroadcastCampaign,
+  BroadcastHistoryEntry,
   BroadcastLpmTarget,
   BroadcastMaterial,
   BroadcastOperation,
@@ -215,6 +217,35 @@ export async function createBroadcastOperation(
 export async function getBroadcastOperation(token: string, operationId: string): Promise<BroadcastOperation> {
   const result = await request<{ operation: BroadcastOperation }>(`/v1/broadcast/operations/${operationId}`, {}, token);
   return result.operation;
+}
+
+export async function getBroadcastHistory(
+  token: string, before: string | null = null,
+): Promise<Readonly<{ entries: readonly BroadcastHistoryEntry[]; nextCursor: string | null }>> {
+  const suffix = before ? `?before=${encodeURIComponent(before)}` : "";
+  return request<{ entries: readonly BroadcastHistoryEntry[]; nextCursor: string | null }>(
+    `/v1/broadcast/history${suffix}`, {}, token,
+  );
+}
+
+export async function listBroadcastCampaigns(token: string): Promise<readonly BroadcastCampaign[]> {
+  const result = await request<{ campaigns: readonly BroadcastCampaign[] }>("/v1/broadcast/campaigns", {}, token);
+  return result.campaigns;
+}
+
+export async function createBroadcastCampaign(
+  token: string,
+  input: Readonly<{ accountMode: "JASEB_WORKER" | "USERBOT"; materialId: string; targetIds: readonly string[]; intervalSeconds: number }>,
+): Promise<BroadcastCampaign> {
+  const result = await request<{ campaign: BroadcastCampaign }>("/v1/broadcast/campaigns", {
+    method: "POST",
+    body: JSON.stringify(input),
+  }, token);
+  return result.campaign;
+}
+
+export function stopBroadcastCampaign(token: string, campaignId: string): Promise<void> {
+  return request<void>(`/v1/broadcast/campaigns/${campaignId}/stop`, { method: "POST" }, token);
 }
 
 export async function listWorkerAccounts(token: string): Promise<readonly WorkerAccount[]> {

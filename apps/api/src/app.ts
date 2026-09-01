@@ -13,6 +13,10 @@ import { registerWorkerAccountRoutes } from "./http/worker-account-routes.ts";
 import type { WorkerAccountSettingsRepository } from "./workers/repository.ts";
 import { registerBroadcastOperationRoutes } from "./http/broadcast-operation-routes.ts";
 import type { BroadcastOperationRepository } from "./broadcast-operations/repository.ts";
+import { registerBroadcastHistoryRoutes } from "./http/broadcast-history-routes.ts";
+import type { BroadcastHistoryRepository } from "./broadcast-history/repository.ts";
+import { registerBroadcastCampaignRoutes } from "./http/broadcast-campaign-routes.ts";
+import type { BroadcastCampaignRepository } from "./broadcast-campaigns/repository.ts";
 import { registerTelegramAuthRoutes, type TelegramSessionExchange } from "./http/telegram-auth-routes.ts";
 import type { ApiSessionRepository } from "./auth/api-session-repository.ts";
 import {
@@ -41,6 +45,8 @@ type CommonApiOptions = {
   userbotProfiles?: UserbotProfileRepository;
   workers?: WorkerAccountSettingsRepository;
   broadcastOperations?: BroadcastOperationRepository;
+  broadcastHistory?: BroadcastHistoryRepository;
+  broadcastCampaigns?: BroadcastCampaignRepository;
   telegramSessionIssuer?: TelegramSessionExchange;
   telegramAuthorization?: TelegramAuthorizationUseCase;
   telegramAccounts?: TelegramAccountLifecycleRepository;
@@ -117,5 +123,7 @@ export function createApi(options: ApiOptions) {
   if (options.userbotProfiles) registerUserbotProfileRoutes(app, { profiles: options.userbotProfiles, authorizeUser, authorizeAdmin });
   if (options.workers) registerWorkerAccountRoutes(app, { workers: options.workers, authorizeAdmin });
   if (options.broadcastOperations) registerBroadcastOperationRoutes(app, { operations: options.broadcastOperations, authorizeUser });
+  if (options.broadcastHistory) registerBroadcastHistoryRoutes(app, { history: options.broadcastHistory, authorizeUser });
+  if (options.broadcastCampaigns) registerBroadcastCampaignRoutes(app, { campaigns: options.broadcastCampaigns, authorizeUser });
   return app;
 }

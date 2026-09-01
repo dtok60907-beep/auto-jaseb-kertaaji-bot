@@ -39,6 +39,7 @@ async function move(
   status: BroadcastPreparationStatus,
   errorCode: string | null = null,
   retryAfterSeconds: number | null = null,
+  resolvedTitle: string | null = null,
 ): Promise<boolean> {
   return repository.transition({
     targetId: target.targetId,
@@ -47,6 +48,7 @@ async function move(
     status,
     errorCode,
     retryAfterSeconds,
+    resolvedTitle,
   });
 }
 
@@ -89,7 +91,7 @@ export async function prepareNextBroadcastTarget(
       }
     }
 
-    if (!await move(repository, target, lease, current, "READY")) return fenced(target.targetId);
+    if (!await move(repository, target, lease, current, "READY", null, null, resolved.title)) return fenced(target.targetId);
     return Object.freeze({ status: "READY", targetId: target.targetId, errorCode: null, retryAfterSeconds: null });
   } catch (rawError) {
     const error = normalizedError(rawError);

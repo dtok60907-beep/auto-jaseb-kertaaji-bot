@@ -247,7 +247,8 @@ export class TeleprotoProductionAdapter implements TelegramDeliveryAdapter {
     const username = typeof record?.username === "string" && record.username.trim() ? record.username.trim().replace(/^@/, "") : null;
     const canonicalRef = username ? `@${username}` : await this.#client.getPeerId(entity);
     if (!canonicalRef) throw new TelegramAdapterError({ code: notFoundCode, retryable: false });
-    return Object.freeze({ canonicalRef, entityType: type, membership: await this.#membership(entity) });
+    const title = typeof record?.title === "string" && record.title.trim() ? record.title.trim() : null;
+    return Object.freeze({ canonicalRef, entityType: type, membership: await this.#membership(entity), title });
   }
 
   async resolveTarget(targetRef: string): Promise<TelegramTarget> {

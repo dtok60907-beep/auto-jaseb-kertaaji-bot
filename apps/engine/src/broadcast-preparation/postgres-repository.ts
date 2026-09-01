@@ -42,7 +42,7 @@ export class PostgresBroadcastPreparationRepository implements BroadcastPreparat
         ${input.targetId}::uuid, ${input.accountId}::uuid,
         ${input.leaseOwner}::uuid, ${input.accountFencingToken.toString()}::bigint,
         ${input.expectedStatus}, ${input.status}, ${input.errorCode ?? null},
-        ${input.retryAfterSeconds ?? null}
+        ${input.retryAfterSeconds ?? null}, ${input.resolvedTitle ?? null}
       ) transitioned
     `;
     return rows[0]?.transitioned ?? false;

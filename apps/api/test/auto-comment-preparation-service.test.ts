@@ -27,8 +27,8 @@ class FakeAdapter implements TelegramDeliveryAdapter {
   linkedCalls = 0;
   async connect() {}
   async disconnect() {}
-  async resolveTarget(targetRef: string) { if (this.resolveError) throw this.resolveError; return { canonicalRef: targetRef, entityType: this.discussionType, membership: this.membership }; }
-  async resolveLinkedDiscussion(sourceChannelRef: string) { this.linkedCalls += 1; if (this.resolveError) throw this.resolveError; return { source: { canonicalRef: sourceChannelRef, entityType: this.sourceType, membership: "MEMBER" as const }, discussion: this.linked ? { canonicalRef: "@menfess_discussion", entityType: this.discussionType, membership: this.membership } : null }; }
+  async resolveTarget(targetRef: string) { if (this.resolveError) throw this.resolveError; return { canonicalRef: targetRef, entityType: this.discussionType, membership: this.membership, title: null }; }
+  async resolveLinkedDiscussion(sourceChannelRef: string) { this.linkedCalls += 1; if (this.resolveError) throw this.resolveError; return { source: { canonicalRef: sourceChannelRef, entityType: this.sourceType, membership: "MEMBER" as const, title: null }, discussion: this.linked ? { canonicalRef: "@menfess_discussion", entityType: this.discussionType, membership: this.membership, title: null } : null }; }
   async joinPublicTarget() { this.joinCalls += 1; if (this.joinError) throw this.joinError; return { state: this.joinState }; }
   async sendText() { return telegramDeliveryReceipt(["1"], new Date().toISOString()); }
   async forwardNative() { return telegramDeliveryReceipt(["1"], new Date().toISOString()); }

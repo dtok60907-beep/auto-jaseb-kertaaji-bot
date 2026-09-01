@@ -24,6 +24,7 @@ class FakeRepository implements BroadcastPreparationRepository {
     status: BroadcastPreparationStatus;
     errorCode?: string | null;
     retryAfterSeconds?: number | null;
+    resolvedTitle?: string | null;
   }> = [];
   allow = true;
   previousStatus: "QUEUED" | "WAITING_APPROVAL" = "QUEUED";
@@ -43,6 +44,7 @@ class FakeRepository implements BroadcastPreparationRepository {
       status: input.status,
       errorCode: input.errorCode,
       retryAfterSeconds: input.retryAfterSeconds,
+      resolvedTitle: input.resolvedTitle,
     });
     return this.allow;
   }
@@ -52,6 +54,7 @@ class FakeAdapter implements TelegramDeliveryAdapter {
   readonly state = "READY" as const;
   membership: "MEMBER" | "NOT_MEMBER" | "UNKNOWN" = "MEMBER";
   entityType: "GROUP" | "SUPERGROUP" | "CHANNEL" = "SUPERGROUP";
+  title: string | null = null;
   resolveError: unknown = null;
   joinError: unknown = null;
   joinState: "JOINED" | "ALREADY_MEMBER" | "APPROVAL_REQUESTED" = "JOINED";
@@ -61,12 +64,12 @@ class FakeAdapter implements TelegramDeliveryAdapter {
   async disconnect() {}
   async resolveTarget(targetRef: string) {
     if (this.resolveError) throw this.resolveError;
-    return { canonicalRef: targetRef, entityType: this.entityType, membership: this.membership };
+    return { canonicalRef: targetRef, entityType: this.entityType, membership: this.membership, title: this.title };
   }
   async resolveLinkedDiscussion(sourceChannelRef: string) {
     return {
-      source: { canonicalRef: sourceChannelRef, entityType: "CHANNEL" as const, membership: "MEMBER" as const },
-      discussion: { canonicalRef: "@discussion", entityType: "SUPERGROUP" as const, membership: "MEMBER" as const },
+      source: { canonicalRef: sourceChannelRef, entityType: "CHANNEL" as const, membership: "MEMBER" as const, title: null },
+      discussion: { canonicalRef: "@discussion", entityType: "SUPERGROUP" as const, membership: "MEMBER" as const, title: null },
     };
   }
   async joinPublicTarget() {
@@ -81,6 +84,7 @@ class FakeAdapter implements TelegramDeliveryAdapter {
 test("an existing public-group member becomes ready without joining", async () => {
   const repository = new FakeRepository();
   const adapter = new FakeAdapter();
+  adapter.title = "Grup LPM Contoh";
   const result = await prepareNextBroadcastTarget(adapter, repository, lease);
   assert.equal(result.status, "READY");
   assert.equal(adapter.joinCalls, 0);
@@ -89,6 +93,7 @@ test("an existing public-group member becomes ready without joining", async () =
     status: "READY",
     errorCode: null,
     retryAfterSeconds: null,
+    resolvedTitle: "Grup LPM Contoh",
   }]);
 });
 
@@ -124,6 +129,7 @@ test("approval-required target waits and polling never sends another join reques
     status: "WAITING_APPROVAL",
     errorCode: "JOIN_APPROVAL_PENDING",
     retryAfterSeconds: 30,
+    resolvedTitle: null,
   }]);
 });
 

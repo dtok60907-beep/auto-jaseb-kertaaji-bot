@@ -8,8 +8,8 @@ class RecordingAdapter implements TelegramDeliveryAdapter {
   readonly forwards: NativeForwardRequest[] = [];
   async connect() {}
   async disconnect() {}
-  async resolveTarget(targetRef: string) { return { canonicalRef: targetRef, entityType: "SUPERGROUP" as const, membership: "MEMBER" as const }; }
-  async resolveLinkedDiscussion(sourceChannelRef: string) { return { source: { canonicalRef: sourceChannelRef, entityType: "CHANNEL" as const, membership: "MEMBER" as const }, discussion: { canonicalRef: "@discussion", entityType: "SUPERGROUP" as const, membership: "MEMBER" as const } }; }
+  async resolveTarget(targetRef: string) { return { canonicalRef: targetRef, entityType: "SUPERGROUP" as const, membership: "MEMBER" as const, title: null }; }
+  async resolveLinkedDiscussion(sourceChannelRef: string) { return { source: { canonicalRef: sourceChannelRef, entityType: "CHANNEL" as const, membership: "MEMBER" as const, title: null }, discussion: { canonicalRef: "@discussion", entityType: "SUPERGROUP" as const, membership: "MEMBER" as const, title: null } }; }
   async joinPublicTarget() { return { state: "ALREADY_MEMBER" as const }; }
   async sendText(input: { targetRef: string; text: string }): Promise<TelegramDeliveryReceipt> { this.texts.push(input); return telegramDeliveryReceipt(["9001"], "2026-08-29T08:00:00.000Z"); }
   async forwardNative(input: NativeForwardRequest): Promise<TelegramDeliveryReceipt> { this.forwards.push(input); return telegramDeliveryReceipt(["9101", "9102", "9103", "9104"], "2026-08-29T08:00:01.000Z"); }

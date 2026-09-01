@@ -37,6 +37,7 @@ export type TelegramTarget = Readonly<{
   canonicalRef: string;
   entityType: "GROUP" | "SUPERGROUP" | "CHANNEL";
   membership: "MEMBER" | "NOT_MEMBER" | "UNKNOWN";
+  title: string | null;
 }>;
 export type TelegramJoinResult = Readonly<{
   state: "JOINED" | "ALREADY_MEMBER" | "APPROVAL_REQUESTED";

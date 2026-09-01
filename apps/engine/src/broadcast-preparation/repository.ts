@@ -29,5 +29,6 @@ export interface BroadcastPreparationRepository {
     status: BroadcastPreparationStatus;
     errorCode?: string | null;
     retryAfterSeconds?: number | null;
+    resolvedTitle?: string | null;
   }>): Promise<boolean>;
 }

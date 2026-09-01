@@ -12,6 +12,12 @@ import type {
   AccountSupervisorSummary,
 } from "../account-supervisor/contracts.ts";
 import { startBroadcastShardSupervisor } from "../account-supervisor/service.ts";
+import {
+  createPostgresBroadcastCampaignCycleRunner,
+  PostgresBroadcastCampaignSource,
+  startBroadcastCampaignScheduler,
+  type BroadcastCampaignSchedulerHandle,
+} from "../broadcast-campaign/scheduler.ts";
 import { PostgresBroadcastExecutorRepository } from "../broadcast-executor/postgres-repository.ts";
 import { PostgresBroadcastPreparationRepository } from "../broadcast-preparation/postgres-repository.ts";
 import { PostgresBroadcastRuntimeAccountRepository } from "../runtime-accounts/postgres-repository.ts";
@@ -47,7 +53,8 @@ export type ProductionEngineStartErrorCode =
   | "DATABASE_PROBE_FAILED"
   | "INSTANCE_ID_INVALID"
   | "ENGINE_COMPOSITION_FAILED"
-  | "SUPERVISOR_START_FAILED";
+  | "SUPERVISOR_START_FAILED"
+  | "CAMPAIGN_SCHEDULER_START_FAILED";
 
 export class ProductionEngineStartError extends Error {
   readonly code: ProductionEngineStartErrorCode;
@@ -78,11 +85,14 @@ type SupervisorStarter = (
   input: Parameters<typeof startBroadcastShardSupervisor>[1],
 ) => Promise<AccountSupervisorHandle>;
 
+type CampaignSchedulerStarter = (sql: ReturnType<ProductionDatabase["client"]>) => BroadcastCampaignSchedulerHandle;
+
 export type ProductionEngineCoreFactories = Readonly<{
   openDatabase(config: ProductionEngineConfig): Promise<ProductionDatabase>;
   startSupervisor: SupervisorStarter;
   runAccount: typeof runBroadcastAccount;
   createInstanceId(): string;
+  startCampaignScheduler: CampaignSchedulerStarter;
 }>;
 
 const defaultFactories: ProductionEngineCoreFactories = Object.freeze({
@@ -90,6 +100,10 @@ const defaultFactories: ProductionEngineCoreFactories = Object.freeze({
   startSupervisor: startBroadcastShardSupervisor,
   runAccount: runBroadcastAccount,
   createInstanceId: randomUUID,
+  startCampaignScheduler: (sql) => startBroadcastCampaignScheduler({
+    source: new PostgresBroadcastCampaignSource(sql),
+    runCycle: createPostgresBroadcastCampaignCycleRunner(sql),
+  }),
 });
 
 async function closeAfterFailedStart(database: ProductionDatabase): Promise<readonly string[]> {
@@ -167,6 +181,16 @@ export async function startProductionEngineCore(
     throw new ProductionEngineStartError("SUPERVISOR_START_FAILED", await closeAfterFailedStart(database));
   }
 
+  let campaignScheduler: BroadcastCampaignSchedulerHandle;
+  try {
+    campaignScheduler = factories.startCampaignScheduler(database.client());
+  } catch {
+    const cleanupErrorCodes: string[] = [];
+    try { await supervisor.stop(); } catch { cleanupErrorCodes.push("SUPERVISOR_STOP_FAILED"); }
+    cleanupErrorCodes.push(...await closeAfterFailedStart(database));
+    throw new ProductionEngineStartError("CAMPAIGN_SCHEDULER_START_FAILED", cleanupErrorCodes);
+  }
+
   let state: ProductionEngineCoreState = "RUNNING";
   let stopPromise: Promise<ProductionEngineCoreSummary> | null = null;
   const snapshot = (): ProductionEngineCoreSnapshot => Object.freeze({
@@ -181,6 +205,8 @@ export async function startProductionEngineCore(
     state = "STOPPING";
     stopPromise = (async () => {
       const cleanupErrorCodes: string[] = [];
+      try { await campaignScheduler.stop(); }
+      catch { cleanupErrorCodes.push("CAMPAIGN_SCHEDULER_STOP_FAILED"); }
       let supervisorSummary: AccountSupervisorSummary | null = null;
       try { supervisorSummary = await supervisor.stop(); }
       catch { cleanupErrorCodes.push("SUPERVISOR_STOP_FAILED"); }

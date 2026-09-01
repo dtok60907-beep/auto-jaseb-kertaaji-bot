@@ -25,7 +25,7 @@ function requestName(request: unknown): string {
   return request.constructor.name;
 }
 
-function channel(input: Readonly<{ username: string; id?: string; megagroup?: boolean; left?: boolean }>) {
+function channel(input: Readonly<{ username: string; id?: string; megagroup?: boolean; left?: boolean; title?: string }>) {
   return {
     className: "Channel",
     username: input.username,
@@ -33,6 +33,7 @@ function channel(input: Readonly<{ username: string; id?: string; megagroup?: bo
     megagroup: input.megagroup ?? false,
     left: input.left ?? false,
     peerId: `-100${input.id ?? "101"}`,
+    title: input.title,
   };
 }
 
@@ -138,11 +139,22 @@ test("resolves target membership and linked discussion without leaking provider 
     canonicalRef: "@sourcechannel",
     entityType: "CHANNEL",
     membership: "MEMBER",
+    title: null,
   });
   assert.deepEqual(await adapter.resolveLinkedDiscussion("@sourcechannel"), {
-    source: { canonicalRef: "@sourcechannel", entityType: "CHANNEL", membership: "MEMBER" },
-    discussion: { canonicalRef: "@discussiongroup", entityType: "SUPERGROUP", membership: "MEMBER" },
+    source: { canonicalRef: "@sourcechannel", entityType: "CHANNEL", membership: "MEMBER", title: null },
+    discussion: { canonicalRef: "@discussiongroup", entityType: "SUPERGROUP", membership: "MEMBER", title: null },
   });
+});
+
+test("resolveTarget surfaces the provider's chat title for history/campaign display", async () => {
+  const group = channel({ username: "lpmgroup", megagroup: true, title: "Grup LPM Contoh" });
+  const { adapter, client } = await ready();
+  client.entities.set("@lpmgroup", group);
+  client.invokeImpl = async () => ({ participant: { className: "ChannelParticipantSelf" } });
+
+  const resolved = await adapter.resolveTarget("@lpmgroup");
+  assert.equal(resolved.title, "Grup LPM Contoh");
 });
 
 test("join reports existing membership, successful join, and approval request explicitly", async () => {

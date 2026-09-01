@@ -2,17 +2,23 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   ApiError,
+  createBroadcastCampaign,
   createBroadcastLpmTarget,
   createBroadcastOperation,
   createTextBroadcastMaterial,
+  getBroadcastHistory,
   getBroadcastOperation,
   getBroadcastSettings,
+  listBroadcastCampaigns,
+  stopBroadcastCampaign,
 } from "./api";
-import type { BroadcastLpmTarget, BroadcastMaterial, BroadcastOperation } from "./types";
+import type { BroadcastCampaign, BroadcastHistoryEntry, BroadcastLpmTarget, BroadcastMaterial, BroadcastOperation } from "./types";
 
 const OPERATION_TERMINAL_STATUSES = new Set(["SUCCEEDED", "FAILED_FINAL", "CANCELLED", "SIDE_EFFECT_UNCERTAIN"]);
 const MAX_TEXT_LENGTH = 4096;
 const POLL_INTERVAL_MS = 2_000;
+const MINIMUM_REPEAT_MINUTES = 5;
+const HISTORY_PAGE_SIZE = 20;
 
 const DELIVERY_STATUS_LABEL: Record<string, string> = {
   PENDING: "Menunggu giliran",
@@ -36,6 +42,8 @@ const JASEB_ERROR_LABEL: Record<string, string> = {
   IDEMPOTENCY_KEY_CONFLICT: "Permintaan ini sudah pernah diproses.",
   LPM_GROUP_LIMIT_REACHED: "Batas jumlah target Grup LPM paket kamu sudah tercapai.",
   LPM_TARGET_EXISTS: "Target itu sudah kamu tambahkan sebelumnya.",
+  CAMPAIGN_ALREADY_ACTIVE: "Sudah ada Jasa Sebar berulang yang sedang berjalan.",
+  INTERVAL_TOO_SHORT: `Jeda pengulangan minimal ${MINIMUM_REPEAT_MINUTES} menit.`,
 };
 
 function jasebErrorLabel(error: unknown): string {
@@ -45,6 +53,10 @@ function jasebErrorLabel(error: unknown): string {
 
 function newIdempotencyKey(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `jaseb-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function formatDateTime(value: string): string {
+  return new Date(value).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
 }
 
 export function JasebPanel({ token }: { token: string }) {
@@ -61,12 +73,29 @@ export function JasebPanel({ token }: { token: string }) {
   const [operation, setOperation] = useState<BroadcastOperation | null>(null);
   const pollTimer = useRef<number | null>(null);
 
+  const [campaign, setCampaign] = useState<BroadcastCampaign | null>(null);
+  const [repeatFormOpen, setRepeatFormOpen] = useState(false);
+  const [repeatMinutes, setRepeatMinutes] = useState(String(MINIMUM_REPEAT_MINUTES));
+  const [startingCampaign, setStartingCampaign] = useState(false);
+  const [stoppingCampaign, setStoppingCampaign] = useState(false);
+
+  const [history, setHistory] = useState<readonly BroadcastHistoryEntry[]>([]);
+  const [historyCursor, setHistoryCursor] = useState<string | null>(null);
+  const [loadingMoreHistory, setLoadingMoreHistory] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true); setPageError(null);
     try {
-      const settings = await getBroadcastSettings(token);
+      const [settings, campaigns, historyPage] = await Promise.all([
+        getBroadcastSettings(token),
+        listBroadcastCampaigns(token),
+        getBroadcastHistory(token),
+      ]);
       setMaterial(settings.materials.find((item) => item.active) ?? null);
       setTarget(settings.lpmTargets.find((item) => item.active) ?? null);
+      setCampaign(campaigns[0] ?? null);
+      setHistory(historyPage.entries);
+      setHistoryCursor(historyPage.nextCursor);
     } catch (cause) { setPageError(jasebErrorLabel(cause)); }
     finally { setLoading(false); }
   }, [token]);
@@ -87,6 +116,10 @@ export function JasebPanel({ token }: { token: string }) {
         setOperation(current);
         if (!OPERATION_TERMINAL_STATUSES.has(current.status)) {
           pollTimer.current = window.setTimeout(() => void tick(), POLL_INTERVAL_MS);
+        } else {
+          const historyPage = await getBroadcastHistory(token);
+          setHistory(historyPage.entries);
+          setHistoryCursor(historyPage.nextCursor);
         }
       } catch (cause) { setPageError(jasebErrorLabel(cause)); }
     };
@@ -109,7 +142,7 @@ export function JasebPanel({ token }: { token: string }) {
     finally { setCreatingTarget(false); }
   };
 
-  const launch = async () => {
+  const launchOnce = async () => {
     if (!material || !target || launching) return;
     setLaunching(true); setPageError(null);
     try {
@@ -123,6 +156,45 @@ export function JasebPanel({ token }: { token: string }) {
       pollOperation(created.operation.id);
     } catch (cause) { setPageError(jasebErrorLabel(cause)); }
     finally { setLaunching(false); }
+  };
+
+  const startRepeat = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!material || !target || startingCampaign) return;
+    const minutes = Number(repeatMinutes);
+    setStartingCampaign(true); setPageError(null);
+    try {
+      const created = await createBroadcastCampaign(token, {
+        accountMode: "USERBOT",
+        materialId: material.id,
+        targetIds: [target.id],
+        intervalSeconds: minutes * 60,
+      });
+      setCampaign(created);
+      setRepeatFormOpen(false);
+    } catch (cause) { setPageError(jasebErrorLabel(cause)); }
+    finally { setStartingCampaign(false); }
+  };
+
+  const stopRepeat = async () => {
+    if (!campaign || stoppingCampaign) return;
+    setStoppingCampaign(true); setPageError(null);
+    try {
+      await stopBroadcastCampaign(token, campaign.id);
+      setCampaign(null);
+    } catch (cause) { setPageError(jasebErrorLabel(cause)); }
+    finally { setStoppingCampaign(false); }
+  };
+
+  const loadMoreHistory = async () => {
+    if (!historyCursor || loadingMoreHistory) return;
+    setLoadingMoreHistory(true); setPageError(null);
+    try {
+      const page = await getBroadcastHistory(token, historyCursor);
+      setHistory((current) => [...current, ...page.entries]);
+      setHistoryCursor(page.nextCursor);
+    } catch (cause) { setPageError(jasebErrorLabel(cause)); }
+    finally { setLoadingMoreHistory(false); }
   };
 
   if (loading) {
@@ -175,16 +247,63 @@ export function JasebPanel({ token }: { token: string }) {
         </form>
       )}
 
-      {material && target && (
+      {material && target && campaign && (
+        <div className="empty-card">
+          <div>
+            <h3>Berjalan otomatis</h3>
+            <p>
+              Mengirim ke {target.label ?? target.telegramTargetRef} tiap {Math.round(campaign.intervalSeconds / 60)} menit.
+              {campaign.lastCycleAt ? ` Terakhir: ${formatDateTime(campaign.lastCycleAt)}.` : ""}
+            </p>
+          </div>
+          <button className="button button--danger-ghost" type="button" onClick={() => void stopRepeat()} disabled={stoppingCampaign}>
+            {stoppingCampaign ? "Menghentikan" : "Hentikan"}
+          </button>
+        </div>
+      )}
+
+      {material && target && !campaign && !repeatFormOpen && (
         <div className="empty-card">
           <div>
             <h3>Siap disebar</h3>
-            <p>Materi dan target sudah tersimpan. Jalankan Jasa Sebar ke {target.label ?? target.telegramTargetRef}.</p>
+            <p>Materi dan target sudah tersimpan. Kirim ke {target.label ?? target.telegramTargetRef}.</p>
           </div>
-          <button className="button button--primary" type="button" onClick={() => void launch()} disabled={launching || (operation !== null && !OPERATION_TERMINAL_STATUSES.has(operation.status))}>
-            {launching ? "Memulai" : "Jalankan"}
-          </button>
+          <div className="account-card__actions">
+            <button className="button button--ghost" type="button" onClick={() => setRepeatFormOpen(true)} disabled={launching}>
+              Ulangi otomatis
+            </button>
+            <button
+              className="button button--primary"
+              type="button"
+              onClick={() => void launchOnce()}
+              disabled={launching || (operation !== null && !OPERATION_TERMINAL_STATUSES.has(operation.status))}
+            >
+              {launching ? "Memulai" : "Kirim sekali"}
+            </button>
+          </div>
         </div>
+      )}
+
+      {material && target && !campaign && repeatFormOpen && (
+        <form className="stack-form" onSubmit={startRepeat}>
+          <label htmlFor="jaseb-repeat-minutes">Ulangi tiap berapa menit</label>
+          <input
+            id="jaseb-repeat-minutes"
+            type="number"
+            inputMode="numeric"
+            min={MINIMUM_REPEAT_MINUTES}
+            value={repeatMinutes}
+            onChange={(event) => setRepeatMinutes(event.target.value)}
+            required
+          />
+          <p className="helper-text">Minimal {MINIMUM_REPEAT_MINUTES} menit. Bisa dihentikan kapan saja.</p>
+          <div className="account-card__actions">
+            <button className="button button--ghost" type="button" onClick={() => setRepeatFormOpen(false)} disabled={startingCampaign}>Batal</button>
+            <button className="button button--primary" type="submit" disabled={startingCampaign || Number(repeatMinutes) < MINIMUM_REPEAT_MINUTES}>
+              {startingCampaign ? "Memulai" : "Mulai"}
+            </button>
+          </div>
+        </form>
       )}
 
       {operation && (
@@ -197,6 +316,33 @@ export function JasebPanel({ token }: { token: string }) {
             </li>
           ))}
         </ul>
+      )}
+
+      <div className="section-heading">
+        <h3 id="jaseb-history-heading">Riwayat sebar</h3>
+      </div>
+      {history.length === 0 ? (
+        <div className="empty-card"><h3>Belum ada riwayat</h3></div>
+      ) : (
+        <ul className="jaseb-history-list" aria-labelledby="jaseb-history-heading">
+          {history.map((entry) => (
+            <li key={entry.id}>
+              <div>
+                {entry.bubbleLink ? (
+                  <a href={entry.bubbleLink} target="_blank" rel="noreferrer">{entry.resolvedTitle ?? entry.telegramTargetRef}</a>
+                ) : (
+                  <span>{entry.resolvedTitle ?? entry.telegramTargetRef}</span>
+                )}
+              </div>
+              <span className="jaseb-history-time">{formatDateTime(entry.sentAt)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {historyCursor && (
+        <button className="text-button" type="button" onClick={() => void loadMoreHistory()} disabled={loadingMoreHistory}>
+          {loadingMoreHistory ? "Memuat" : "Muat lebih banyak"}
+        </button>
       )}
     </section>
   );

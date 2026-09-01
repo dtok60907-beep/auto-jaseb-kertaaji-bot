@@ -191,6 +191,10 @@ button:disabled { cursor: not-allowed; }
 .jaseb-operation-status { display: grid; gap: 9px; margin: 19px 0 0; padding: 0; list-style: none; }
 .jaseb-operation-status li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 13px 16px; border: 1px solid var(--line); border-radius: 13px; background: rgba(255, 254, 250, .55); font-size: 12px; }
 .jaseb-operation-status li strong { font-size: 12px; }
+.jaseb-history-list { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
+.jaseb-history-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 13px 16px; border: 1px solid var(--line); border-radius: 13px; background: rgba(255, 254, 250, .55); font-size: 12px; }
+.jaseb-history-list a { color: #39785c; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
+.jaseb-history-time { color: #7f8a83; font-size: 11px; }
 .helper-text { margin: 5px 0 0; color: #9ba39d; font-size: 10px; line-height: 1.6; }
 .form-error { margin: 3px 0 0; color: #b05d51; font-size: 11px; line-height: 1.5; }
 .step-count { display: flex; align-items: center; justify-content: space-between; margin: -4px 0 7px; color: #7f8a83; font-family: "DM Mono", monospace; font-size: 9px; }

@@ -222,12 +222,12 @@ class FakeAdapter implements TelegramDeliveryAdapter {
   async resolveTarget(targetRef: string) {
     this.resolveCalls += 1;
     if (this.resolveError) throw this.resolveError;
-    return { canonicalRef: targetRef, entityType: "SUPERGROUP" as const, membership: "MEMBER" as const };
+    return { canonicalRef: targetRef, entityType: "SUPERGROUP" as const, membership: "MEMBER" as const, title: null };
   }
   async resolveLinkedDiscussion(sourceChannelRef: string) {
     return {
-      source: { canonicalRef: sourceChannelRef, entityType: "CHANNEL" as const, membership: "MEMBER" as const },
-      discussion: { canonicalRef: "@discussion", entityType: "SUPERGROUP" as const, membership: "MEMBER" as const },
+      source: { canonicalRef: sourceChannelRef, entityType: "CHANNEL" as const, membership: "MEMBER" as const, title: null },
+      discussion: { canonicalRef: "@discussion", entityType: "SUPERGROUP" as const, membership: "MEMBER" as const, title: null },
     };
   }
   async joinPublicTarget() { return { state: "ALREADY_MEMBER" as const }; }

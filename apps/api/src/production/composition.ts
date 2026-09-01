@@ -7,6 +7,8 @@ import { TelegramMiniAppVerifier } from "../auth/telegram-mini-app.ts";
 import { TelegramSessionIssuer } from "../auth/telegram-session-issuer.ts";
 import { PostgresAutoCommentSettingsRepository } from "../auto-comment/postgres-repository.ts";
 import { PostgresBroadcastOperationRepository } from "../broadcast-operations/postgres-repository.ts";
+import { PostgresBroadcastHistoryRepository } from "../broadcast-history/postgres-repository.ts";
+import { PostgresBroadcastCampaignRepository } from "../broadcast-campaigns/postgres-repository.ts";
 import { PostgresBroadcastSettingsRepository } from "../broadcast/postgres-repository.ts";
 import { PostgresEntitlementRepository } from "../entitlements/postgres-repository.ts";
 import { PostgresPackageRepository } from "../packages/postgres-repository.ts";
@@ -62,6 +64,8 @@ export function composeProductionApi(config: ProductionApiConfig, sql: Sql) {
     userbotProfiles: new PostgresUserbotProfileRepository(sql),
     workers: new PostgresWorkerAccountSettingsRepository(sql),
     broadcastOperations: new PostgresBroadcastOperationRepository(sql),
+    broadcastHistory: new PostgresBroadcastHistoryRepository(sql),
+    broadcastCampaigns: new PostgresBroadcastCampaignRepository(sql),
     apiSessions: sessions,
     adminAccess: new PostgresAdminAccessRepository(sql),
     telegramSessionIssuer: sessionIssuer,

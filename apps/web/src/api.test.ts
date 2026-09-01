@@ -2,13 +2,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ApiError,
+  createBroadcastCampaign,
   createBroadcastLpmTarget,
   createBroadcastOperation,
   createTextBroadcastMaterial,
   exchangeTelegramInitData,
+  getBroadcastHistory,
   getBroadcastOperation,
   getBroadcastSettings,
+  listBroadcastCampaigns,
   listTelegramAccounts,
+  stopBroadcastCampaign,
 } from "./api";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -99,5 +103,38 @@ describe("web API client", () => {
 
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ operation }), { status: 200 })));
     await expect(getBroadcastOperation("jas_test", "operation-1")).resolves.toMatchObject({ id: "operation-1", status: "READY" });
+  });
+
+  it("paginates riwayat sebar with a before cursor", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toContain("/v1/broadcast/history?before=");
+      return new Response(JSON.stringify({ entries: [], nextCursor: null }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getBroadcastHistory("jas_test", "2026-09-01T00:00:00.000Z_target-1")).resolves.toEqual({ entries: [], nextCursor: null });
+  });
+
+  it("starts and stops a recurring campaign", async () => {
+    const campaign = {
+      id: "campaign-1", accountMode: "USERBOT", materialId: "material-1", targetIds: ["target-1"],
+      intervalSeconds: 300, status: "ACTIVE", errorCode: null, lastCycleAt: null, nextCycleAt: "2026-09-01T00:00:00.000Z",
+    };
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(JSON.parse(String(init?.body))).toEqual({ accountMode: "USERBOT", materialId: "material-1", targetIds: ["target-1"], intervalSeconds: 300 });
+      return new Response(JSON.stringify({ campaign }), { status: 201 });
+    }));
+    await expect(createBroadcastCampaign("jas_test", {
+      accountMode: "USERBOT", materialId: "material-1", targetIds: ["target-1"], intervalSeconds: 300,
+    })).resolves.toMatchObject({ id: "campaign-1", status: "ACTIVE" });
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ campaigns: [campaign] }), { status: 200 })));
+    await expect(listBroadcastCampaigns("jas_test")).resolves.toHaveLength(1);
+
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe("POST");
+      return new Response(null, { status: 204 });
+    }));
+    await expect(stopBroadcastCampaign("jas_test", "campaign-1")).resolves.toBeNull();
   });
 });

@@ -143,3 +143,25 @@ export type BroadcastOperation = Readonly<{
   material: BroadcastOperationMaterial;
   targets: readonly BroadcastOperationTarget[];
 }>;
+
+export type BroadcastHistoryEntry = Readonly<{
+  id: string;
+  accountId: string;
+  accountLabel: string;
+  telegramTargetRef: string;
+  resolvedTitle: string | null;
+  sentAt: string;
+  bubbleLink: string | null;
+}>;
+
+export type BroadcastCampaign = Readonly<{
+  id: string;
+  accountMode: "JASEB_WORKER" | "USERBOT";
+  materialId: string;
+  targetIds: readonly string[];
+  intervalSeconds: number;
+  status: "ACTIVE" | "STOPPED";
+  errorCode: string | null;
+  lastCycleAt: string | null;
+  nextCycleAt: string;
+}>;
