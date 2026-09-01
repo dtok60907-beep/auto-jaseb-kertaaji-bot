@@ -205,7 +205,7 @@ async function executeFixture(
     async resolveLinkedDiscussion(): Promise<never> { throw new Error("unused"); },
     async joinPublicTarget(): Promise<never> { throw new Error("unused"); },
     async forwardNative(): Promise<never> { throw new Error("unused"); },
-    async onChannelMessage(): Promise<() => void> { return () => {}; },
+    async listNewChannelPosts() { return []; },
     async sendText(input) {
       sends.set(input.targetRef, (sends.get(input.targetRef) ?? 0) + 1);
       if (config.providerLatencyMilliseconds > 0) await pause(config.providerLatencyMilliseconds);

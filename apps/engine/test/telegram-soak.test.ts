@@ -99,7 +99,7 @@ class FakeAdapter implements TelegramDeliveryAdapter {
   async joinPublicTarget(): Promise<TelegramJoinResult> { throw new Error("unused"); }
   async sendText(): Promise<TelegramDeliveryReceipt> { throw new Error("unused"); }
   async forwardNative(): Promise<TelegramDeliveryReceipt> { throw new Error("unused"); }
-  async onChannelMessage(): Promise<() => void> { return () => {}; }
+  async listNewChannelPosts() { return []; }
 }
 
 test("controlled disconnect injection reaches every created adapter and contains raw failures", async () => {

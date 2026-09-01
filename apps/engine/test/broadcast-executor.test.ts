@@ -43,7 +43,7 @@ class FakeAdapter implements TelegramDeliveryAdapter {
   async joinPublicTarget(): Promise<never> { throw new Error("unused"); }
   async sendText(input: Readonly<{ targetRef: string; text: string }>) { this.textCalls.push(input); if (this.error) throw this.error; return this.receipt; }
   async forwardNative(input: NativeForwardRequest) { this.forwardCalls.push(input); if (this.error) throw this.error; return this.receipt; }
-  async onChannelMessage() { return () => {}; }
+  async listNewChannelPosts() { return []; }
 }
 
 test("idle does not call Telegram or finish", async () => {

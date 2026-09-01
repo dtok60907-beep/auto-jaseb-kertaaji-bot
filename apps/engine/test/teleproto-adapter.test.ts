@@ -45,8 +45,7 @@ class FakeClient implements TeleprotoClientPort {
   sendCalls: Array<Readonly<{ entity: string; params: Readonly<{ message: string; linkPreview: false }> }>> = [];
   forwardCalls: ForwardCall[] = [];
   getMessagesCalls: Array<Readonly<{ entity: unknown; ids: readonly number[] }>> = [];
-  newMessageSubscriptions: Array<Readonly<{ chatRef: string; handler: (message: unknown) => void }>> = [];
-  newMessageUnsubscribed = 0;
+  getHistoryCalls: Array<Readonly<{ entity: unknown; minId: number; limit: number }>> = [];
   entities = new Map<string, unknown>();
   invokeImpl: (request: unknown) => Promise<unknown> = async (request) => {
     if (requestName(request) === "channels.GetParticipant") return { participant: { className: "ChannelParticipantSelf" } };
@@ -56,6 +55,7 @@ class FakeClient implements TeleprotoClientPort {
   sendImpl: (entity: string, params: Readonly<{ message: string; linkPreview: false }>) => Promise<unknown> = async () => ({ id: 501, date: 1_800_000_000 });
   messagesImpl: (entity: unknown, ids: readonly number[]) => Promise<unknown> = async (_entity, ids) => ids.map((id) => ({ id, date: 1_800_000_000 }));
   forwardImpl: (entity: string, params: ForwardCall["params"]) => Promise<unknown> = async (_entity, params) => params.messages.map((id, index) => ({ id: 800 + id + index, date: 1_800_000_001 }));
+  historyImpl: (entity: unknown, minId: number, limit: number) => Promise<unknown> = async () => [];
 
   async connect() { this.connectCount += 1; }
   async disconnect() { this.disconnectCount += 1; }
@@ -81,9 +81,9 @@ class FakeClient implements TeleprotoClientPort {
     this.forwardCalls.push({ entity, params });
     return this.forwardImpl(entity, params);
   }
-  onNewMessage(chatRef: string, handler: (message: unknown) => void) {
-    this.newMessageSubscriptions.push({ chatRef, handler });
-    return () => { this.newMessageUnsubscribed += 1; };
+  async getHistory(entity: unknown, params: Readonly<{ minId: number; limit: number }>) {
+    this.getHistoryCalls.push({ entity, minId: params.minId, limit: params.limit });
+    return this.historyImpl(entity, params.minId, params.limit);
   }
 }
 
@@ -318,29 +318,31 @@ test("serializes concurrent operations for one account and isolates fatal state"
   assert.equal(isolated.adapter.state, "READY");
 });
 
-test("onChannelMessage subscribes for a channel, extracts post id and text, and unsubscribes cleanly", async () => {
+test("listNewChannelPosts polls history since the given id, extracts text, and skips malformed entries", async () => {
   const { adapter, client } = await ready();
-  const received: unknown[] = [];
-  const unsubscribe = await adapter.onChannelMessage("@menfess", (message) => received.push(message));
+  client.historyImpl = async () => [
+    { id: 42, date: 1_800_000_000, message: "keyword cari admin" },
+    { id: 0, date: 1_800_000_001, message: "malformed, ignored" },
+    { id: 43, date: 1_800_000_002 },
+  ];
 
-  assert.equal(client.newMessageSubscriptions.length, 1);
-  assert.equal(client.newMessageSubscriptions[0]?.chatRef, "@menfess");
+  const posts = await adapter.listNewChannelPosts("@menfess", { afterMessageId: 40, limit: 50 });
 
-  client.newMessageSubscriptions[0]?.handler({ id: 42, message: "keyword cari admin" });
-  client.newMessageSubscriptions[0]?.handler({ id: 0, message: "malformed, ignored" });
-  client.newMessageSubscriptions[0]?.handler({ id: 43 });
-
-  assert.deepEqual(received, [
+  assert.equal(client.getHistoryCalls.length, 1);
+  assert.deepEqual(client.getHistoryCalls[0], { entity: "@menfess", minId: 40, limit: 50 });
+  assert.deepEqual(posts, [
     { channelPostId: "42", text: "keyword cari admin" },
     { channelPostId: "43", text: "" },
   ]);
-
-  await unsubscribe();
-  assert.equal(client.newMessageUnsubscribed, 1);
 });
 
-test("onChannelMessage refuses to subscribe before the adapter is ready", async () => {
+test("listNewChannelPosts validates its bounds and refuses to run before the adapter is ready", async () => {
+  const { adapter } = await ready();
+  await assert.rejects(() => adapter.listNewChannelPosts("@menfess", { afterMessageId: -1, limit: 50 }), /INVALID_AFTER_MESSAGE_ID/);
+  await assert.rejects(() => adapter.listNewChannelPosts("@menfess", { afterMessageId: 0, limit: 0 }), /INVALID_MESSAGE_LIMIT/);
+  await assert.rejects(() => adapter.listNewChannelPosts("@menfess", { afterMessageId: 0, limit: 101 }), /INVALID_MESSAGE_LIMIT/);
+
   const client = new FakeClient();
-  const adapter = new TeleprotoProductionAdapter(client);
-  await expectAdapterError(() => adapter.onChannelMessage("@menfess", () => {}), { code: "ADAPTER_NOT_READY" });
+  const notReady = new TeleprotoProductionAdapter(client);
+  await expectAdapterError(() => notReady.listNewChannelPosts("@menfess", { afterMessageId: 0, limit: 50 }), { code: "ADAPTER_NOT_READY" });
 });

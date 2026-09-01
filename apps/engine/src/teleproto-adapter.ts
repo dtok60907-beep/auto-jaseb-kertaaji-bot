@@ -1,4 +1,4 @@
-import { Api, events, Logger, TelegramClient, sessions } from "teleproto";
+import { Api, Logger, TelegramClient, sessions } from "teleproto";
 import { LogLevel } from "teleproto/extensions/Logger.js";
 import {
   TelegramAdapterError,
@@ -32,7 +32,7 @@ export interface TeleprotoClientPort {
   sendMessage(entity: string, params: Readonly<{ message: string; linkPreview: false }>): Promise<unknown>;
   getMessages(entity: unknown, params: Readonly<{ ids: readonly number[] }>): Promise<unknown>;
   forwardMessages(entity: string, params: Readonly<{ messages: readonly number[]; fromPeer: unknown; dropAuthor: boolean }>): Promise<unknown>;
-  onNewMessage(chatRef: string, handler: (message: unknown) => void): () => void;
+  getHistory(entity: unknown, params: Readonly<{ minId: number; limit: number }>): Promise<unknown>;
 }
 
 function asRecord(value: unknown): ProviderRecord | null {
@@ -109,12 +109,7 @@ function createPort(client: TelegramClient): TeleprotoClientPort {
     sendMessage: async (entity, params) => client.sendMessage(entity, params),
     getMessages: async (entity, params) => client.getMessages(entity as never, { ids: [...params.ids] }),
     forwardMessages: async (entity, params) => client.forwardMessages(entity, { messages: [...params.messages], fromPeer: params.fromPeer as never, dropAuthor: params.dropAuthor }),
-    onNewMessage: (chatRef, handler) => {
-      const builder = new events.NewMessage({ chats: [chatRef], incoming: true });
-      const callback = (event: { message: unknown }) => handler(event.message);
-      client.addEventHandler(callback, builder);
-      return () => client.removeEventHandler(callback, builder);
-    },
+    getHistory: async (entity, params) => client.getMessages(entity as never, { minId: params.minId, limit: params.limit, reverse: true }),
   };
 }
 
@@ -337,17 +332,21 @@ export class TeleprotoProductionAdapter implements TelegramDeliveryAdapter {
     });
   }
 
-  async onChannelMessage(channelRef: string, handler: (message: IncomingChannelMessage) => void): Promise<() => void> {
+  async listNewChannelPosts(channelRef: string, input: Readonly<{ afterMessageId: number; limit: number }>): Promise<readonly IncomingChannelMessage[]> {
     const target = validateRef(channelRef, "INVALID_TARGET_REF");
-    if (this.#state !== "READY") throw new TelegramAdapterError({ code: "ADAPTER_NOT_READY", retryable: true });
-    return this.#client.onNewMessage(target, (raw) => {
-      const record = asRecord(raw);
-      if (!record || !Number.isInteger(record.id) || Number(record.id) <= 0) return;
-      handler(Object.freeze({
-        channelPostId: String(record.id),
-        text: typeof record.message === "string" ? record.message : "",
-      }));
-    });
+    if (!Number.isInteger(input.afterMessageId) || input.afterMessageId < 0) throw new TypeError("INVALID_AFTER_MESSAGE_ID");
+    if (!Number.isInteger(input.limit) || input.limit <= 0 || input.limit > 100) throw new TypeError("INVALID_MESSAGE_LIMIT");
+    return this.#ready(() => this.#provider("LIST_CHANNEL_POSTS", async () => {
+      const response = await this.#client.getHistory(target, { minId: input.afterMessageId, limit: input.limit });
+      const posts = flatten(response)
+        .map((raw) => asRecord(raw))
+        .filter((record): record is ProviderRecord => record !== null && Number.isInteger(record.id) && Number(record.id) > 0)
+        .map((record) => Object.freeze({
+          channelPostId: String(record.id),
+          text: typeof record.message === "string" ? record.message : "",
+        }));
+      return Object.freeze(posts);
+    }));
   }
 }
 

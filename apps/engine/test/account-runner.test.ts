@@ -257,7 +257,7 @@ class FakeAdapter implements TelegramDeliveryAdapter {
     return telegramDeliveryReceipt([String(100 + this.sendCalls)], "2030-01-01T00:00:01.000Z");
   }
   async forwardNative() { return telegramDeliveryReceipt(["200"], "2030-01-01T00:00:01.000Z"); }
-  async onChannelMessage() { return () => {}; }
+  async listNewChannelPosts() { return []; }
 }
 
 class FakeAdapterFactory implements TelegramRuntimeAdapterFactory {

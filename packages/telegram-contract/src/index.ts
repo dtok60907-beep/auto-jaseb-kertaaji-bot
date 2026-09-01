@@ -68,11 +68,11 @@ export interface TelegramDeliveryAdapter {
    */
   forwardNative(input: NativeForwardRequest): Promise<TelegramDeliveryReceipt>;
   /**
-   * Subscribes to new posts in a channel/group already known to this
-   * connection. Resolves to an unsubscribe function; the handler is called
-   * for each new message until unsubscribed or the adapter disconnects.
+   * Lists posts newer than afterMessageId in a channel/group, oldest first,
+   * up to limit. A bounded, one-shot poll rather than a live subscription, so
+   * it fits the engine's connect-drain-disconnect per-account cycle.
    */
-  onChannelMessage(channelRef: string, handler: (message: IncomingChannelMessage) => void): Promise<() => void>;
+  listNewChannelPosts(channelRef: string, input: Readonly<{ afterMessageId: number; limit: number }>): Promise<readonly IncomingChannelMessage[]>;
 }
 
 export function telegramDeliveryReceipt(providerMessageIds: readonly string[], sentAt: string): TelegramDeliveryReceipt {

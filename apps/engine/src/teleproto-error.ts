@@ -1,6 +1,6 @@
 import { TelegramAdapterError, type TelegramAdapterErrorCode, type TelegramSideEffectState } from "../../../packages/telegram-contract/src/index.ts";
 
-export type TeleprotoOperation = "CONNECT" | "DISCONNECT" | "RESOLVE_TARGET" | "RESOLVE_SOURCE" | "JOIN" | "SEND_TEXT" | "FORWARD";
+export type TeleprotoOperation = "CONNECT" | "DISCONNECT" | "RESOLVE_TARGET" | "RESOLVE_SOURCE" | "JOIN" | "SEND_TEXT" | "FORWARD" | "LIST_CHANNEL_POSTS";
 
 function errorNames(error: unknown): ReadonlySet<string> {
   const names = new Set<string>();
