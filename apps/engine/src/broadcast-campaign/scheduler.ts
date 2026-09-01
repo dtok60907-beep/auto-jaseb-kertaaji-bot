@@ -12,9 +12,16 @@ export type DueBroadcastCampaign = Readonly<{
   cycledAt: string;
 }>;
 
+export type CampaignReconciliation = Readonly<{
+  campaignId: string;
+  stopped: boolean;
+  consecutiveFailures: number;
+}>;
+
 export interface BroadcastCampaignSource {
   due(limit: number): Promise<readonly DueBroadcastCampaign[]>;
   fail(campaignId: string, errorCode: string): Promise<void>;
+  reconcile(limit: number, failureThreshold: number): Promise<readonly CampaignReconciliation[]>;
 }
 
 type DueRow = {
@@ -24,6 +31,12 @@ type DueRow = {
   material_id: string;
   target_ids: string[];
   cycled_at: string;
+};
+
+type ReconcileRow = {
+  out_campaign_id: string;
+  out_stopped: boolean;
+  out_consecutive_failures: number;
 };
 
 export class PostgresBroadcastCampaignSource implements BroadcastCampaignSource {
@@ -49,6 +62,18 @@ export class PostgresBroadcastCampaignSource implements BroadcastCampaignSource 
   async fail(campaignId: string, errorCode: string): Promise<void> {
     await this.sql`select public.fail_broadcast_campaign(${campaignId}::uuid, ${errorCode})`;
   }
+
+  async reconcile(limit: number, failureThreshold: number): Promise<readonly CampaignReconciliation[]> {
+    const rows = await this.sql<ReconcileRow[]>`
+      select out_campaign_id::text, out_stopped, out_consecutive_failures
+        from public.reconcile_broadcast_campaigns(${limit}, ${failureThreshold})
+    `;
+    return Object.freeze(rows.map((row): CampaignReconciliation => Object.freeze({
+      campaignId: row.out_campaign_id,
+      stopped: row.out_stopped,
+      consecutiveFailures: row.out_consecutive_failures,
+    })));
+  }
 }
 
 export type BroadcastCampaignCycleRunner = (campaign: DueBroadcastCampaign) => Promise<void>;
@@ -69,6 +94,7 @@ export type BroadcastCampaignSchedulerHandle = Readonly<{ stop(): Promise<void> 
 
 const DEFAULT_TICK_INTERVAL_MILLISECONDS = 15_000;
 const DEFAULT_BATCH_LIMIT = 20;
+const DEFAULT_FAILURE_THRESHOLD = 3;
 
 export function startBroadcastCampaignScheduler(input: Readonly<{
   source: BroadcastCampaignSource;
@@ -76,12 +102,19 @@ export function startBroadcastCampaignScheduler(input: Readonly<{
   scheduler?: RuntimeRepeatingTaskScheduler;
   tickIntervalMilliseconds?: number;
   batchLimit?: number;
+  failureThreshold?: number;
 }>): BroadcastCampaignSchedulerHandle {
   const scheduler = input.scheduler ?? new SerialRuntimeRepeatingTaskScheduler();
   const tickIntervalMilliseconds = input.tickIntervalMilliseconds ?? DEFAULT_TICK_INTERVAL_MILLISECONDS;
   const batchLimit = input.batchLimit ?? DEFAULT_BATCH_LIMIT;
+  const failureThreshold = input.failureThreshold ?? DEFAULT_FAILURE_THRESHOLD;
 
   let running: RuntimeRepeatingTaskHandle | null = scheduler.start(tickIntervalMilliseconds, async () => {
+    // Fold outcomes of past cycles first, so a campaign whose material keeps
+    // failing delivery (e.g. FORWARD_FORBIDDEN) gets auto-stopped instead of
+    // creating yet another doomed cycle below.
+    await input.source.reconcile(batchLimit, failureThreshold).catch(() => Object.freeze([] as readonly CampaignReconciliation[]));
+
     const due = await input.source.due(batchLimit).catch(() => Object.freeze([] as readonly DueBroadcastCampaign[]));
     for (const campaign of due) {
       try {

@@ -5,6 +5,7 @@ import type { RuntimeRepeatingTaskHandle, RuntimeRepeatingTaskScheduler } from "
 import {
   startBroadcastCampaignScheduler,
   type BroadcastCampaignSource,
+  type CampaignReconciliation,
   type DueBroadcastCampaign,
 } from "../src/broadcast-campaign/scheduler.ts";
 
@@ -43,6 +44,9 @@ class FakeSource implements BroadcastCampaignSource {
   dueQueue: DueBroadcastCampaign[][] = [];
   dueError: unknown = null;
   failed: Array<{ campaignId: string; errorCode: string }> = [];
+  reconcileCalls: Array<{ limit: number; failureThreshold: number }> = [];
+  reconcileResult: readonly CampaignReconciliation[] = [];
+  reconcileError: unknown = null;
 
   async due(): Promise<readonly DueBroadcastCampaign[]> {
     if (this.dueError) throw this.dueError;
@@ -51,6 +55,12 @@ class FakeSource implements BroadcastCampaignSource {
 
   async fail(campaignId: string, errorCode: string): Promise<void> {
     this.failed.push({ campaignId, errorCode });
+  }
+
+  async reconcile(limit: number, failureThreshold: number): Promise<readonly CampaignReconciliation[]> {
+    this.reconcileCalls.push({ limit, failureThreshold });
+    if (this.reconcileError) throw this.reconcileError;
+    return this.reconcileResult;
   }
 }
 
@@ -108,6 +118,33 @@ test("a due-lookup failure does not throw and the loop keeps going", async () =>
   const decision = await scheduler.tick();
   assert.equal(decision, "CONTINUE");
   assert.equal(runCalls, 0);
+});
+
+test("each tick reconciles past cycle outcomes before creating new ones", async () => {
+  const scheduler = new FakeScheduler();
+  const source = new FakeSource();
+  source.reconcileResult = Object.freeze([
+    { campaignId: "stopped-by-reconcile", stopped: true, consecutiveFailures: 3 },
+  ]);
+
+  startBroadcastCampaignScheduler({ source, runCycle: async () => {}, scheduler });
+  await scheduler.tick();
+
+  assert.deepEqual(source.reconcileCalls, [{ limit: 20, failureThreshold: 3 }]);
+});
+
+test("a reconcile failure does not throw and due cycles still run that tick", async () => {
+  const scheduler = new FakeScheduler();
+  const source = new FakeSource();
+  source.reconcileError = new Error("connection reset");
+  source.dueQueue.push([campaign({ campaignId: "still-runs" })]);
+  const ran: string[] = [];
+
+  startBroadcastCampaignScheduler({ source, runCycle: async (due) => { ran.push(due.campaignId); }, scheduler });
+  const decision = await scheduler.tick();
+
+  assert.equal(decision, "CONTINUE");
+  assert.deepEqual(ran, ["still-runs"]);
 });
 
 test("stop halts the underlying repeating task", async () => {
