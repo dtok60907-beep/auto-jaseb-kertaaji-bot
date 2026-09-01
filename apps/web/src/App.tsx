@@ -16,6 +16,7 @@ import {
 import type { AuthFlow, AuthorizationResult, IssuedSession, SessionRole, TelegramAccount } from "./types";
 import { readTelegramInitData } from "./telegram";
 import { AdminPanel } from "./AdminPanel";
+import { AutoCommentPanel } from "./AutoCommentPanel";
 import { JasebPanel } from "./JasebPanel";
 
 const SESSION_STORAGE_KEY = "jaseb.telegram.api-session";
@@ -463,6 +464,7 @@ export default function App() {
         )}
       </section>
       <JasebPanel token={session.accessToken} />
+      <AutoCommentPanel token={session.accessToken} />
       {connectOpen && <ConnectDialog token={session.accessToken} onClose={() => setConnectOpen(false)} onConnected={() => loadAccounts(session.accessToken)} />}
       {logoutAccount && <LogoutDialog account={logoutAccount} busy={action === "LOGOUT"} onClose={() => { if (!action) setLogoutAccount(null); }} onConfirm={() => void runAccountAction("LOGOUT", logoutAccount)} />}
     </main>

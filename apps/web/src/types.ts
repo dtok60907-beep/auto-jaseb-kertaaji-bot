@@ -154,6 +154,54 @@ export type BroadcastHistoryEntry = Readonly<{
   bubbleLink: string | null;
 }>;
 
+export type AutoCommentMode = "APPROVAL_REQUIRED" | "AUTO_SEND";
+
+export type AutoCommentAccount = Readonly<{
+  id: string;
+  label: string;
+  status: "DISCONNECTED" | "READY" | "DEGRADED" | "REVOKED" | "DISABLED";
+}>;
+
+export type AutoCommentKeyword = Readonly<{ id: string; keyword: string }>;
+
+export type AutoCommentTemplate = Readonly<{
+  id: string;
+  text: string;
+  displayOrder: number;
+  active: boolean;
+}>;
+
+export type AutoCommentDivision = Readonly<{
+  id: string;
+  accountId: string;
+  name: string;
+  mode: AutoCommentMode;
+  active: boolean;
+  keywords: readonly AutoCommentKeyword[];
+  templates: readonly AutoCommentTemplate[];
+  channelTargetIds: readonly string[];
+}>;
+
+export type AutoCommentResolutionStatus =
+  | "QUEUED" | "CHECKING" | "JOINING" | "WAITING_APPROVAL" | "READY" | "NEEDS_REVALIDATION" | "FAILED_FINAL";
+
+export type AutoCommentChannelTarget = Readonly<{
+  id: string;
+  accountId: string;
+  sourceChannelRef: string;
+  discussionTargetRef: string | null;
+  resolutionStatus: AutoCommentResolutionStatus;
+  lastErrorCode: string | null;
+  active: boolean;
+  divisionIds: readonly string[];
+}>;
+
+export type AutoCommentSettings = Readonly<{
+  accounts: readonly AutoCommentAccount[];
+  divisions: readonly AutoCommentDivision[];
+  channelTargets: readonly AutoCommentChannelTarget[];
+}>;
+
 export type BroadcastCampaign = Readonly<{
   id: string;
   accountMode: "JASEB_WORKER" | "USERBOT";

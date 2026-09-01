@@ -2,15 +2,26 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ApiError,
+  attachAutoCommentChannel,
   createAdminBroadcastCampaign,
   createAdminTextBroadcastMaterial,
+  createAutoCommentChannelTarget,
+  createAutoCommentDivision,
+  createAutoCommentKeyword,
+  createAutoCommentTemplate,
   createBroadcastCampaign,
   createBroadcastLpmTarget,
   createBroadcastOperation,
   createForwardBroadcastMaterial,
   createTextBroadcastMaterial,
+  deleteAutoCommentChannelTarget,
+  deleteAutoCommentDivision,
+  deleteAutoCommentKeyword,
+  deleteAutoCommentTemplate,
+  detachAutoCommentChannel,
   exchangeTelegramInitData,
   getAdminBroadcastSettings,
+  getAutoCommentSettings,
   getBroadcastHistory,
   getBroadcastOperation,
   getBroadcastSettings,
@@ -20,6 +31,9 @@ import {
   stopAdminBroadcastCampaign,
   stopBroadcastCampaign,
   updateAdminBroadcastLpmTarget,
+  updateAutoCommentChannelTarget,
+  updateAutoCommentDivision,
+  updateAutoCommentTemplate,
   updateBroadcastLpmTarget,
   updateTextBroadcastMaterial,
 } from "./api";
@@ -229,5 +243,101 @@ describe("web API client", () => {
       return new Response(null, { status: 204 });
     }));
     await expect(stopAdminBroadcastCampaign("jas_admin", USER_ID, "campaign-9")).resolves.toBeNull();
+  });
+
+  it("loads Auto Komen settings", async () => {
+    const settings = { accounts: [], divisions: [], channelTargets: [] };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ settings }), { status: 200 })));
+
+    await expect(getAutoCommentSettings("jas_test")).resolves.toEqual(settings);
+  });
+
+  it("creates, updates, and deletes an Auto Komen division", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(String(init?.body))).toEqual({ accountId: "account-1", name: "Jual Beli", mode: "APPROVAL_REQUIRED", active: true });
+      return new Response(JSON.stringify({ division: { id: "division-1", accountId: "account-1", name: "Jual Beli", mode: "APPROVAL_REQUIRED", active: true, keywords: [], templates: [], channelTargetIds: [] } }), { status: 201 });
+    }));
+    await expect(createAutoCommentDivision("jas_test", { accountId: "account-1", name: "Jual Beli", mode: "APPROVAL_REQUIRED", active: true })).resolves.toMatchObject({ id: "division-1" });
+
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe("PUT");
+      expect(JSON.parse(String(init?.body))).toEqual({ name: "Jual Beli", mode: "AUTO_SEND", active: true });
+      return new Response(JSON.stringify({ division: { id: "division-1", accountId: "account-1", name: "Jual Beli", mode: "AUTO_SEND", active: true, keywords: [], templates: [], channelTargetIds: [] } }), { status: 200 });
+    }));
+    await expect(updateAutoCommentDivision("jas_test", "division-1", { name: "Jual Beli", mode: "AUTO_SEND", active: true })).resolves.toMatchObject({ mode: "AUTO_SEND" });
+
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe("DELETE");
+      return new Response(null, { status: 204 });
+    }));
+    await expect(deleteAutoCommentDivision("jas_test", "division-1")).resolves.toBeNull();
+  });
+
+  it("adds and removes a keyword from a division", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(JSON.parse(String(init?.body))).toEqual({ keyword: "promo" });
+      return new Response(JSON.stringify({ keyword: { id: "keyword-1", keyword: "promo" } }), { status: 201 });
+    }));
+    await expect(createAutoCommentKeyword("jas_test", "division-1", "promo")).resolves.toEqual({ id: "keyword-1", keyword: "promo" });
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toContain("/v1/auto-comment/divisions/division-1/keywords/keyword-1");
+      expect(init?.method).toBe("DELETE");
+      return new Response(null, { status: 204 });
+    }));
+    await expect(deleteAutoCommentKeyword("jas_test", "division-1", "keyword-1")).resolves.toBeNull();
+  });
+
+  it("creates and updates a division template", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(JSON.parse(String(init?.body))).toEqual({ text: "Terima kasih", displayOrder: 0, active: true });
+      return new Response(JSON.stringify({ template: { id: "template-1", text: "Terima kasih", displayOrder: 0, active: true } }), { status: 201 });
+    }));
+    await expect(createAutoCommentTemplate("jas_test", "division-1", { text: "Terima kasih", displayOrder: 0, active: true })).resolves.toMatchObject({ id: "template-1" });
+
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe("PUT");
+      expect(JSON.parse(String(init?.body))).toEqual({ text: "Terima kasih banyak", displayOrder: 0, active: true });
+      return new Response(JSON.stringify({ template: { id: "template-1", text: "Terima kasih banyak", displayOrder: 0, active: true } }), { status: 200 });
+    }));
+    await expect(updateAutoCommentTemplate("jas_test", "division-1", "template-1", { text: "Terima kasih banyak", displayOrder: 0, active: true })).resolves.toMatchObject({ text: "Terima kasih banyak" });
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
+    await expect(deleteAutoCommentTemplate("jas_test", "division-1", "template-1")).resolves.toBeNull();
+  });
+
+  it("creates and updates a channel target", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(JSON.parse(String(init?.body))).toEqual({ accountId: "account-1", sourceChannelRef: "@menfess", active: true });
+      return new Response(JSON.stringify({ channelTarget: { id: "channel-1", accountId: "account-1", sourceChannelRef: "@menfess", discussionTargetRef: null, resolutionStatus: "QUEUED", lastErrorCode: null, active: true, divisionIds: [] } }), { status: 201 });
+    }));
+    await expect(createAutoCommentChannelTarget("jas_test", { accountId: "account-1", sourceChannelRef: "@menfess", active: true })).resolves.toMatchObject({ id: "channel-1" });
+
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe("PUT");
+      expect(JSON.parse(String(init?.body))).toEqual({ sourceChannelRef: "@menfess", active: false });
+      return new Response(JSON.stringify({ channelTarget: { id: "channel-1", accountId: "account-1", sourceChannelRef: "@menfess", discussionTargetRef: null, resolutionStatus: "QUEUED", lastErrorCode: null, active: false, divisionIds: [] } }), { status: 200 });
+    }));
+    await expect(updateAutoCommentChannelTarget("jas_test", "channel-1", { sourceChannelRef: "@menfess", active: false })).resolves.toMatchObject({ active: false });
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
+    await expect(deleteAutoCommentChannelTarget("jas_test", "channel-1")).resolves.toBeNull();
+  });
+
+  it("attaches and detaches a channel target to a division with PUT/DELETE and no body", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toContain("/v1/auto-comment/divisions/division-1/channel-targets/channel-1");
+      expect(init?.method).toBe("PUT");
+      expect(init?.body).toBeUndefined();
+      return new Response(null, { status: 204 });
+    }));
+    await expect(attachAutoCommentChannel("jas_test", "division-1", "channel-1")).resolves.toBeNull();
+
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe("DELETE");
+      return new Response(null, { status: 204 });
+    }));
+    await expect(detachAutoCommentChannel("jas_test", "division-1", "channel-1")).resolves.toBeNull();
   });
 });

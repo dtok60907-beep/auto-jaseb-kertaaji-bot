@@ -2,6 +2,12 @@ import type {
   AdminUser,
   AuthFlow,
   AuthorizationResult,
+  AutoCommentChannelTarget,
+  AutoCommentDivision,
+  AutoCommentKeyword,
+  AutoCommentMode,
+  AutoCommentSettings,
+  AutoCommentTemplate,
   BroadcastCampaign,
   BroadcastHistoryEntry,
   BroadcastLpmTarget,
@@ -389,4 +395,101 @@ export async function updateWorkerAccount(
     body: JSON.stringify(input),
   }, token);
   return result.worker;
+}
+
+export async function getAutoCommentSettings(token: string): Promise<AutoCommentSettings> {
+  const result = await request<{ settings: AutoCommentSettings }>("/v1/auto-comment/settings", {}, token);
+  return result.settings;
+}
+
+export async function createAutoCommentDivision(
+  token: string, input: Readonly<{ accountId: string; name: string; mode: AutoCommentMode; active: boolean }>,
+): Promise<AutoCommentDivision> {
+  const result = await request<{ division: AutoCommentDivision }>("/v1/auto-comment/divisions", {
+    method: "POST",
+    body: JSON.stringify(input),
+  }, token);
+  return result.division;
+}
+
+export async function updateAutoCommentDivision(
+  token: string, id: string, input: Readonly<{ name: string; mode: AutoCommentMode; active: boolean }>,
+): Promise<AutoCommentDivision> {
+  const result = await request<{ division: AutoCommentDivision }>(`/v1/auto-comment/divisions/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  }, token);
+  return result.division;
+}
+
+export function deleteAutoCommentDivision(token: string, id: string): Promise<void> {
+  return request<void>(`/v1/auto-comment/divisions/${id}`, { method: "DELETE" }, token);
+}
+
+export async function createAutoCommentKeyword(token: string, divisionId: string, keyword: string): Promise<AutoCommentKeyword> {
+  const result = await request<{ keyword: AutoCommentKeyword }>(`/v1/auto-comment/divisions/${divisionId}/keywords`, {
+    method: "POST",
+    body: JSON.stringify({ keyword }),
+  }, token);
+  return result.keyword;
+}
+
+export function deleteAutoCommentKeyword(token: string, divisionId: string, id: string): Promise<void> {
+  return request<void>(`/v1/auto-comment/divisions/${divisionId}/keywords/${id}`, { method: "DELETE" }, token);
+}
+
+export async function createAutoCommentTemplate(
+  token: string, divisionId: string, input: Readonly<{ text: string; displayOrder: number; active: boolean }>,
+): Promise<AutoCommentTemplate> {
+  const result = await request<{ template: AutoCommentTemplate }>(`/v1/auto-comment/divisions/${divisionId}/templates`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  }, token);
+  return result.template;
+}
+
+export async function updateAutoCommentTemplate(
+  token: string, divisionId: string, id: string, input: Readonly<{ text: string; displayOrder: number; active: boolean }>,
+): Promise<AutoCommentTemplate> {
+  const result = await request<{ template: AutoCommentTemplate }>(`/v1/auto-comment/divisions/${divisionId}/templates/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  }, token);
+  return result.template;
+}
+
+export function deleteAutoCommentTemplate(token: string, divisionId: string, id: string): Promise<void> {
+  return request<void>(`/v1/auto-comment/divisions/${divisionId}/templates/${id}`, { method: "DELETE" }, token);
+}
+
+export async function createAutoCommentChannelTarget(
+  token: string, input: Readonly<{ accountId: string; sourceChannelRef: string; active: boolean }>,
+): Promise<AutoCommentChannelTarget> {
+  const result = await request<{ channelTarget: AutoCommentChannelTarget }>("/v1/auto-comment/channel-targets", {
+    method: "POST",
+    body: JSON.stringify(input),
+  }, token);
+  return result.channelTarget;
+}
+
+export async function updateAutoCommentChannelTarget(
+  token: string, id: string, input: Readonly<{ sourceChannelRef: string; active: boolean }>,
+): Promise<AutoCommentChannelTarget> {
+  const result = await request<{ channelTarget: AutoCommentChannelTarget }>(`/v1/auto-comment/channel-targets/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  }, token);
+  return result.channelTarget;
+}
+
+export function deleteAutoCommentChannelTarget(token: string, id: string): Promise<void> {
+  return request<void>(`/v1/auto-comment/channel-targets/${id}`, { method: "DELETE" }, token);
+}
+
+export function attachAutoCommentChannel(token: string, divisionId: string, channelTargetId: string): Promise<void> {
+  return request<void>(`/v1/auto-comment/divisions/${divisionId}/channel-targets/${channelTargetId}`, { method: "PUT" }, token);
+}
+
+export function detachAutoCommentChannel(token: string, divisionId: string, channelTargetId: string): Promise<void> {
+  return request<void>(`/v1/auto-comment/divisions/${divisionId}/channel-targets/${channelTargetId}`, { method: "DELETE" }, token);
 }
