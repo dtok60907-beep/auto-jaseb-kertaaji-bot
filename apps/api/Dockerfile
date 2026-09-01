@@ -9,6 +9,7 @@ RUN npm ci --omit=dev
 COPY apps/api/src ./src
 COPY packages/telegram-contract /workspace/packages/telegram-contract
 COPY packages/telegram-session-crypto /workspace/packages/telegram-session-crypto
+COPY packages/auto-comment-contract /workspace/packages/auto-comment-contract
 
 # Node must be PID 1 so Railway SIGTERM reaches the graceful-shutdown handler.
 CMD ["node", "--experimental-strip-types", "src/production/main.ts"]

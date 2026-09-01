@@ -42,3 +42,7 @@ packages/telegram-contract/*
 packages/telegram-session-crypto/*
 !packages/telegram-session-crypto/src
 !packages/telegram-session-crypto/src/**
+!packages/auto-comment-contract
+packages/auto-comment-contract/*
+!packages/auto-comment-contract/src
+!packages/auto-comment-contract/src/**

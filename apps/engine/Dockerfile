@@ -9,5 +9,6 @@ RUN npm ci --omit=dev
 COPY apps/engine/src ./src
 COPY packages/telegram-contract /workspace/packages/telegram-contract
 COPY packages/telegram-session-crypto /workspace/packages/telegram-session-crypto
+COPY packages/auto-comment-contract /workspace/packages/auto-comment-contract
 
 CMD ["npm", "run", "start:production"]
