@@ -5,7 +5,7 @@ import {
   createAutoCommentCandidate,
   decideAutoCommentCandidate,
   validateDivisionConfig,
-} from "../src/domain/auto-comment-contract.ts";
+} from "../../../packages/auto-comment-contract/src/index.ts";
 
 const division = {
   divisionId: "division-kos",

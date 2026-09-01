@@ -1,4 +1,4 @@
-import { AUTO_COMMENT_MODES, type AutoCommentMode } from "./auto-comment-contract.ts";
+import { AUTO_COMMENT_MODES, type AutoCommentMode } from "../../../../packages/auto-comment-contract/src/index.ts";
 
 export type AutoCommentSettingsIssue = Readonly<{ field: string; code: string }>;
 

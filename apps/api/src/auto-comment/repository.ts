@@ -1,4 +1,4 @@
-import type { AutoCommentMode } from "../domain/auto-comment-contract.ts";
+import type { AutoCommentMode } from "../../../../packages/auto-comment-contract/src/index.ts";
 import type {
   ChannelTargetInput,
   DivisionPatch,
