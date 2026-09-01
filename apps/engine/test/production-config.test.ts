@@ -9,6 +9,7 @@ import {
 import {
   productionEnvironment,
   TEST_API_HASH,
+  TEST_BOT_TOKEN,
   TEST_DATABASE_SECRET,
   TEST_SESSION_KEY,
 } from "../test-support/production-fixtures.ts";
@@ -41,6 +42,7 @@ test("production config requires explicit capacity and exposes only redacted saf
     assert.equal(view.includes(TEST_DATABASE_SECRET), false);
     assert.equal(view.includes(TEST_API_HASH), false);
     assert.equal(view.includes(TEST_SESSION_KEY), false);
+    assert.equal(view.includes(TEST_BOT_TOKEN), false);
   }
   assert.equal(JSON.parse(JSON.stringify(config)).redacted, true);
   assert.deepEqual(Object.keys(config).sort(), [
@@ -63,6 +65,7 @@ test("invalid production environment reports only the stable field name", () => 
     ["database password absent", (env) => { env.DATABASE_URL = "postgresql://engine@localhost:5432/jaseb"; }, "DATABASE_URL"],
     ["database scheme rejected", (env) => { env.DATABASE_URL = "https://engine:secret@localhost/jaseb"; }, "DATABASE_URL"],
     ["API hash shape", (env) => { env.TELEGRAM_API_HASH = "raw-api-hash-value"; }, "TELEGRAM_API_HASH"],
+    ["bot token shape", (env) => { env.TELEGRAM_BOT_TOKEN = "not-a-bot-token"; }, "TELEGRAM_BOT_TOKEN"],
     ["key ring rejected", (env) => { env.TELEGRAM_SESSION_KEYS = JSON.stringify({ 1: "secret-key-value" }); }, "TELEGRAM_SESSION_KEYS"],
     ["boolean exact", (env) => { env.ENGINE_DATABASE_PREPARE_STATEMENTS = "FALSE"; }, "ENGINE_DATABASE_PREPARE_STATEMENTS"],
     ["health host", (env) => { env.ENGINE_HEALTH_HOST = "127.0.0.1/path"; }, "ENGINE_HEALTH_HOST"],

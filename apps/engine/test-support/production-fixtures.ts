@@ -6,12 +6,14 @@ import type {
 export const TEST_DATABASE_SECRET = "database-secret";
 export const TEST_API_HASH = "a".repeat(32);
 export const TEST_SESSION_KEY = "b".repeat(64);
+export const TEST_BOT_TOKEN = "123456:test-bot-token-secret";
 
 export function productionEnvironment(): Record<string, string> {
   return {
     DATABASE_URL: `postgresql://engine:${TEST_DATABASE_SECRET}@localhost:5432/jaseb`,
     TELEGRAM_API_ID: "12345",
     TELEGRAM_API_HASH: TEST_API_HASH,
+    TELEGRAM_BOT_TOKEN: TEST_BOT_TOKEN,
     TELEGRAM_OPERATION_TIMEOUT_MS: "30000",
     TELEGRAM_SESSION_ACTIVE_KEY_VERSION: "1",
     TELEGRAM_SESSION_KEYS: JSON.stringify({ 1: TEST_SESSION_KEY }),

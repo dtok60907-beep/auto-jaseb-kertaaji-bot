@@ -201,6 +201,7 @@ class FakeAutoCommentMatcherRepository implements AutoCommentMatcherRepository {
     this.advanceCalls.push(input);
     return true;
   }
+  async recordNotification() {}
 }
 
 function command(id: string): ClaimedBroadcastCommand {

@@ -15,6 +15,8 @@ export type DivisionMatchConfig = Readonly<{
   keywords: readonly string[];
   /** Active templates only, ordered by displayOrder; empty means the division cannot queue a comment yet. */
   templates: readonly Readonly<{ templateId: string; text: string }>[];
+  /** The division owner's Telegram chat id, or null if they have never authenticated through the bot. */
+  telegramUserId: number | null;
 }>;
 
 export type CreateCandidateStatus = "COMMENT_QUEUED" | "PENDING_REVIEW" | "ALREADY_EXISTS";
@@ -51,4 +53,6 @@ export interface AutoCommentMatcherRepository {
     accountFencingToken: bigint;
     lastPostId: number;
   }>): Promise<boolean>;
+
+  recordNotification(input: Readonly<{ candidateId: string; messageId: number }>): Promise<void>;
 }

@@ -4,6 +4,7 @@ import {
   type IncomingChannelMessage,
   type TelegramDeliveryAdapter,
 } from "../../../../packages/telegram-contract/src/index.ts";
+import type { AutoCommentNotificationResponder } from "./notifier.ts";
 import type { AutoCommentMatcherRepository, ClaimedAutoCommentMonitoringTarget, DivisionMatchConfig } from "./repository.ts";
 
 type LeaseContext = Readonly<{ accountId: string; leaseOwner: string; accountFencingToken: bigint }>;
@@ -44,6 +45,7 @@ function matchedKeywords(post: IncomingChannelMessage, division: DivisionMatchCo
 
 async function recordMatch(
   repository: AutoCommentMatcherRepository,
+  notifier: AutoCommentNotificationResponder | undefined,
   target: ClaimedAutoCommentMonitoringTarget,
   post: IncomingChannelMessage,
   division: DivisionMatchConfig,
@@ -88,7 +90,25 @@ async function recordMatch(
     mode: division.mode,
     discussionTargetRef: target.discussionTargetRef,
   });
-  return created.status !== "ALREADY_EXISTS";
+  if (created.status === "ALREADY_EXISTS") return false;
+
+  if (created.status === "PENDING_REVIEW" && notifier && division.telegramUserId !== null) {
+    try {
+      const messageId = await notifier.sendCandidateNotification({
+        chatId: division.telegramUserId,
+        candidateId: created.candidateId,
+        channelLabel: target.sourceChannelRef,
+        matchedKeywords: keywords,
+        postPreview: post.text,
+        templateText: candidate.candidate.template.text,
+      });
+      await repository.recordNotification({ candidateId: created.candidateId, messageId });
+    } catch {
+      // Best-effort for slice 1: an undelivered notification just leaves the
+      // candidate waiting silently; it is still visible to a future UI/poll.
+    }
+  }
+  return true;
 }
 
 /**
@@ -112,7 +132,7 @@ export async function checkNextAutoCommentChannel(
   adapter: TelegramDeliveryAdapter,
   repository: AutoCommentMatcherRepository,
   lease: LeaseContext,
-  options: Readonly<{ pollIntervalSeconds?: number; postsPerPoll?: number }> = {},
+  options: Readonly<{ notifier?: AutoCommentNotificationResponder; pollIntervalSeconds?: number; postsPerPoll?: number }> = {},
 ): Promise<AutoCommentMatcherResult> {
   const pollIntervalSeconds = options.pollIntervalSeconds ?? DEFAULT_POLL_INTERVAL_SECONDS;
   const postsPerPoll = options.postsPerPoll ?? DEFAULT_POSTS_PER_POLL;
@@ -134,7 +154,7 @@ export async function checkNextAutoCommentChannel(
       if (Number.isSafeInteger(postId) && postId > highestPostId) highestPostId = postId;
       if (!post.text.trim()) continue;
       for (const division of divisions) {
-        if (await recordMatch(repository, target, post, division)) candidatesCreated += 1;
+        if (await recordMatch(repository, options.notifier, target, post, division)) candidatesCreated += 1;
       }
     }
 

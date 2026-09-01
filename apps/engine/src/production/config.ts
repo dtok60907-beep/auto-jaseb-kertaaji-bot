@@ -99,6 +99,12 @@ function host(env: Readonly<Record<string, string | undefined>>): string {
   return value;
 }
 
+function telegramBotToken(env: Readonly<Record<string, string | undefined>>): string {
+  const value = text(env, "TELEGRAM_BOT_TOKEN", 512);
+  if (!/^\d+:\S+$/.test(value)) fail("TELEGRAM_BOT_TOKEN");
+  return value;
+}
+
 export class ProductionEngineConfig {
   readonly shard: ShardConfig;
   readonly runnerPolicy: AccountRunnerPolicy;
@@ -109,6 +115,7 @@ export class ProductionEngineConfig {
   readonly telegramOperationTimeoutMilliseconds: number;
   readonly #databaseUrl: string;
   readonly #telegramApiHash: string;
+  readonly #telegramBotToken: string;
   readonly #sessionKeyRing: TelegramSessionKeyRing;
 
   private constructor(input: Readonly<{
@@ -119,6 +126,7 @@ export class ProductionEngineConfig {
     healthPolicy: ProductionHealthPolicy;
     telegramApiId: number;
     telegramApiHash: string;
+    telegramBotToken: string;
     telegramOperationTimeoutMilliseconds: number;
     databaseUrl: string;
     sessionKeyRing: TelegramSessionKeyRing;
@@ -132,6 +140,7 @@ export class ProductionEngineConfig {
     this.telegramOperationTimeoutMilliseconds = input.telegramOperationTimeoutMilliseconds;
     this.#databaseUrl = input.databaseUrl;
     this.#telegramApiHash = input.telegramApiHash;
+    this.#telegramBotToken = input.telegramBotToken;
     this.#sessionKeyRing = input.sessionKeyRing;
     Object.freeze(this);
   }
@@ -189,6 +198,7 @@ export class ProductionEngineConfig {
       }),
       telegramApiId: integer(env, "TELEGRAM_API_ID", 1, 2_147_483_647),
       telegramApiHash: configuredApiHash.toLowerCase(),
+      telegramBotToken: telegramBotToken(env),
       telegramOperationTimeoutMilliseconds: integer(env, "TELEGRAM_OPERATION_TIMEOUT_MS", 1, 120_000),
       databaseUrl: databaseUrl(env),
       sessionKeyRing,
@@ -197,6 +207,7 @@ export class ProductionEngineConfig {
 
   databaseUrl(): string { return this.#databaseUrl; }
   telegramApiHash(): string { return this.#telegramApiHash; }
+  telegramBotToken(): string { return this.#telegramBotToken; }
   sessionKeyRing(): TelegramSessionKeyRing { return this.#sessionKeyRing; }
 
   toJSON(): Readonly<Record<string, unknown>> {

@@ -7,6 +7,7 @@ import {
   type TelegramDeliveryAdapter,
 } from "../../../packages/telegram-contract/src/index.ts";
 import { checkNextAutoCommentChannel } from "../src/auto-comment-matcher/service.ts";
+import type { AutoCommentNotificationResponder } from "../src/auto-comment-matcher/notifier.ts";
 import type {
   AutoCommentMatcherRepository,
   ClaimedAutoCommentMonitoringTarget,
@@ -28,6 +29,7 @@ function division(overrides: Partial<DivisionMatchConfig> = {}): DivisionMatchCo
     mode: "AUTO_SEND",
     keywords: Object.freeze(["promo"]),
     templates: Object.freeze([Object.freeze({ templateId: "template-1", text: "Komentar promo otomatis" })]),
+    telegramUserId: null,
     ...overrides,
   });
 }
@@ -47,6 +49,7 @@ class FakeRepository implements AutoCommentMatcherRepository {
   divisionsCalls: string[] = [];
   createCalls: Array<Parameters<AutoCommentMatcherRepository["createCandidate"]>[0]> = [];
   advanceCalls: Array<Parameters<AutoCommentMatcherRepository["advanceCheckpoint"]>[0]> = [];
+  notificationCalls: Array<Parameters<AutoCommentMatcherRepository["recordNotification"]>[0]> = [];
 
   async claimNext() {
     this.claimCalls += 1;
@@ -63,6 +66,9 @@ class FakeRepository implements AutoCommentMatcherRepository {
   async advanceCheckpoint(input: Parameters<AutoCommentMatcherRepository["advanceCheckpoint"]>[0]) {
     this.advanceCalls.push(input);
     return this.advanceResult;
+  }
+  async recordNotification(input: Parameters<AutoCommentMatcherRepository["recordNotification"]>[0]) {
+    this.notificationCalls.push(input);
   }
 }
 
@@ -96,6 +102,18 @@ class FakeAdapter implements TelegramDeliveryAdapter {
 
 function post(channelPostId: string, text: string): IncomingChannelMessage {
   return Object.freeze({ channelPostId, text });
+}
+
+class FakeNotifier implements AutoCommentNotificationResponder {
+  nextMessageId = 900;
+  error: unknown = null;
+  calls: Array<Parameters<AutoCommentNotificationResponder["sendCandidateNotification"]>[0]> = [];
+
+  async sendCandidateNotification(input: Parameters<AutoCommentNotificationResponder["sendCandidateNotification"]>[0]) {
+    this.calls.push(input);
+    if (this.error) throw this.error;
+    return this.nextMessageId;
+  }
 }
 
 test("no due target is a no-op", async () => {
@@ -168,6 +186,71 @@ test("a matched keyword queues a candidate and advances the checkpoint to the ne
     discussionTargetRef: "@menfess_discussion",
   });
   assert.deepEqual(repository.advanceCalls, [{ ...lease, channelTargetId: "channel-target-1", lastPostId: 102 }]);
+});
+
+test("an approval-required match notifies the division owner and records the resulting message id", async () => {
+  const repository = new FakeRepository();
+  repository.divisions = Object.freeze([division({ mode: "APPROVAL_REQUIRED", telegramUserId: 555 })]);
+  repository.createResult = Object.freeze({ status: "PENDING_REVIEW", candidateId: "candidate-1" });
+  const adapter = new FakeAdapter();
+  adapter.posts = [post("101", "cari admin promo dong")];
+  const notifier = new FakeNotifier();
+  notifier.nextMessageId = 4242;
+
+  const outcome = await checkNextAutoCommentChannel(adapter, repository, lease, { notifier });
+
+  assert.equal(outcome.status, "CHECKED");
+  assert.equal(notifier.calls.length, 1);
+  assert.deepEqual(notifier.calls[0], {
+    chatId: 555,
+    candidateId: "candidate-1",
+    channelLabel: "@menfess",
+    matchedKeywords: ["promo"],
+    postPreview: "cari admin promo dong",
+    templateText: "Komentar promo otomatis",
+  });
+  assert.deepEqual(repository.notificationCalls, [{ candidateId: "candidate-1", messageId: 4242 }]);
+});
+
+test("an owner who never authenticated through the bot is skipped without failing the match", async () => {
+  const repository = new FakeRepository();
+  repository.divisions = Object.freeze([division({ mode: "APPROVAL_REQUIRED", telegramUserId: null })]);
+  repository.createResult = Object.freeze({ status: "PENDING_REVIEW", candidateId: "candidate-1" });
+  const adapter = new FakeAdapter();
+  adapter.posts = [post("101", "cari admin promo dong")];
+  const notifier = new FakeNotifier();
+
+  const outcome = await checkNextAutoCommentChannel(adapter, repository, lease, { notifier });
+
+  assert.equal(outcome.status, "CHECKED");
+  if (outcome.status === "CHECKED") assert.equal(outcome.candidatesCreated, 1);
+  assert.equal(notifier.calls.length, 0);
+  assert.equal(repository.notificationCalls.length, 0);
+});
+
+test("no notifier configured never blocks candidate creation, and a failed delivery does not fail the match", async () => {
+  const repository = new FakeRepository();
+  repository.divisions = Object.freeze([division({ mode: "APPROVAL_REQUIRED", telegramUserId: 555 })]);
+  repository.createResult = Object.freeze({ status: "PENDING_REVIEW", candidateId: "candidate-1" });
+  const adapter = new FakeAdapter();
+  adapter.posts = [post("101", "cari admin promo dong")];
+
+  const withoutNotifier = await checkNextAutoCommentChannel(adapter, repository, lease);
+  assert.equal(withoutNotifier.status, "CHECKED");
+  if (withoutNotifier.status === "CHECKED") assert.equal(withoutNotifier.candidatesCreated, 1);
+
+  const failingRepository = new FakeRepository();
+  failingRepository.divisions = repository.divisions;
+  failingRepository.createResult = repository.createResult;
+  const failingAdapter = new FakeAdapter();
+  failingAdapter.posts = [post("102", "cari admin promo dong")];
+  const failingNotifier = new FakeNotifier();
+  failingNotifier.error = new Error("network blip");
+
+  const withFailingNotifier = await checkNextAutoCommentChannel(failingAdapter, failingRepository, lease, { notifier: failingNotifier });
+  assert.equal(withFailingNotifier.status, "CHECKED");
+  if (withFailingNotifier.status === "CHECKED") assert.equal(withFailingNotifier.candidatesCreated, 1);
+  assert.equal(failingRepository.notificationCalls.length, 0);
 });
 
 test("a re-observed post is idempotent: it does not count as a newly created candidate", async () => {

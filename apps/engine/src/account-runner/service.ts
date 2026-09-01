@@ -343,7 +343,7 @@ export async function runBroadcastAccount(
           accountId: lease.accountId,
           leaseOwner: lease.leaseOwner,
           accountFencingToken: lease.fencingToken,
-        });
+        }, { notifier: dependencies.autoCommentNotifier });
         if (matcherResult.status !== "NO_TARGET") {
           actions += 1;
           progressed = true;

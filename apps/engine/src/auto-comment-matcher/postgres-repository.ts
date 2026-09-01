@@ -12,7 +12,7 @@ type ClaimRow = {
   discussion_target_ref: string;
   monitoring_last_post_id: string | null;
 };
-type DivisionRow = { id: string; account_id: string; name: string; mode: DivisionMatchConfig["mode"] };
+type DivisionRow = { id: string; account_id: string; name: string; mode: DivisionMatchConfig["mode"]; telegram_user_id: string | null };
 type KeywordRow = { division_id: string; keyword: string };
 type TemplateRow = { division_id: string; id: string; text_content: string };
 type CandidateRow = { result_status: CreateCandidateResult["status"]; candidate_id: string };
@@ -42,9 +42,11 @@ export class PostgresAutoCommentMatcherRepository implements AutoCommentMatcherR
   async divisionsFor(channelTargetId: string): Promise<readonly DivisionMatchConfig[]> {
     const [divisions, keywords, templates] = await Promise.all([
       this.sql<DivisionRow[]>`
-        select division.id::text, division.account_id::text, division.name, division.mode
+        select division.id::text, division.account_id::text, division.name, division.mode,
+               app_user.telegram_user_id::text
           from public.auto_comment_divisions division
           join public.auto_comment_division_channels mapping on mapping.division_id = division.id
+          left join public.app_users app_user on app_user.id = division.user_id
          where mapping.channel_target_id = ${channelTargetId}::uuid
            and division.active
          order by division.created_at, division.id
@@ -78,6 +80,7 @@ export class PostgresAutoCommentMatcherRepository implements AutoCommentMatcherR
       mode: division.mode,
       keywords: Object.freeze(keywordsByDivision.get(division.id) ?? []),
       templates: Object.freeze(templatesByDivision.get(division.id) ?? []),
+      telegramUserId: division.telegram_user_id === null ? null : Number(division.telegram_user_id),
     })));
   }
 
@@ -104,5 +107,14 @@ export class PostgresAutoCommentMatcherRepository implements AutoCommentMatcherR
       ) advanced
     `;
     return rows[0]?.advanced ?? false;
+  }
+
+  async recordNotification(input: Parameters<AutoCommentMatcherRepository["recordNotification"]>[0]): Promise<void> {
+    await this.sql`
+      update public.auto_comment_candidates
+         set notification_message_id = ${input.messageId}
+       where id = ${input.candidateId}::uuid
+         and notification_message_id is null
+    `;
   }
 }

@@ -7,6 +7,8 @@ import type {
   AccountSupervisorDependencies,
   AccountSupervisorHandle,
 } from "../src/account-supervisor/contracts.ts";
+import { TelegramAutoCommentNotifier } from "../src/auto-comment-matcher/notifier.ts";
+import { PostgresAutoCommentMatcherRepository } from "../src/auto-comment-matcher/postgres-repository.ts";
 import { PostgresBroadcastExecutorRepository } from "../src/broadcast-executor/postgres-repository.ts";
 import { PostgresBroadcastPreparationRepository } from "../src/broadcast-preparation/postgres-repository.ts";
 import {
@@ -127,6 +129,8 @@ test("core probes database and wires one process identity through supervisor and
   assert.ok(captured.runnerDependencies?.accountLeases instanceof PostgresRuntimeAccountLeaseRepository);
   assert.ok(captured.runnerDependencies?.preparations instanceof PostgresBroadcastPreparationRepository);
   assert.ok(captured.runnerDependencies?.executor instanceof PostgresBroadcastExecutorRepository);
+  assert.ok(captured.runnerDependencies?.autoCommentMatcher instanceof PostgresAutoCommentMatcherRepository);
+  assert.ok(captured.runnerDependencies?.autoCommentNotifier instanceof TelegramAutoCommentNotifier);
   assert.equal(captured.runnerDependencies?.sessionKeyRing, config.sessionKeyRing());
   assert.equal(captured.runnerDependencies?.adapterFactory.constructor.name, "TeleprotoRuntimeAdapterFactory");
 
