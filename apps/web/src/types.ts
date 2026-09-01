@@ -102,3 +102,44 @@ export type WorkerAccount = Readonly<{
   active: boolean | null;
   availability: "READY" | "NOT_CONFIGURED" | "DISABLED" | "ACCOUNT_NOT_READY";
 }>;
+
+export type ForwardBroadcastSource = Readonly<{
+  channelUsername: string;
+  messageId: number;
+  canonicalLink: string;
+}>;
+
+export type BroadcastMaterialPayload =
+  | Readonly<{ kind: "TEXT"; text: string }>
+  | Readonly<{ kind: "FORWARD"; source: ForwardBroadcastSource; sourceAttribution: "SHOW_SOURCE" | "HIDE_SOURCE" }>;
+
+export type BroadcastMaterial = Readonly<{ id: string; active: boolean }> & BroadcastMaterialPayload;
+
+export type BroadcastOperationMaterial = Readonly<{ id: string }> & BroadcastMaterialPayload;
+
+export type BroadcastLpmTarget = Readonly<{
+  id: string;
+  telegramTargetRef: string;
+  label: string | null;
+  active: boolean;
+}>;
+
+export type BroadcastOperationTarget = Readonly<{
+  id: string;
+  sourceLpmTargetId: string;
+  telegramTargetRef: string;
+  sequenceNumber: number;
+  preparationStatus: string;
+  deliveryStatus: string;
+  lastErrorCode: string | null;
+}>;
+
+export type BroadcastOperation = Readonly<{
+  id: string;
+  accountId: string;
+  accountMode: "JASEB_WORKER" | "USERBOT";
+  status: string;
+  intervalSeconds: number;
+  material: BroadcastOperationMaterial;
+  targets: readonly BroadcastOperationTarget[];
+}>;

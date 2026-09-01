@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ApiError,
+  createBroadcastLpmTarget,
+  createBroadcastOperation,
+  createTextBroadcastMaterial,
   exchangeTelegramInitData,
+  getBroadcastOperation,
+  getBroadcastSettings,
   listTelegramAccounts,
 } from "./api";
 
@@ -51,5 +56,48 @@ describe("web API client", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ code: "USER_REQUIRED" }), { status: 401 })));
 
     await expect(listTelegramAccounts("expired-token")).rejects.toEqual(new ApiError(401, "USER_REQUIRED"));
+  });
+
+  it("loads Jasa Sebar settings", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ materials: [], lpmTargets: [] }), { status: 200 })));
+
+    await expect(getBroadcastSettings("jas_test")).resolves.toEqual({ materials: [], lpmTargets: [] });
+  });
+
+  it("creates a TEXT broadcast material", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(String(init?.body))).toEqual({ kind: "TEXT", text: "halo semua", active: true });
+      return new Response(JSON.stringify({ material: { id: "material-1", kind: "TEXT", text: "halo semua", active: true } }), { status: 201 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(createTextBroadcastMaterial("jas_test", "halo semua")).resolves.toMatchObject({ id: "material-1" });
+  });
+
+  it("creates an LPM target", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(JSON.parse(String(init?.body))).toEqual({ telegramTargetRef: "@contoh", label: null, active: true });
+      return new Response(JSON.stringify({ target: { id: "target-1", telegramTargetRef: "@contoh", label: null, active: true } }), { status: 201 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(createBroadcastLpmTarget("jas_test", { telegramTargetRef: "@contoh", label: null })).resolves.toMatchObject({ id: "target-1" });
+  });
+
+  it("creates and reads a broadcast operation", async () => {
+    const operation = {
+      id: "operation-1", accountId: "account-1", accountMode: "USERBOT", status: "READY", intervalSeconds: 30,
+      material: { id: "material-1", kind: "TEXT", text: "halo semua" },
+      targets: [{ id: "target-row-1", sourceLpmTargetId: "target-1", telegramTargetRef: "@contoh", sequenceNumber: 1, preparationStatus: "READY", deliveryStatus: "PENDING", lastErrorCode: null }],
+    };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ operation, idempotent: false }), { status: 201 })));
+
+    await expect(createBroadcastOperation("jas_test", {
+      accountMode: "USERBOT", materialId: "material-1", targetIds: ["target-1"], idempotencyKey: "op-idempotency-key-1",
+    })).resolves.toMatchObject({ idempotent: false, operation: { id: "operation-1" } });
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ operation }), { status: 200 })));
+    await expect(getBroadcastOperation("jas_test", "operation-1")).resolves.toMatchObject({ id: "operation-1", status: "READY" });
   });
 });

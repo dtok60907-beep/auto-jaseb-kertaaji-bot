@@ -16,6 +16,7 @@ import {
 import type { AuthFlow, AuthorizationResult, IssuedSession, SessionRole, TelegramAccount } from "./types";
 import { readTelegramInitData } from "./telegram";
 import { AdminPanel } from "./AdminPanel";
+import { JasebPanel } from "./JasebPanel";
 
 const SESSION_STORAGE_KEY = "jaseb.telegram.api-session";
 
@@ -461,6 +462,7 @@ export default function App() {
           <div className="account-grid">{accounts.map((account) => <AccountCard key={account.id} account={account} action={action} onSwitch={(item) => void runAccountAction("SWITCH", item)} onDetach={() => void runAccountAction("DETACH")} onLogout={setLogoutAccount} />)}</div>
         )}
       </section>
+      {accounts.some((item) => item.status === "READY") && <JasebPanel token={session.accessToken} />}
       {connectOpen && <ConnectDialog token={session.accessToken} onClose={() => setConnectOpen(false)} onConnected={() => loadAccounts(session.accessToken)} />}
       {logoutAccount && <LogoutDialog account={logoutAccount} busy={action === "LOGOUT"} onClose={() => { if (!action) setLogoutAccount(null); }} onConfirm={() => void runAccountAction("LOGOUT", logoutAccount)} />}
     </main>

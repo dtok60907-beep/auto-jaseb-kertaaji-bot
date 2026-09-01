@@ -2,6 +2,9 @@ import type {
   AdminUser,
   AuthFlow,
   AuthorizationResult,
+  BroadcastLpmTarget,
+  BroadcastMaterial,
+  BroadcastOperation,
   CurrentUser,
   Entitlement,
   IssuedSession,
@@ -171,6 +174,47 @@ export async function extendEntitlement(token: string, entitlementId: string, du
 
 export function revokeEntitlement(token: string, entitlementId: string): Promise<void> {
   return request<void>(`/v1/admin/entitlements/${entitlementId}/revoke`, { method: "POST" }, token);
+}
+
+export async function getBroadcastSettings(
+  token: string,
+): Promise<Readonly<{ materials: readonly BroadcastMaterial[]; lpmTargets: readonly BroadcastLpmTarget[] }>> {
+  return request<{ materials: readonly BroadcastMaterial[]; lpmTargets: readonly BroadcastLpmTarget[] }>(
+    "/v1/broadcast/settings", {}, token,
+  );
+}
+
+export async function createTextBroadcastMaterial(token: string, text: string): Promise<BroadcastMaterial> {
+  const result = await request<{ material: BroadcastMaterial }>("/v1/broadcast/materials", {
+    method: "POST",
+    body: JSON.stringify({ kind: "TEXT", text, active: true }),
+  }, token);
+  return result.material;
+}
+
+export async function createBroadcastLpmTarget(
+  token: string, target: Readonly<{ telegramTargetRef: string; label: string | null }>,
+): Promise<BroadcastLpmTarget> {
+  const result = await request<{ target: BroadcastLpmTarget }>("/v1/broadcast/lpm-targets", {
+    method: "POST",
+    body: JSON.stringify({ ...target, active: true }),
+  }, token);
+  return result.target;
+}
+
+export async function createBroadcastOperation(
+  token: string,
+  input: Readonly<{ accountMode: "JASEB_WORKER" | "USERBOT"; materialId: string; targetIds: readonly string[]; idempotencyKey: string }>,
+): Promise<Readonly<{ idempotent: boolean; operation: BroadcastOperation }>> {
+  return request<{ idempotent: boolean; operation: BroadcastOperation }>("/v1/broadcast/operations", {
+    method: "POST",
+    body: JSON.stringify(input),
+  }, token);
+}
+
+export async function getBroadcastOperation(token: string, operationId: string): Promise<BroadcastOperation> {
+  const result = await request<{ operation: BroadcastOperation }>(`/v1/broadcast/operations/${operationId}`, {}, token);
+  return result.operation;
 }
 
 export async function listWorkerAccounts(token: string): Promise<readonly WorkerAccount[]> {

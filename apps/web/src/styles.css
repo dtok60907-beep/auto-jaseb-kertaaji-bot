@@ -184,7 +184,13 @@ button:disabled { cursor: not-allowed; }
 .stack-form input { width: 100%; height: 48px; padding: 0 14px; border: 1px solid rgba(76, 97, 83, .18); border-radius: 12px; outline: none; background: #fcfbf7; color: var(--ink); font-size: 14px; transition: border-color .2s, box-shadow .2s; }
 .stack-form input::placeholder { color: #b2b8b1; }
 .stack-form input:focus { border-color: var(--mint-deep); box-shadow: 0 0 0 4px rgba(118, 199, 160, .17); }
+.stack-form textarea { width: 100%; padding: 12px 14px; border: 1px solid rgba(76, 97, 83, .18); border-radius: 12px; outline: none; background: #fcfbf7; color: var(--ink); font-size: 14px; font-family: inherit; resize: vertical; transition: border-color .2s, box-shadow .2s; }
+.stack-form textarea::placeholder { color: #b2b8b1; }
+.stack-form textarea:focus { border-color: var(--mint-deep); box-shadow: 0 0 0 4px rgba(118, 199, 160, .17); }
 .stack-form .button { margin-top: 8px; }
+.jaseb-operation-status { display: grid; gap: 9px; margin: 19px 0 0; padding: 0; list-style: none; }
+.jaseb-operation-status li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 13px 16px; border: 1px solid var(--line); border-radius: 13px; background: rgba(255, 254, 250, .55); font-size: 12px; }
+.jaseb-operation-status li strong { font-size: 12px; }
 .helper-text { margin: 5px 0 0; color: #9ba39d; font-size: 10px; line-height: 1.6; }
 .form-error { margin: 3px 0 0; color: #b05d51; font-size: 11px; line-height: 1.5; }
 .step-count { display: flex; align-items: center; justify-content: space-between; margin: -4px 0 7px; color: #7f8a83; font-family: "DM Mono", monospace; font-size: 9px; }
