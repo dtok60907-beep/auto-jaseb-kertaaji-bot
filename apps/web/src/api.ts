@@ -198,6 +198,16 @@ export async function createTextBroadcastMaterial(token: string, text: string): 
   return result.material;
 }
 
+export async function createForwardBroadcastMaterial(
+  token: string, sourceLink: string, sourceAttribution: "SHOW_SOURCE" | "HIDE_SOURCE",
+): Promise<BroadcastMaterial> {
+  const result = await request<{ material: BroadcastMaterial }>("/v1/broadcast/materials", {
+    method: "POST",
+    body: JSON.stringify({ kind: "FORWARD", sourceLink, sourceAttribution, active: true }),
+  }, token);
+  return result.material;
+}
+
 export async function createBroadcastLpmTarget(
   token: string, target: Readonly<{ telegramTargetRef: string; label: string | null }>,
 ): Promise<BroadcastLpmTarget> {

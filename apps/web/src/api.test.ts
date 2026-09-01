@@ -5,6 +5,7 @@ import {
   createBroadcastCampaign,
   createBroadcastLpmTarget,
   createBroadcastOperation,
+  createForwardBroadcastMaterial,
   createTextBroadcastMaterial,
   exchangeTelegramInitData,
   getBroadcastHistory,
@@ -77,6 +78,18 @@ describe("web API client", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(createTextBroadcastMaterial("jas_test", "halo semua")).resolves.toMatchObject({ id: "material-1" });
+  });
+
+  it("creates a FORWARD broadcast material", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(JSON.parse(String(init?.body))).toEqual({ kind: "FORWARD", sourceLink: "https://t.me/contoh/123", sourceAttribution: "HIDE_SOURCE", active: true });
+      return new Response(JSON.stringify({
+        material: { id: "material-2", kind: "FORWARD", source: { channelUsername: "contoh", messageId: 123, canonicalLink: "https://t.me/contoh/123" }, sourceAttribution: "HIDE_SOURCE", active: true },
+      }), { status: 201 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(createForwardBroadcastMaterial("jas_test", "https://t.me/contoh/123", "HIDE_SOURCE")).resolves.toMatchObject({ id: "material-2", kind: "FORWARD" });
   });
 
   it("creates an LPM target", async () => {
