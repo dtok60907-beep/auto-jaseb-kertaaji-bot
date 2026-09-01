@@ -236,6 +236,16 @@ export async function createBroadcastLpmTarget(
   return result.target;
 }
 
+export async function updateBroadcastLpmTarget(
+  token: string, targetId: string, target: Readonly<{ telegramTargetRef: string; label: string | null }>,
+): Promise<BroadcastLpmTarget> {
+  const result = await request<{ target: BroadcastLpmTarget }>(`/v1/broadcast/lpm-targets/${targetId}`, {
+    method: "PUT",
+    body: JSON.stringify({ ...target, active: true }),
+  }, token);
+  return result.target;
+}
+
 export async function createBroadcastOperation(
   token: string,
   input: Readonly<{ accountMode: "JASEB_WORKER" | "USERBOT"; materialId: string; targetIds: readonly string[]; idempotencyKey: string }>,

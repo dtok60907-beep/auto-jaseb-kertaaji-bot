@@ -14,6 +14,7 @@ import {
   listBroadcastCampaigns,
   listTelegramAccounts,
   stopBroadcastCampaign,
+  updateBroadcastLpmTarget,
   updateTextBroadcastMaterial,
 } from "./api";
 
@@ -112,6 +113,17 @@ describe("web API client", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(createBroadcastLpmTarget("jas_test", { telegramTargetRef: "@contoh", label: null })).resolves.toMatchObject({ id: "target-1" });
+  });
+
+  it("updates an existing LPM target in place", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe("PUT");
+      expect(JSON.parse(String(init?.body))).toEqual({ telegramTargetRef: "@lain", label: "Grup baru", active: true });
+      return new Response(JSON.stringify({ target: { id: "target-1", telegramTargetRef: "@lain", label: "Grup baru", active: true } }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(updateBroadcastLpmTarget("jas_test", "target-1", { telegramTargetRef: "@lain", label: "Grup baru" })).resolves.toMatchObject({ telegramTargetRef: "@lain" });
   });
 
   it("creates and reads a broadcast operation", async () => {
