@@ -191,6 +191,8 @@ class FakeAutoComments implements AutoCommentSettingsRepository {
     return { status: "COMMENT_QUEUED" as const, candidateId, operationId: this.id(), commandId: this.id() };
   }
 
+  async resolveOwnerId(): Promise<string | null> { return null; }
+
   private division(userId: string, id: string) { return this.divisions.find((row) => row.userId === userId && row.id === id) ?? null; }
   private channel(userId: string, id: string) { return this.channels.find((row) => row.userId === userId && row.id === id) ?? null; }
   private assertAccount(userId: string, accountId: string) {

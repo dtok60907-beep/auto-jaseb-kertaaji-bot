@@ -31,7 +31,7 @@ class EmptyAutoComments implements AutoCommentSettingsRepository {
   async deleteChannelTarget(): Promise<boolean> { return false; }
   async attachChannel(): Promise<"NOT_FOUND"> { return "NOT_FOUND"; }
   async detachChannel(): Promise<boolean> { return false; }
-  async decideCandidate(): Promise<never> { throw new Error("not used"); }
+  async decideCandidate(): Promise<never> { throw new Error("not used"); } async resolveOwnerId(): Promise<null> { return null; }
 }
 class EmptyEntitlements implements EntitlementRepository { async grant(): Promise<never> { throw new Error("not used"); } async list() { return [{ id: "00000000-0000-0000-0000-000000000777", userId: "", packageId: "", packageType: "JASEB_WORKER" as const, status: "ACTIVE", startsAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 86400000).toISOString(), maxLpmGroups: 999, maxChannelTargets: 0 }]; } async extend(): Promise<null> { return null; } async revoke(): Promise<boolean> { return false; } }
 

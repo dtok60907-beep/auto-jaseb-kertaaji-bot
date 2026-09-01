@@ -331,4 +331,11 @@ export class PostgresAutoCommentSettingsRepository implements AutoCommentSetting
       commandId: row.command_id,
     });
   }
+
+  async resolveOwnerId(telegramUserId: string): Promise<string | null> {
+    const rows = await this.sql<{ id: string }[]>`
+      select id::text from public.app_users where telegram_user_id = ${telegramUserId}::bigint
+    `;
+    return rows[0]?.id ?? null;
+  }
 }

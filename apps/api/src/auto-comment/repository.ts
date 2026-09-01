@@ -69,4 +69,6 @@ export interface AutoCommentSettingsRepository {
   attachChannel(input: Readonly<{ userId: string; divisionId: string; channelTargetId: string }>): Promise<"ATTACHED" | "NOT_FOUND">;
   detachChannel(input: Readonly<{ userId: string; divisionId: string; channelTargetId: string }>): Promise<boolean>;
   decideCandidate(input: Readonly<{ userId: string; candidateId: string; decision: AutoCommentDecision }>): Promise<AutoCommentDecisionResult>;
+  /** Resolves a Telegram user id (from a bot update) to their app_users id, or null if they have never authenticated through the Mini App. */
+  resolveOwnerId(telegramUserId: string): Promise<string | null>;
 }

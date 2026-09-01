@@ -73,7 +73,7 @@ class EmptyAutoComments implements AutoCommentSettingsRepository {
   async deleteChannelTarget(): Promise<boolean> { return false; }
   async attachChannel(): Promise<"NOT_FOUND"> { return "NOT_FOUND"; }
   async detachChannel(): Promise<boolean> { return false; }
-  async decideCandidate(): Promise<never> { throw new Error("not used"); }
+  async decideCandidate(): Promise<never> { throw new Error("not used"); } async resolveOwnerId(): Promise<null> { return null; }
 }
 class EmptyEntitlements implements EntitlementRepository { async grant(): Promise<never> { throw new Error("not used"); } async list(): Promise<readonly []> { return []; } async extend(): Promise<null> { return null; } async revoke(): Promise<boolean> { return false; } }
 
