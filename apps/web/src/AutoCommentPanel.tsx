@@ -56,6 +56,23 @@ function autoCommentErrorLabel(error: unknown): string {
   return "Permintaan belum berhasil. Coba lagi.";
 }
 
+function divisionSummary(division: AutoCommentDivision): string {
+  const parts = [
+    `${division.keywords.length} keyword`,
+    `${division.templates.length} template`,
+    `${division.channelTargetIds.length} channel`,
+  ];
+  return parts.join(" · ");
+}
+
+function ChevronIcon({ expanded }: { expanded: boolean }) {
+  return (
+    <svg className={`chevron-icon ${expanded ? "chevron-icon--expanded" : ""}`} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="m7 9.5 5 5 5-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function AutoCommentPanel({ token }: { token: string }) {
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
@@ -76,6 +93,15 @@ export function AutoCommentPanel({ token }: { token: string }) {
   const [newTemplateOpen, setNewTemplateOpen] = useState<Record<string, boolean>>({});
   const [newTemplateText, setNewTemplateText] = useState<Record<string, string>>({});
   const [editingTemplate, setEditingTemplate] = useState<Readonly<{ divisionId: string; id: string; text: string }> | null>(null);
+  const [expandedDivisions, setExpandedDivisions] = useState<Set<string>>(new Set());
+
+  const toggleDivisionExpanded = (divisionId: string) => {
+    setExpandedDivisions((current) => {
+      const next = new Set(current);
+      if (next.has(divisionId)) next.delete(divisionId); else next.add(divisionId);
+      return next;
+    });
+  };
 
   const withBusy = useCallback(async (id: string, action: () => Promise<void>) => {
     setBusy((current) => new Set(current).add(id));
@@ -126,8 +152,9 @@ export function AutoCommentPanel({ token }: { token: string }) {
     if (!accountId) return;
     setCreatingDivision(true); setPageError(null);
     try {
-      await createAutoCommentDivision(token, { accountId, name: divisionName.trim(), mode: divisionMode, active: true });
+      const created = await createAutoCommentDivision(token, { accountId, name: divisionName.trim(), mode: divisionMode, active: true });
       setDivisionName(""); setDivisionMode("APPROVAL_REQUIRED"); setDivisionFormOpen(false);
+      setExpandedDivisions((current) => new Set(current).add(created.id));
       await load();
     } catch (cause) { setPageError(autoCommentErrorLabel(cause)); }
     finally { setCreatingDivision(false); }
@@ -328,128 +355,155 @@ export function AutoCommentPanel({ token }: { token: string }) {
         <div className="empty-card"><h3>Belum ada Divisi</h3></div>
       ) : (
         <ul className="auto-comment-list" aria-labelledby="auto-comment-divisions-heading">
-          {settings.divisions.map((division) => (
-            <li key={division.id} className="auto-comment-card">
-              <div className="auto-comment-card__head">
-                <div>
-                  <strong>{division.name}</strong>
-                  {!division.active && <span className="admin-badge admin-badge--disabled">Nonaktif</span>}
-                </div>
-                <select value={division.mode} disabled={busy.has(division.id)} onChange={(event) => void changeDivisionMode(division, event.target.value as AutoCommentMode)}>
-                  <option value="APPROVAL_REQUIRED">{MODE_LABEL.APPROVAL_REQUIRED}</option>
-                  <option value="AUTO_SEND">{MODE_LABEL.AUTO_SEND}</option>
-                </select>
-              </div>
-
-              <p className="helper-text">Keyword</p>
-              <div className="chip-list">
-                {division.keywords.map((keyword) => (
-                  <span key={keyword.id} className="chip">
-                    {keyword.keyword}
-                    <button type="button" aria-label={`Hapus keyword ${keyword.keyword}`} disabled={busy.has(keyword.id)} onClick={() => void removeKeyword(division.id, keyword.id)}>×</button>
+          {settings.divisions.map((division) => {
+            const expanded = expandedDivisions.has(division.id);
+            return (
+              <li key={division.id} className="auto-comment-card auto-comment-card--division">
+                <button
+                  type="button"
+                  className="division-header"
+                  aria-expanded={expanded}
+                  onClick={() => toggleDivisionExpanded(division.id)}
+                >
+                  <span className="division-header__main">
+                    <span className="division-header__title">
+                      <strong>{division.name}</strong>
+                      <span className={`admin-badge ${division.mode === "AUTO_SEND" ? "admin-badge--info" : ""}`}>{MODE_LABEL[division.mode]}</span>
+                      {!division.active && <span className="admin-badge admin-badge--disabled">Nonaktif</span>}
+                    </span>
+                    <span className="division-header__summary">{divisionSummary(division)}</span>
                   </span>
-                ))}
-                {division.keywords.length === 0 && <span className="helper-text">Belum ada keyword</span>}
-              </div>
-              <form className="chip-form" onSubmit={submitKeyword(division.id)}>
-                <input
-                  value={newKeyword[division.id] ?? ""}
-                  onChange={(event) => setNewKeyword((current) => ({ ...current, [division.id]: event.target.value }))}
-                  placeholder="Tambah keyword..."
-                  aria-label="Tambah keyword"
-                />
-                <button className="button button--ghost" type="submit" disabled={busy.has(`keyword-add-${division.id}`) || !(newKeyword[division.id] ?? "").trim()}>+</button>
-              </form>
+                  <ChevronIcon expanded={expanded} />
+                </button>
 
-              <p className="helper-text">Template balasan</p>
-              {division.templates.length === 0 && <p className="helper-text">Belum ada template</p>}
-              <ul className="auto-comment-template-list">
-                {division.templates.map((template) => (
-                  <li key={template.id}>
-                    {editingTemplate?.id === template.id ? (
-                      <form className="stack-form" onSubmit={saveTemplateEdit}>
-                        <textarea
-                          rows={3}
-                          maxLength={4096}
-                          value={editingTemplate.text}
-                          onChange={(event) => setEditingTemplate({ divisionId: division.id, id: template.id, text: event.target.value })}
-                          required
+                {expanded && (
+                  <div className="division-body">
+                    <div className="division-section">
+                      <p className="helper-text">Mode balasan</p>
+                      <select value={division.mode} disabled={busy.has(division.id)} onChange={(event) => void changeDivisionMode(division, event.target.value as AutoCommentMode)}>
+                        <option value="APPROVAL_REQUIRED">{MODE_LABEL.APPROVAL_REQUIRED}</option>
+                        <option value="AUTO_SEND">{MODE_LABEL.AUTO_SEND}</option>
+                      </select>
+                    </div>
+
+                    <div className="division-section">
+                      <p className="helper-text">Keyword</p>
+                      <div className="chip-list">
+                        {division.keywords.map((keyword) => (
+                          <span key={keyword.id} className="chip">
+                            {keyword.keyword}
+                            <button type="button" aria-label={`Hapus keyword ${keyword.keyword}`} disabled={busy.has(keyword.id)} onClick={() => void removeKeyword(division.id, keyword.id)}>×</button>
+                          </span>
+                        ))}
+                        {division.keywords.length === 0 && <span className="helper-text">Belum ada keyword</span>}
+                      </div>
+                      <form className="chip-form" onSubmit={submitKeyword(division.id)}>
+                        <input
+                          value={newKeyword[division.id] ?? ""}
+                          onChange={(event) => setNewKeyword((current) => ({ ...current, [division.id]: event.target.value }))}
+                          placeholder="Tambah keyword..."
+                          aria-label="Tambah keyword"
                         />
-                        <div className="account-card__actions">
-                          <button className="button button--ghost" type="button" onClick={() => setEditingTemplate(null)} disabled={busy.has(template.id)}>Batal</button>
-                          <button className="button button--primary" type="submit" disabled={busy.has(template.id) || !editingTemplate.text.trim()}>Simpan</button>
-                        </div>
+                        <button className="button button--ghost" type="submit" disabled={busy.has(`keyword-add-${division.id}`) || !(newKeyword[division.id] ?? "").trim()}>+</button>
                       </form>
-                    ) : (
-                      <>
-                        <p>{template.text}</p>
-                        <div className="account-card__actions">
-                          {!template.active && <span className="admin-badge admin-badge--disabled">Nonaktif</span>}
-                          <button className="button button--ghost" type="button" disabled={busy.has(template.id)} onClick={() => setEditingTemplate({ divisionId: division.id, id: template.id, text: template.text })}>
-                            Ubah
-                          </button>
-                          <button className="button button--ghost" type="button" disabled={busy.has(template.id)} onClick={() => void toggleTemplateActive(division.id, template)}>
-                            {template.active ? "Nonaktifkan" : "Aktifkan"}
-                          </button>
-                          <button className="button button--danger-ghost" type="button" disabled={busy.has(template.id)} onClick={() => void removeTemplate(division.id, template.id)}>
-                            Hapus
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </li>
-                ))}
-              </ul>
-              {newTemplateOpen[division.id] ? (
-                <form className="stack-form" onSubmit={submitTemplate(division.id, division.templates.length)}>
-                  <textarea
-                    rows={3}
-                    maxLength={4096}
-                    value={newTemplateText[division.id] ?? ""}
-                    onChange={(event) => setNewTemplateText((current) => ({ ...current, [division.id]: event.target.value }))}
-                    placeholder="Tulis template balasan..."
-                    required
-                  />
-                  <div className="account-card__actions">
-                    <button className="button button--ghost" type="button" onClick={() => setNewTemplateOpen((current) => ({ ...current, [division.id]: false }))} disabled={busy.has(`template-add-${division.id}`)}>Batal</button>
-                    <button className="button button--primary" type="submit" disabled={busy.has(`template-add-${division.id}`) || !(newTemplateText[division.id] ?? "").trim()}>
-                      Simpan Template
-                    </button>
+                    </div>
+
+                    <div className="division-section">
+                      <p className="helper-text">Template balasan</p>
+                      {division.templates.length === 0 && <p className="helper-text">Belum ada template</p>}
+                      <ul className="auto-comment-template-list">
+                        {division.templates.map((template) => (
+                          <li key={template.id}>
+                            {editingTemplate?.id === template.id ? (
+                              <form className="stack-form" onSubmit={saveTemplateEdit}>
+                                <textarea
+                                  rows={3}
+                                  maxLength={4096}
+                                  value={editingTemplate.text}
+                                  onChange={(event) => setEditingTemplate({ divisionId: division.id, id: template.id, text: event.target.value })}
+                                  required
+                                />
+                                <div className="account-card__actions">
+                                  <button className="button button--ghost" type="button" onClick={() => setEditingTemplate(null)} disabled={busy.has(template.id)}>Batal</button>
+                                  <button className="button button--primary" type="submit" disabled={busy.has(template.id) || !editingTemplate.text.trim()}>Simpan</button>
+                                </div>
+                              </form>
+                            ) : (
+                              <>
+                                <p>{template.text}</p>
+                                <div className="account-card__actions">
+                                  {!template.active && <span className="admin-badge admin-badge--disabled">Nonaktif</span>}
+                                  <button className="button button--ghost" type="button" disabled={busy.has(template.id)} onClick={() => setEditingTemplate({ divisionId: division.id, id: template.id, text: template.text })}>
+                                    Ubah
+                                  </button>
+                                  <button className="button button--ghost" type="button" disabled={busy.has(template.id)} onClick={() => void toggleTemplateActive(division.id, template)}>
+                                    {template.active ? "Nonaktifkan" : "Aktifkan"}
+                                  </button>
+                                  <button className="button button--danger-ghost" type="button" disabled={busy.has(template.id)} onClick={() => void removeTemplate(division.id, template.id)}>
+                                    Hapus
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                      {newTemplateOpen[division.id] ? (
+                        <form className="stack-form" onSubmit={submitTemplate(division.id, division.templates.length)}>
+                          <textarea
+                            rows={3}
+                            maxLength={4096}
+                            value={newTemplateText[division.id] ?? ""}
+                            onChange={(event) => setNewTemplateText((current) => ({ ...current, [division.id]: event.target.value }))}
+                            placeholder="Tulis template balasan..."
+                            required
+                          />
+                          <div className="account-card__actions">
+                            <button className="button button--ghost" type="button" onClick={() => setNewTemplateOpen((current) => ({ ...current, [division.id]: false }))} disabled={busy.has(`template-add-${division.id}`)}>Batal</button>
+                            <button className="button button--primary" type="submit" disabled={busy.has(`template-add-${division.id}`) || !(newTemplateText[division.id] ?? "").trim()}>
+                              Simpan Template
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        <button className="text-button" type="button" onClick={() => setNewTemplateOpen((current) => ({ ...current, [division.id]: true }))}>+ Tambah template</button>
+                      )}
+                    </div>
+
+                    <div className="division-section">
+                      <p className="helper-text">Channel terpasang</p>
+                      <div className="chip-list">
+                        {settings.channelTargets.length === 0 && <span className="helper-text">Belum ada channel target</span>}
+                        {settings.channelTargets.map((channel) => {
+                          const attached = division.channelTargetIds.includes(channel.id);
+                          return (
+                            <label key={channel.id} className="check-control">
+                              <input
+                                type="checkbox"
+                                checked={attached}
+                                disabled={busy.has(`${division.id}-${channel.id}`)}
+                                onChange={() => void toggleChannelForDivision(division, channel.id, attached)}
+                              />
+                              {channel.sourceChannelRef}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="division-danger-zone">
+                      <button className="button button--ghost" type="button" disabled={busy.has(division.id)} onClick={() => void toggleDivisionActive(division)}>
+                        {division.active ? "Nonaktifkan Divisi" : "Aktifkan Divisi"}
+                      </button>
+                      <button className="button button--danger-ghost" type="button" disabled={busy.has(division.id)} onClick={() => void removeDivision(division.id)}>
+                        Hapus Divisi
+                      </button>
+                    </div>
                   </div>
-                </form>
-              ) : (
-                <button className="text-button" type="button" onClick={() => setNewTemplateOpen((current) => ({ ...current, [division.id]: true }))}>+ Tambah template</button>
-              )}
-
-              <p className="helper-text">Channel terpasang</p>
-              <div className="chip-list">
-                {settings.channelTargets.length === 0 && <span className="helper-text">Belum ada channel target</span>}
-                {settings.channelTargets.map((channel) => {
-                  const attached = division.channelTargetIds.includes(channel.id);
-                  return (
-                    <label key={channel.id} className="check-control">
-                      <input
-                        type="checkbox"
-                        checked={attached}
-                        disabled={busy.has(`${division.id}-${channel.id}`)}
-                        onChange={() => void toggleChannelForDivision(division, channel.id, attached)}
-                      />
-                      {channel.sourceChannelRef}
-                    </label>
-                  );
-                })}
-              </div>
-
-              <div className="account-card__actions">
-                <button className="button button--ghost" type="button" disabled={busy.has(division.id)} onClick={() => void toggleDivisionActive(division)}>
-                  {division.active ? "Nonaktifkan Divisi" : "Aktifkan Divisi"}
-                </button>
-                <button className="button button--danger-ghost" type="button" disabled={busy.has(division.id)} onClick={() => void removeDivision(division.id)}>
-                  Hapus Divisi
-                </button>
-              </div>
-            </li>
-          ))}
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>

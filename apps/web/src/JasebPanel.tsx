@@ -457,9 +457,9 @@ export function JasebPanel({ token }: { token: string }) {
       )}
 
       {material && target && campaign?.status === "ACTIVE" && !repeatFormOpen && !editingMaterial && !editingTarget && (
-        <div className="empty-card">
+        <div className="empty-card empty-card--status empty-card--active">
           <div>
-            <h3>Berjalan otomatis</h3>
+            <div className="status-card__title"><h3>Berjalan otomatis</h3><span className="admin-badge">Aktif</span></div>
             <p>
               Mengirim {materialSummary(material)} ke {target.label ?? target.telegramTargetRef} tiap {Math.round(campaign.intervalSeconds / 60)} menit.
               {campaign.lastCycleAt ? ` Terakhir: ${formatDateTime(campaign.lastCycleAt)}.` : ""}
@@ -477,9 +477,9 @@ export function JasebPanel({ token }: { token: string }) {
       )}
 
       {material && target && campaign?.status !== "ACTIVE" && !repeatFormOpen && !editingMaterial && !editingTarget && (
-        <div className="empty-card">
+        <div className="empty-card empty-card--status">
           <div>
-            <h3>Siap disebar</h3>
+            <div className="status-card__title"><h3>Siap disebar</h3><span className="admin-badge admin-badge--info">Siap</span></div>
             <p>Kirim {materialSummary(material)} ke {target.label ?? target.telegramTargetRef}.</p>
           </div>
           <div className="account-card__actions">
