@@ -34,6 +34,8 @@ import type { TelegramAccountLifecycleRepository } from "./telegram-accounts/rep
 import { registerCurrentUserRoutes } from "./http/current-user-routes.ts";
 import type { AdminUserRepository } from "./admin-users/repository.ts";
 import { registerAdminUserRoutes } from "./http/admin-user-routes.ts";
+import type { CanaryOperatorRepository } from "./operations/canary-operator.ts";
+import { registerCanaryAdmissionRoutes } from "./http/canary-admission-routes.ts";
 import { registerTelegramBotWebhookRoutes } from "./http/telegram-bot-webhook-routes.ts";
 import type { TelegramCallbackResponder } from "./telegram-bot/decision-responder.ts";
 import type { TelegramStartResponder } from "./telegram-bot/start-responder.ts";
@@ -52,6 +54,7 @@ type CommonApiOptions = {
   telegramAuthorization?: TelegramAuthorizationUseCase;
   telegramAccounts?: TelegramAccountLifecycleRepository;
   adminUsers?: AdminUserRepository;
+  canaryAdmissions?: CanaryOperatorRepository;
   telegramBot?: Readonly<{ webhookSecret: string; responder: TelegramStartResponder; callbackResponder: TelegramCallbackResponder }>;
 };
 
@@ -120,6 +123,7 @@ export function createApi(options: ApiOptions) {
   }
   registerPackageRoutes(app, { ...options, authorizeAdmin });
   if (options.adminUsers) registerAdminUserRoutes(app, { users: options.adminUsers, authorizeAdmin });
+  if (options.canaryAdmissions) registerCanaryAdmissionRoutes(app, { admissions: options.canaryAdmissions, authorizeAdmin });
   registerBroadcastSettingRoutes(app, { ...options, authorizeUser, authorizeAdmin });
   registerAutoCommentSettingRoutes(app, { ...options, authorizeUser, authorizeAdmin });
   registerEntitlementRoutes(app, { ...options, authorizeAdmin });

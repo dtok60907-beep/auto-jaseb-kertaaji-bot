@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
   attachAutoCommentChannel,
+  admitCanaryUser,
   createAdminBroadcastCampaign,
   createAdminTextBroadcastMaterial,
   createAutoCommentChannelTarget,
@@ -27,7 +28,9 @@ import {
   getBroadcastSettings,
   getCurrentAdminBroadcastCampaign,
   getCurrentBroadcastCampaign,
+  listCanaryAdmissions,
   listTelegramAccounts,
+  revokeCanaryUser,
   stopAdminBroadcastCampaign,
   stopBroadcastCampaign,
   updateAdminBroadcastLpmTarget,
@@ -243,6 +246,31 @@ describe("web API client", () => {
       return new Response(null, { status: 204 });
     }));
     await expect(stopAdminBroadcastCampaign("jas_admin", USER_ID, "campaign-9")).resolves.toBeNull();
+  });
+
+  it("lists, admits, and revokes canary admissions as admin", async () => {
+    const admission = { telegramUserId: "555", slot: 3, admittedAt: "2026-09-02T00:00:00.000Z", revokedAt: null, appUserReady: false, adminActive: false };
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toContain("/v1/admin/canary-admissions");
+      return new Response(JSON.stringify({ admissions: [admission] }), { status: 200 });
+    }));
+    await expect(listCanaryAdmissions("jas_admin")).resolves.toEqual([admission]);
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toContain("/v1/admin/canary-admissions");
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(String(init?.body))).toEqual({ telegramUserId: "555" });
+      return new Response(JSON.stringify({ status: "ADMITTED", telegramUserId: "555", slot: 3 }), { status: 200 });
+    }));
+    await expect(admitCanaryUser("jas_admin", "555")).resolves.toEqual({ status: "ADMITTED", telegramUserId: "555", slot: 3 });
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toContain("/v1/admin/canary-admissions/555");
+      expect(init?.method).toBe("DELETE");
+      return new Response(JSON.stringify({ status: "REVOKED", telegramUserId: "555", slot: null }), { status: 200 });
+    }));
+    await expect(revokeCanaryUser("jas_admin", "555")).resolves.toEqual({ status: "REVOKED", telegramUserId: "555", slot: null });
   });
 
   it("loads Auto Komen settings", async () => {

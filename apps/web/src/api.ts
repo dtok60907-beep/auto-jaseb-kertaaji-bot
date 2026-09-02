@@ -13,6 +13,8 @@ import type {
   BroadcastLpmTarget,
   BroadcastMaterial,
   BroadcastOperation,
+  CanaryAdmission,
+  CanaryAdmissionChange,
   CurrentUser,
   Entitlement,
   IssuedSession,
@@ -132,6 +134,22 @@ export async function listAdminUsers(token: string, query = ""): Promise<readonl
   const suffix = params.size > 0 ? `?${params}` : "";
   const result = await request<{ users: readonly AdminUser[] }>(`/v1/admin/users${suffix}`, {}, token);
   return result.users;
+}
+
+export async function listCanaryAdmissions(token: string): Promise<readonly CanaryAdmission[]> {
+  const result = await request<{ admissions: readonly CanaryAdmission[] }>("/v1/admin/canary-admissions", {}, token);
+  return result.admissions;
+}
+
+export function admitCanaryUser(token: string, telegramUserId: string): Promise<CanaryAdmissionChange> {
+  return request<CanaryAdmissionChange>("/v1/admin/canary-admissions", {
+    method: "POST",
+    body: JSON.stringify({ telegramUserId }),
+  }, token);
+}
+
+export function revokeCanaryUser(token: string, telegramUserId: string): Promise<CanaryAdmissionChange> {
+  return request<CanaryAdmissionChange>(`/v1/admin/canary-admissions/${telegramUserId}`, { method: "DELETE" }, token);
 }
 
 export async function listAdminPackages(token: string): Promise<readonly ServicePackage[]> {

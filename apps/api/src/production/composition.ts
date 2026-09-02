@@ -16,6 +16,7 @@ import { PostgresUserbotProfileRepository } from "../userbot-profiles/postgres-r
 import { PostgresWorkerAccountSettingsRepository } from "../workers/postgres-repository.ts";
 import { PostgresTelegramAccountLifecycleRepository } from "../telegram-accounts/postgres-repository.ts";
 import { PostgresAdminUserRepository } from "../admin-users/postgres-repository.ts";
+import { PostgresCanaryOperatorRepository } from "../operations/postgres-canary-operator-repository.ts";
 import { TelegramBotCallbackResponder } from "../telegram-bot/decision-responder.ts";
 import { TelegramBotStartResponder } from "../telegram-bot/start-responder.ts";
 import { TelegramAuthorizationService } from "../telegram-authorization/service.ts";
@@ -73,6 +74,7 @@ export function composeProductionApi(config: ProductionApiConfig, sql: Sql) {
     telegramAuthorization,
     telegramAccounts,
     adminUsers: new PostgresAdminUserRepository(sql),
+    canaryAdmissions: new PostgresCanaryOperatorRepository(sql),
     telegramBot: {
       webhookSecret: config.telegramWebhookSecret(),
       responder: new TelegramBotStartResponder({

@@ -82,6 +82,21 @@ export type AdminUser = Readonly<{
   isAdmin: boolean;
 }>;
 
+export type CanaryAdmission = Readonly<{
+  telegramUserId: string;
+  slot: number | null;
+  admittedAt: string;
+  revokedAt: string | null;
+  appUserReady: boolean;
+  adminActive: boolean;
+}>;
+
+export type CanaryAdmissionChange = Readonly<{
+  status: "ADMITTED" | "ALREADY_ADMITTED" | "LIMIT_REACHED" | "REVOKED" | "NOT_ADMITTED";
+  telegramUserId: string;
+  slot: number | null;
+}>;
+
 export type Entitlement = Readonly<{
   id: string;
   userId: string;
