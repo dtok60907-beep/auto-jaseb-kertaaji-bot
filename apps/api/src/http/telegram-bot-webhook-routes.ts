@@ -9,7 +9,7 @@ const START_COMMAND = /^\/start(?:@[A-Za-z0-9_]{5,32})?(?:\s|$)/;
 const CALLBACK_DATA = /^autocomment:([0-9a-fA-F-]{36}):(TEPAT|OOT)$/;
 
 const DECISION_OUTCOME_TEXT: Readonly<Record<string, string>> = {
-  COMMENT_QUEUED: "✅ Ditandai Tepat. Balasan belum otomatis terkirim — fitur kirim otomatis belum aktif, kirim manual dulu ya.",
+  COMMENT_QUEUED: "✅ Ditandai Tepat. Balasan lagi dikirim otomatis, ga pakai jeda.",
   OOT: "🚫 Ditandai OOT (di luar topik). Tidak ada komentar yang dikirim.",
   ALREADY_DECIDED: "Kandidat ini sudah pernah direview sebelumnya.",
   NOT_AWAITING_REVIEW: "Kandidat ini sudah tidak menunggu review.",
@@ -23,6 +23,7 @@ type CallbackQueryInfo = Readonly<{
   decision: "TEPAT" | "OOT";
   chatId: number;
   messageId: number;
+  messageText: string;
 }>;
 
 function callbackQueryInfo(body: unknown): CallbackQueryInfo | null {
@@ -55,6 +56,7 @@ function callbackQueryInfo(body: unknown): CallbackQueryInfo | null {
     decision: match[2] as "TEPAT" | "OOT",
     chatId,
     messageId: messageRecord.message_id,
+    messageText: typeof messageRecord.text === "string" ? messageRecord.text : "",
   });
 }
 
@@ -103,8 +105,13 @@ export function registerTelegramBotWebhookRoutes(
         ? (await options.autoComments.decideCandidate({ userId: ownerId, candidateId: callback.candidateId, decision: callback.decision })).status
         : "NOT_FOUND";
       const outcomeText = DECISION_OUTCOME_TEXT[decisionStatus] ?? DECISION_OUTCOME_TEXT.NOT_FOUND!;
+      // Editing in place used to replace the whole notification (including its
+      // "Link MF" post link) with just the outcome line, so once a candidate
+      // was decided there was no way back to the original post. Keep the
+      // original body and append the outcome instead.
+      const editedText = callback.messageText ? `${callback.messageText}\n\n${outcomeText}` : outcomeText;
       try { await options.callbackResponder.answerCallbackQuery(callback.callbackQueryId); } catch { /* best-effort: the button spinner clears itself eventually */ }
-      try { await options.callbackResponder.editMessageText({ chatId: callback.chatId, messageId: callback.messageId, text: outcomeText }); } catch { /* best-effort: the decision is already persisted */ }
+      try { await options.callbackResponder.editMessageText({ chatId: callback.chatId, messageId: callback.messageId, text: editedText }); } catch { /* best-effort: the decision is already persisted */ }
       return reply.code(204).send();
     }
 

@@ -29,7 +29,7 @@ export interface TeleprotoClientPort {
   getPeerId(entity: unknown): Promise<string>;
   invoke(request: unknown): Promise<unknown>;
   joinChannel(entity: unknown): Promise<unknown>;
-  sendMessage(entity: string, params: Readonly<{ message: string; linkPreview: false }>): Promise<unknown>;
+  sendMessage(entity: string, params: Readonly<{ message: string; linkPreview: false; commentTo?: number }>): Promise<unknown>;
   getMessages(entity: unknown, params: Readonly<{ ids: readonly number[] }>): Promise<unknown>;
   forwardMessages(entity: string, params: Readonly<{ messages: readonly number[]; fromPeer: unknown; dropAuthor: boolean }>): Promise<unknown>;
   getHistory(entity: unknown, params: Readonly<{ minId?: number; limit: number }>): Promise<unknown>;
@@ -292,11 +292,15 @@ export class TeleprotoProductionAdapter implements TelegramDeliveryAdapter {
     });
   }
 
-  async sendText(input: Readonly<{ targetRef: string; text: string }>): Promise<TelegramDeliveryReceipt> {
+  async sendText(input: Readonly<{ targetRef: string; text: string; commentToPostId?: string }>): Promise<TelegramDeliveryReceipt> {
     const target = validateRef(input.targetRef, "INVALID_TARGET_REF");
     if (typeof input.text !== "string" || !input.text.trim() || input.text.length > 4096) throw new TypeError("INVALID_TEXT");
+    if (input.commentToPostId !== undefined && !/^\d+$/.test(input.commentToPostId)) throw new TypeError("INVALID_COMMENT_TO_POST_ID");
+    const params = input.commentToPostId === undefined
+      ? { message: input.text, linkPreview: false as const }
+      : { message: input.text, linkPreview: false as const, commentTo: Number(input.commentToPostId) };
     return this.#ready(async () => receiptFromProvider(
-      await this.#provider("SEND_TEXT", () => this.#client.sendMessage(target, { message: input.text, linkPreview: false })),
+      await this.#provider("SEND_TEXT", () => this.#client.sendMessage(target, params)),
       1,
     ));
   }

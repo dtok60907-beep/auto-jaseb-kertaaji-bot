@@ -61,7 +61,7 @@ export function mapTeleprotoError(error: unknown, operation: TeleprotoOperation)
   ].some((name) => names.has(name))) {
     return mapped({ code: "CHAT_WRITE_FORBIDDEN", retryable: false, cause: error });
   }
-  if (["MessageIdInvalidError", "MsgIdInvalidError", "MessageEmptyError"].some((name) => names.has(name)) && isSource) {
+  if (["MessageIdInvalidError", "MsgIdInvalidError", "MessageEmptyError"].some((name) => names.has(name)) && (isSource || operation === "SEND_TEXT")) {
     return mapped({ code: "SOURCE_NOT_FOUND", retryable: false, cause: error });
   }
   if (["UsernameNotOccupiedError", "UsernameInvalidError", "ChannelInvalidError", "PeerIdInvalidError", "PublicChannelMissingError", "ChannelPrivateError"].some((name) => names.has(name))) {

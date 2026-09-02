@@ -61,7 +61,13 @@ export interface TelegramDeliveryAdapter {
   resolveTarget(targetRef: string): Promise<TelegramTarget>;
   resolveLinkedDiscussion(sourceChannelRef: string): Promise<TelegramLinkedDiscussion>;
   joinPublicTarget(targetRef: string): Promise<TelegramJoinResult>;
-  sendText(input: Readonly<{ targetRef: string; text: string }>): Promise<TelegramDeliveryReceipt>;
+  /**
+   * commentToPostId, when set, sends as a genuine comment on that post in
+   * targetRef (which must then be the source channel, not its discussion
+   * group) rather than a bare message -- Telegram resolves the linked
+   * discussion group and threads it there itself.
+   */
+  sendText(input: Readonly<{ targetRef: string; text: string; commentToPostId?: string }>): Promise<TelegramDeliveryReceipt>;
   /**
    * Resolves the source message and any grouped album siblings, then invokes
    * Telegram's native forward operation once with the full ordered message set.

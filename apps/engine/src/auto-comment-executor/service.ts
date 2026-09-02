@@ -26,13 +26,20 @@ function asRecord(value: unknown): Readonly<Record<string, unknown>> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Readonly<Record<string, unknown>> : null;
 }
 
-function parseText(command: ClaimedAutoCommentCommand): string {
+type CommentPayload = Readonly<{ text: string; sourceChannelRef: string | null; channelPostId: string | null }>;
+
+// sourceChannelRef/channelPostId are only present on commands queued after
+// the reply-to-post fix -- older already-queued commands fall back to a
+// bare message into the discussion group (command.targetRef), same as before.
+function parseCommentPayload(command: ClaimedAutoCommentCommand): CommentPayload {
   const payload = asRecord(command.payload);
   const text = payload?.text;
   if (command.kind !== "COMMENT_TEXT" || typeof text !== "string" || !text.trim() || text.length > 4096) {
     throw new TypeError("INVALID_AUTO_COMMENT_COMMAND_PAYLOAD");
   }
-  return text;
+  const sourceChannelRef = typeof payload?.sourceChannelRef === "string" && payload.sourceChannelRef.trim() ? payload.sourceChannelRef.trim() : null;
+  const channelPostId = typeof payload?.channelPostId === "string" && /^\d+$/.test(payload.channelPostId) ? payload.channelPostId : null;
+  return Object.freeze({ text, sourceChannelRef, channelPostId });
 }
 
 function policy(input: ExecutorPolicy) {
@@ -91,8 +98,8 @@ export async function executeNextAutoComment(
       ?? Object.freeze({ status: "FAILED_FINAL", commandId: command.id, errorCode: outcome.errorCode });
   }
 
-  let text: string;
-  try { text = parseText(command); }
+  let comment: CommentPayload;
+  try { comment = parseCommentPayload(command); }
   catch {
     const outcome = Object.freeze({ status: "FAILED_FINAL" as const, errorCode: "INVALID_AUTO_COMMENT_COMMAND_PAYLOAD" });
     return await persist(repository, lease, command.id, outcome)
@@ -100,7 +107,9 @@ export async function executeNextAutoComment(
   }
 
   try {
-    const receipt = await adapter.sendText({ targetRef: command.targetRef, text });
+    const receipt = comment.sourceChannelRef && comment.channelPostId
+      ? await adapter.sendText({ targetRef: comment.sourceChannelRef, text: comment.text, commentToPostId: comment.channelPostId })
+      : await adapter.sendText({ targetRef: command.targetRef, text: comment.text });
     const fenced = await persist(repository, lease, command.id, Object.freeze({ status: "SUCCEEDED", receipt }));
     return fenced ?? Object.freeze({ status: "SUCCEEDED", commandId: command.id });
   } catch (rawError) {

@@ -61,6 +61,22 @@ test("sends the claimed reply immediately, with no interval, and persists the re
   assert.deepEqual(repository.finishes[0]?.outcome, { status: "SUCCEEDED", receipt: adapter.receipt });
 });
 
+test("sends as a comment on the matched post when the payload carries the channel ref and post id", async () => {
+  const repository = new FakeRepository();
+  repository.claimed = command({ payload: { text: "gua ready kak pc aja", sourceChannelRef: "@basewtb", channelPostId: "204" } });
+  const adapter = new FakeAdapter();
+  assert.deepEqual(await executeNextAutoComment(adapter, repository, lease), { status: "SUCCEEDED", commandId: "command-1" });
+  assert.deepEqual(adapter.textCalls, [{ targetRef: "@basewtb", text: "gua ready kak pc aja", commentToPostId: "204" }]);
+});
+
+test("falls back to a bare message into the discussion group when the payload has no channel ref/post id (pre-fix commands)", async () => {
+  const repository = new FakeRepository();
+  repository.claimed = command({ payload: { text: "gua ready kak pc aja" } });
+  const adapter = new FakeAdapter();
+  assert.deepEqual(await executeNextAutoComment(adapter, repository, lease), { status: "SUCCEEDED", commandId: "command-1" });
+  assert.deepEqual(adapter.textCalls, [{ targetRef: "@discussion", text: "gua ready kak pc aja" }]);
+});
+
 test("invalid payload fails final without a Telegram call", async () => {
   const repository = new FakeRepository(); repository.claimed = command({ payload: { text: "" } });
   const adapter = new FakeAdapter();

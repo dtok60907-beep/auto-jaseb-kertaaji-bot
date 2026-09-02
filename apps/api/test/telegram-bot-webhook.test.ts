@@ -69,13 +69,15 @@ function harness() {
   return { app, autoComments, callbackResponder, delivered };
 }
 
-function callbackPayload(input: Readonly<{ data: string; telegramUserId?: number; callbackQueryId?: string }>) {
+const ORIGINAL_NOTIFICATION_TEXT = "Auto Komen Menfess: kandidat baru\n\nLink MF : https://t.me/basewtb/204";
+
+function callbackPayload(input: Readonly<{ data: string; telegramUserId?: number; callbackQueryId?: string; messageText?: string }>) {
   return {
     update_id: 3,
     callback_query: {
       id: input.callbackQueryId ?? "cbq-1",
       from: { id: input.telegramUserId ?? 555, is_bot: false, first_name: "Test" },
-      message: { message_id: 999, chat: { id: 555, type: "private" } },
+      message: { message_id: 999, chat: { id: 555, type: "private" }, text: input.messageText ?? ORIGINAL_NOTIFICATION_TEXT },
       data: input.data,
     },
   };
@@ -145,7 +147,10 @@ test("a Tepat callback resolves the pressing user, decides the candidate, and ed
   assert.deepEqual(autoComments.decideCalls, [{ userId: "owner-1", candidateId: CANDIDATE_ID, decision: "TEPAT" }]);
   assert.equal(callbackResponder.answered.length, 1);
   assert.equal(callbackResponder.answered[0]?.callbackQueryId, "cbq-1");
-  assert.deepEqual(callbackResponder.edited, [{ chatId: 555, messageId: 999, text: "✅ Ditandai Tepat. Balasan belum otomatis terkirim — fitur kirim otomatis belum aktif, kirim manual dulu ya." }]);
+  assert.deepEqual(callbackResponder.edited, [{
+    chatId: 555, messageId: 999,
+    text: `${ORIGINAL_NOTIFICATION_TEXT}\n\n✅ Ditandai Tepat. Balasan lagi dikirim otomatis, ga pakai jeda.`,
+  }]);
 });
 
 test("an OOT callback records the decision and shows the OOT outcome", async (t) => {
@@ -159,6 +164,25 @@ test("an OOT callback records the decision and shows the OOT outcome", async (t)
     url: "/v1/telegram/bot/webhook",
     headers: { "x-telegram-bot-api-secret-token": SECRET },
     payload: callbackPayload({ data: `autocomment:${CANDIDATE_ID}:OOT` }),
+  });
+
+  assert.deepEqual(callbackResponder.edited, [{
+    chatId: 555, messageId: 999,
+    text: `${ORIGINAL_NOTIFICATION_TEXT}\n\n🚫 Ditandai OOT (di luar topik). Tidak ada komentar yang dikirim.`,
+  }]);
+});
+
+test("a callback whose message carries no text falls back to just the outcome", async (t) => {
+  const { app, autoComments, callbackResponder } = harness();
+  t.after(() => app.close());
+  autoComments.owners.set("555", "owner-1");
+  autoComments.candidates.set(CANDIDATE_ID, { userId: "owner-1", status: "PENDING_REVIEW" });
+
+  await app.inject({
+    method: "POST",
+    url: "/v1/telegram/bot/webhook",
+    headers: { "x-telegram-bot-api-secret-token": SECRET },
+    payload: callbackPayload({ data: `autocomment:${CANDIDATE_ID}:OOT`, messageText: "" }),
   });
 
   assert.deepEqual(callbackResponder.edited, [{ chatId: 555, messageId: 999, text: "🚫 Ditandai OOT (di luar topik). Tidak ada komentar yang dikirim." }]);
@@ -178,7 +202,10 @@ test("a callback from someone who never authenticated through the bot never call
 
   assert.equal(response.statusCode, 204);
   assert.equal(autoComments.decideCalls.length, 0);
-  assert.deepEqual(callbackResponder.edited, [{ chatId: 555, messageId: 999, text: "Kandidat tidak ditemukan atau bukan milikmu." }]);
+  assert.deepEqual(callbackResponder.edited, [{
+    chatId: 555, messageId: 999,
+    text: `${ORIGINAL_NOTIFICATION_TEXT}\n\nKandidat tidak ditemukan atau bukan milikmu.`,
+  }]);
 });
 
 test("a re-pressed button after the decision already exists reports it was already decided", async (t) => {
@@ -194,7 +221,10 @@ test("a re-pressed button after the decision already exists reports it was alrea
     payload: callbackPayload({ data: `autocomment:${CANDIDATE_ID}:TEPAT` }),
   });
 
-  assert.deepEqual(callbackResponder.edited, [{ chatId: 555, messageId: 999, text: "Kandidat ini sudah pernah direview sebelumnya." }]);
+  assert.deepEqual(callbackResponder.edited, [{
+    chatId: 555, messageId: 999,
+    text: `${ORIGINAL_NOTIFICATION_TEXT}\n\nKandidat ini sudah pernah direview sebelumnya.`,
+  }]);
 });
 
 test("a malformed callback_data is ignored rather than treated as a decision", async (t) => {

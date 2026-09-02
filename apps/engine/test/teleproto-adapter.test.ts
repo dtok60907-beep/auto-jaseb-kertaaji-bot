@@ -186,6 +186,18 @@ test("sends text without link preview and returns a provider receipt", async () 
   assert.deepEqual(receipt, { providerMessageIds: ["501"], sentAt: "2027-01-15T08:00:00.000Z" });
 });
 
+test("sends a reply as a genuine comment on a channel post when commentToPostId is set", async () => {
+  const { adapter, client } = await ready();
+  await adapter.sendText({ targetRef: "@basewtb", text: "gua ready kak", commentToPostId: "204" });
+  assert.deepEqual(client.sendCalls, [{ entity: "@basewtb", params: { message: "gua ready kak", linkPreview: false, commentTo: 204 } }]);
+});
+
+test("rejects a non-numeric commentToPostId before calling the provider", async () => {
+  const { adapter, client } = await ready();
+  await assert.rejects(() => adapter.sendText({ targetRef: "@basewtb", text: "gua ready kak", commentToPostId: "not-a-number" }), /INVALID_COMMENT_TO_POST_ID/);
+  assert.equal(client.sendCalls.length, 0);
+});
+
 test("native-forwards one source post in exactly one provider call", async () => {
   const source = channel({ username: "VadeMecums" });
   const { adapter, client } = await ready();

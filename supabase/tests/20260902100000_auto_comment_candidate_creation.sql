@@ -48,6 +48,15 @@ select 1 / case when (
 select 1 / case when (select status = 'COMMENT_QUEUED' from public.auto_comment_candidates where division_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb92' and channel_target_id = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeee92') then 1 else 0 end;
 select 1 / case when (select count(*) = 1 from public.workflow_commands where auto_comment_candidate_id in (select id from public.auto_comment_candidates where division_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb92')) then 1 else 0 end;
 
+-- The command payload carries the source channel + matched post id so the
+-- engine can send the reply as an actual comment on that post, not a bare
+-- message into the discussion group.
+select 1 / case when (
+  select payload = jsonb_build_object('text', 'Komentar promo otomatis', 'sourceChannelRef', '@menfess_candidate', 'channelPostId', 'post-1')
+    from public.workflow_commands
+   where auto_comment_candidate_id in (select id from public.auto_comment_candidates where division_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb92')
+) then 1 else 0 end;
+
 -- Re-processing the identical post for the same division is idempotent: no
 -- second candidate or command, even though the matcher might observe it twice.
 select 1 / case when (
