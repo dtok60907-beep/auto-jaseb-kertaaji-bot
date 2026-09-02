@@ -12,6 +12,7 @@ import type {
   AccountSupervisorSummary,
 } from "../account-supervisor/contracts.ts";
 import { startBroadcastShardSupervisor } from "../account-supervisor/service.ts";
+import { PostgresAutoCommentExecutorRepository } from "../auto-comment-executor/postgres-repository.ts";
 import { TelegramAutoCommentNotifier } from "../auto-comment-matcher/notifier.ts";
 import { PostgresAutoCommentMatcherRepository } from "../auto-comment-matcher/postgres-repository.ts";
 import { PostgresAutoCommentPreparationRepository } from "../auto-comment-preparation/postgres-repository.ts";
@@ -167,6 +168,7 @@ export async function startProductionEngineCore(
       autoCommentPreparations: new PostgresAutoCommentPreparationRepository(sql),
       autoCommentMatcher: new PostgresAutoCommentMatcherRepository(sql),
       autoCommentNotifier: new TelegramAutoCommentNotifier({ botToken: config.telegramBotToken() }),
+      autoCommentExecutor: new PostgresAutoCommentExecutorRepository(sql),
       sessionKeyRing: config.sessionKeyRing(),
       adapterFactory: new TeleprotoRuntimeAdapterFactory({
         apiId: config.telegramApiId,

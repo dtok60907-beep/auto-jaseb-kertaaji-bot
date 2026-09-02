@@ -5,6 +5,7 @@ import {
   TelegramAdapterError,
   type TelegramDeliveryAdapter,
 } from "../../../../packages/telegram-contract/src/index.ts";
+import { executeNextAutoComment } from "../auto-comment-executor/service.ts";
 import { checkNextAutoCommentChannel } from "../auto-comment-matcher/service.ts";
 import { prepareNextAutoCommentDiscussion } from "../auto-comment-preparation/service.ts";
 import { executeNextBroadcast } from "../broadcast-executor/service.ts";
@@ -312,6 +313,29 @@ export async function runBroadcastAccount(
             actions,
             execution.retryAfterSeconds,
           );
+        }
+      }
+
+      if (leaseLost) return core("FENCED_OUT", actions, heartbeatError ? "LEASE_HEARTBEAT_FAILED" : "ACCOUNT_LEASE_LOST");
+      if (actions < input.policy.maxActionsPerRun && dependencies.autoCommentExecutor) {
+        const commentExecution = await executeNextAutoComment(activeAdapter, dependencies.autoCommentExecutor, leaseIdentity, {
+          commandLeaseSeconds: input.policy.commandLeaseSeconds,
+        });
+        if (commentExecution.status !== "IDLE") {
+          actions += 1;
+          progressed = true;
+          if (commentExecution.status === "FENCED_OUT") return core("FENCED_OUT", actions, "COMMAND_FENCED");
+          if (commentExecution.status === "SIDE_EFFECT_UNCERTAIN") return core("SIDE_EFFECT_UNCERTAIN", actions, commentExecution.errorCode ?? "TELEGRAM_UNKNOWN");
+          if (commentExecution.errorCode === "SESSION_REVOKED" || commentExecution.errorCode === "SESSION_CONFLICT") {
+            return await persistFailure(new TelegramAdapterError({ code: commentExecution.errorCode, retryable: false }), actions);
+          }
+          if (commentExecution.status === "RETRY_SCHEDULED") {
+            return await persistFailure(
+              new TelegramAdapterError({ code: commentExecution.errorCode === "FLOOD_WAIT" ? "FLOOD_WAIT" : "TELEGRAM_TRANSIENT", retryable: true }),
+              actions,
+              commentExecution.retryAfterSeconds,
+            );
+          }
         }
       }
 

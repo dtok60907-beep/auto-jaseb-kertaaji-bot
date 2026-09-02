@@ -1,5 +1,6 @@
 import type { TelegramSessionKeyRing } from "../../../../packages/telegram-session-crypto/src/index.ts";
 import type { TelegramDeliveryAdapter } from "../../../../packages/telegram-contract/src/index.ts";
+import type { AutoCommentExecutorRepository } from "../auto-comment-executor/repository.ts";
 import type { AutoCommentNotificationResponder } from "../auto-comment-matcher/notifier.ts";
 import type { AutoCommentMatcherRepository } from "../auto-comment-matcher/repository.ts";
 import type { AutoCommentPreparationRepository } from "../auto-comment-preparation/repository.ts";
@@ -64,6 +65,7 @@ export type AccountRunnerDependencies = Readonly<{
   autoCommentPreparations?: AutoCommentPreparationRepository;
   autoCommentMatcher?: AutoCommentMatcherRepository;
   autoCommentNotifier?: AutoCommentNotificationResponder;
+  autoCommentExecutor?: AutoCommentExecutorRepository;
   sessionKeyRing: Pick<TelegramSessionKeyRing, "decrypt">;
   adapterFactory: TelegramRuntimeAdapterFactory;
   scheduler: RuntimeRepeatingTaskScheduler;

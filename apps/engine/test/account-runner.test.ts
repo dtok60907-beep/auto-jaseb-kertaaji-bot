@@ -21,6 +21,10 @@ import { runBroadcastAccount } from "../src/account-runner/service.ts";
 import { SerialRuntimeRepeatingTaskScheduler } from "../src/account-runner/serial-scheduler.ts";
 import { TeleprotoRuntimeAdapterFactory } from "../src/account-runner/teleproto-factory.ts";
 import type {
+  AutoCommentExecutorRepository,
+  ClaimedAutoCommentCommand,
+} from "../src/auto-comment-executor/repository.ts";
+import type {
   AutoCommentMatcherRepository,
   ClaimedAutoCommentMonitoringTarget,
 } from "../src/auto-comment-matcher/repository.ts";
@@ -204,6 +208,22 @@ class FakeAutoCommentMatcherRepository implements AutoCommentMatcherRepository {
   async recordNotification() {}
 }
 
+class FakeAutoCommentExecutorRepository implements AutoCommentExecutorRepository {
+  claims: Array<ClaimedAutoCommentCommand | null> = [null];
+  claimCalls = 0;
+  finishResult = true;
+  finishes: Array<Parameters<AutoCommentExecutorRepository["finish"]>[0]> = [];
+
+  async claimNext() {
+    this.claimCalls += 1;
+    return this.claims.length ? this.claims.shift() ?? null : null;
+  }
+  async finish(input: Parameters<AutoCommentExecutorRepository["finish"]>[0]) {
+    this.finishes.push(input);
+    return this.finishResult;
+  }
+}
+
 function command(id: string): ClaimedBroadcastCommand {
   return Object.freeze({
     id,
@@ -301,6 +321,7 @@ class FakeAdapterFactory implements TelegramRuntimeAdapterFactory {
 function harness(input: Readonly<{
   autoCommentPreparations?: FakeAutoCommentPreparationRepository;
   autoCommentMatcher?: FakeAutoCommentMatcherRepository;
+  autoCommentExecutor?: FakeAutoCommentExecutorRepository;
 }> = {}) {
   const runtimeAccounts = new FakeRuntimeRepository();
   const accountLeases = new FakeLeaseRepository();
@@ -310,6 +331,7 @@ function harness(input: Readonly<{
   const scheduler = new ManualScheduler();
   const autoCommentPreparations = input.autoCommentPreparations;
   const autoCommentMatcher = input.autoCommentMatcher;
+  const autoCommentExecutor = input.autoCommentExecutor;
   let decryptCalls = 0;
   const sessionKeyRing = {
     decrypt(context: unknown, encrypted: unknown) {
@@ -329,6 +351,7 @@ function harness(input: Readonly<{
     scheduler,
     ...(autoCommentPreparations ? { autoCommentPreparations } : {}),
     ...(autoCommentMatcher ? { autoCommentMatcher } : {}),
+    ...(autoCommentExecutor ? { autoCommentExecutor } : {}),
   };
   return {
     dependencies,
@@ -340,6 +363,7 @@ function harness(input: Readonly<{
     scheduler,
     autoCommentPreparations,
     autoCommentMatcher,
+    autoCommentExecutor,
     decryptCalls: () => decryptCalls,
   };
 }
@@ -486,6 +510,46 @@ test("auto-comment channel monitoring only runs once broadcast and discussion-pr
 });
 
 test("broadcast dependencies alone (no autoCommentMatcher) behave exactly as before", async () => {
+  const context = harness();
+  const result = await run(context);
+  assert.equal(result.status, "DRAINED");
+  assert.equal(result.actions, 0);
+});
+
+test("a queued auto-comment reply sends immediately, ahead of auto-comment preparation/monitoring, no interval", async () => {
+  const autoCommentExecutor = new FakeAutoCommentExecutorRepository();
+  autoCommentExecutor.claims = [{
+    id: "comment-command-1",
+    operationId: "comment-operation-1",
+    accountId: account.accountId,
+    kind: "COMMENT_TEXT",
+    targetRef: "@discussion",
+    payload: { text: "gua ready kak pc aja" },
+    attemptCount: 1,
+    fencingToken: 7n,
+    leaseUntil: "2030-01-01T00:01:00.000Z",
+  }, null];
+  const autoCommentMatcher = new FakeAutoCommentMatcherRepository();
+  const context = harness({ autoCommentExecutor, autoCommentMatcher });
+
+  const result = await run(context);
+  assert.deepEqual(result, {
+    accountId: account.accountId,
+    status: "DRAINED",
+    actions: 1,
+    errorCode: null,
+    disconnected: true,
+    leaseReleased: true,
+    cleanupErrorCodes: [],
+  });
+  assert.equal(autoCommentExecutor.claimCalls, 2);
+  assert.deepEqual(autoCommentExecutor.finishes[0]?.outcome, { status: "SUCCEEDED", receipt: { providerMessageIds: ["101"], sentAt: "2030-01-01T00:00:01.000Z" } });
+  // The reply sends on the first drain pass, ahead of the lower-priority matcher, which
+  // only gets a turn once the executor has nothing left this iteration.
+  assert.equal(autoCommentMatcher.claimCalls, 1);
+});
+
+test("broadcast dependencies alone (no autoCommentExecutor) behave exactly as before", async () => {
   const context = harness();
   const result = await run(context);
   assert.equal(result.status, "DRAINED");
