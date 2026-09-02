@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   ApiError,
@@ -103,22 +103,54 @@ export function AutoCommentPanel({ token }: { token: string }) {
     });
   };
 
+  // Marking the clicked row's own button `disabled` (below) can itself remove
+  // that button from focus immediately, before the request even resolves --
+  // the browser then resets focus to <body>, and some mobile WebViews scroll
+  // the nearest scrollable ancestor back toward the top when that happens.
+  // Capture position before that can happen and restore it once settled.
   const withBusy = useCallback(async (id: string, action: () => Promise<void>) => {
+    const scrollContainer = document.querySelector<HTMLElement>(".tab-scroll");
+    const preservedScrollTop = scrollContainer?.scrollTop ?? null;
     setBusy((current) => new Set(current).add(id));
     setPageError(null);
     try { await action(); }
     catch (cause) { setPageError(autoCommentErrorLabel(cause)); }
-    finally { setBusy((current) => { const next = new Set(current); next.delete(id); return next; }); }
+    finally {
+      setBusy((current) => { const next = new Set(current); next.delete(id); return next; });
+      if (preservedScrollTop !== null) {
+        requestAnimationFrame(() => { if (scrollContainer) scrollContainer.scrollTop = preservedScrollTop; });
+      }
+    }
   }, []);
 
+  // Only the very first load shows the full skeleton. Every later call to
+  // load() (after adding/removing a keyword, template, division, ...) is a
+  // background refresh of already-visible content -- swapping the whole
+  // panel out for a skeleton on each one would collapse the page's scroll
+  // height for a moment and throw the user's scroll position back to the top.
+  const hasLoadedOnce = useRef(false);
   const load = useCallback(async () => {
-    setLoading(true); setPageError(null);
+    // Removing the row a user just acted on (a keyword chip, a template, ...)
+    // removes the DOM node that currently holds focus. The browser then
+    // resets focus to <body>, and some mobile WebViews scroll the nearest
+    // scrollable ancestor back toward the top when that happens. Restore
+    // wherever the user actually was once the refreshed content has painted.
+    const scrollContainer = document.querySelector<HTMLElement>(".tab-scroll");
+    const preservedScrollTop = scrollContainer?.scrollTop ?? null;
+    if (!hasLoadedOnce.current) setLoading(true);
+    setPageError(null);
     try {
       const loaded = await getAutoCommentSettings(token);
       setSettings(loaded);
       setAccountId((current) => (loaded.accounts.some((account) => account.id === current) ? current : loaded.accounts[0]?.id ?? ""));
+      hasLoadedOnce.current = true;
     } catch (cause) { setPageError(autoCommentErrorLabel(cause)); }
-    finally { setLoading(false); }
+    finally {
+      setLoading(false);
+      if (preservedScrollTop !== null) {
+        requestAnimationFrame(() => { if (scrollContainer) scrollContainer.scrollTop = preservedScrollTop; });
+      }
+    }
   }, [token]);
 
   useEffect(() => { void load(); }, [load]);

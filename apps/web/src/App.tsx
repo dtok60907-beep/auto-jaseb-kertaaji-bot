@@ -506,25 +506,27 @@ export default function App() {
         <div className="wordmark"><span className="wordmark-dot" aria-hidden="true" />kertaaji</div>
         <span className="user-mode">Userbot</span>
       </header>
-      <div className="tab-panel" hidden={activeTab !== "ACCOUNTS"}>
-        <section className="content-section" aria-labelledby="accounts-heading">
-          <div className="section-heading">
-            <h1 id="accounts-heading">Akun Telegram</h1>
-            <button className="button button--primary" type="button" onClick={() => setConnectOpen(true)}>Tambah akun</button>
-          </div>
-          {pageError && <div className="notice notice--error" role="alert"><span>{pageError}</span><button className="text-button" type="button" onClick={() => setPageError(null)}>Tutup</button></div>}
-          {loadingAccounts ? <div className="account-grid" aria-busy="true"><div className="account-skeleton" /><div className="account-skeleton" /></div> : accounts.length === 0 ? (
-            <div className="empty-card"><h2>Belum ada akun</h2></div>
-          ) : (
-            <div className="account-grid">{accounts.map((account) => <AccountCard key={account.id} account={account} action={action} onSwitch={(item) => void runAccountAction("SWITCH", item)} onDetach={() => void runAccountAction("DETACH")} onLogout={setLogoutAccount} />)}</div>
-          )}
-        </section>
-      </div>
-      <div className="tab-panel" hidden={activeTab !== "JASEB"}>
-        <JasebPanel token={session.accessToken} />
-      </div>
-      <div className="tab-panel" hidden={activeTab !== "AUTO_COMMENT"}>
-        <AutoCommentPanel token={session.accessToken} />
+      <div className="tab-scroll">
+        <div className="tab-panel" hidden={activeTab !== "ACCOUNTS"}>
+          <section className="content-section" aria-labelledby="accounts-heading">
+            <div className="section-heading">
+              <h1 id="accounts-heading">Akun Telegram</h1>
+              <button className="button button--primary" type="button" onClick={() => setConnectOpen(true)}>Tambah akun</button>
+            </div>
+            {pageError && <div className="notice notice--error" role="alert"><span>{pageError}</span><button className="text-button" type="button" onClick={() => setPageError(null)}>Tutup</button></div>}
+            {loadingAccounts ? <div className="account-grid" aria-busy="true"><div className="account-skeleton" /><div className="account-skeleton" /></div> : accounts.length === 0 ? (
+              <div className="empty-card"><h2>Belum ada akun</h2></div>
+            ) : (
+              <div className="account-grid">{accounts.map((account) => <AccountCard key={account.id} account={account} action={action} onSwitch={(item) => void runAccountAction("SWITCH", item)} onDetach={() => void runAccountAction("DETACH")} onLogout={setLogoutAccount} />)}</div>
+            )}
+          </section>
+        </div>
+        <div className="tab-panel" hidden={activeTab !== "JASEB"}>
+          <JasebPanel token={session.accessToken} />
+        </div>
+        <div className="tab-panel" hidden={activeTab !== "AUTO_COMMENT"}>
+          <AutoCommentPanel token={session.accessToken} />
+        </div>
       </div>
       {connectOpen && <ConnectDialog token={session.accessToken} onClose={() => setConnectOpen(false)} onConnected={() => loadAccounts(session.accessToken)} />}
       {logoutAccount && <LogoutDialog account={logoutAccount} busy={action === "LOGOUT"} onClose={() => { if (!action) setLogoutAccount(null); }} onConfirm={() => void runAccountAction("LOGOUT", logoutAccount)} />}
