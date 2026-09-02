@@ -111,6 +111,60 @@ function statusClass(status: TelegramAccount["status"]): string {
   return `status-dot status-dot--${status.toLowerCase()}`;
 }
 
+type UserTab = "ACCOUNTS" | "JASEB" | "AUTO_COMMENT";
+
+const TAB_ITEMS: ReadonlyArray<{ id: UserTab; label: string; icon: (active: boolean) => React.ReactNode }> = [
+  {
+    id: "ACCOUNTS",
+    label: "Akun",
+    icon: (active) => (
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="12" cy="8.2" r="3.4" stroke="currentColor" strokeWidth={active ? 2.1 : 1.7} />
+        <path d="M4.8 19.4c1.4-3.4 4-5.1 7.2-5.1s5.8 1.7 7.2 5.1" stroke="currentColor" strokeWidth={active ? 2.1 : 1.7} strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
+    id: "JASEB",
+    label: "Jasa Sebar",
+    icon: (active) => (
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M4 12.6 19.4 4.3l-4.7 15.9-4-6-5.2-1.6Z" stroke="currentColor" strokeWidth={active ? 2.1 : 1.7} strokeLinejoin="round" strokeLinecap="round" />
+        <path d="m10.7 14.2 3.8-4.2" stroke="currentColor" strokeWidth={active ? 2.1 : 1.7} strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
+    id: "AUTO_COMMENT",
+    label: "Auto Komen",
+    icon: (active) => (
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M4.5 6.4c0-1.1.9-2 2-2h11c1.1 0 2 .9 2 2v7.4c0 1.1-.9 2-2 2H10l-4 3.4v-3.4H6.5c-1.1 0-2-.9-2-2V6.4Z" stroke="currentColor" strokeWidth={active ? 2.1 : 1.7} strokeLinejoin="round" />
+        <path d="M8.4 9.6h7.2M8.4 12.4h4.6" stroke="currentColor" strokeWidth={active ? 1.9 : 1.5} strokeLinecap="round" />
+      </svg>
+    ),
+  },
+];
+
+function BottomNav({ active, onSelect }: { active: UserTab; onSelect: (tab: UserTab) => void }) {
+  return (
+    <nav className="bottom-nav" aria-label="Menu utama">
+      {TAB_ITEMS.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          className={`bottom-nav__item ${active === item.id ? "bottom-nav__item--active" : ""}`}
+          aria-current={active === item.id ? "page" : undefined}
+          onClick={() => onSelect(item.id)}
+        >
+          {item.icon(active === item.id)}
+          <span>{item.label}</span>
+        </button>
+      ))}
+    </nav>
+  );
+}
+
 function updateFlow(result: AuthorizationResult): AuthFlow | null {
   return result.status === "CONNECTED" ? null : result.flow;
 }
@@ -365,6 +419,7 @@ export default function App() {
   const [action, setAction] = useState<ActionState>(null);
   const [connectOpen, setConnectOpen] = useState(false);
   const [logoutAccount, setLogoutAccount] = useState<TelegramAccount | null>(null);
+  const [activeTab, setActiveTab] = useState<UserTab>("ACCOUNTS");
 
   const loadAccounts = useCallback(async (accessToken: string) => {
     setLoadingAccounts(true); setPageError(null);
@@ -451,22 +506,29 @@ export default function App() {
         <div className="wordmark"><span className="wordmark-dot" aria-hidden="true" />kertaaji</div>
         <span className="user-mode">Userbot</span>
       </header>
-      <section className="content-section" aria-labelledby="accounts-heading">
-        <div className="section-heading">
-          <h1 id="accounts-heading">Akun Telegram</h1>
-          <button className="button button--primary" type="button" onClick={() => setConnectOpen(true)}>Tambah akun</button>
-        </div>
-        {pageError && <div className="notice notice--error" role="alert"><span>{pageError}</span><button className="text-button" type="button" onClick={() => setPageError(null)}>Tutup</button></div>}
-        {loadingAccounts ? <div className="account-grid" aria-busy="true"><div className="account-skeleton" /><div className="account-skeleton" /></div> : accounts.length === 0 ? (
-          <div className="empty-card"><h2>Belum ada akun</h2></div>
-        ) : (
-          <div className="account-grid">{accounts.map((account) => <AccountCard key={account.id} account={account} action={action} onSwitch={(item) => void runAccountAction("SWITCH", item)} onDetach={() => void runAccountAction("DETACH")} onLogout={setLogoutAccount} />)}</div>
-        )}
-      </section>
-      <JasebPanel token={session.accessToken} />
-      <AutoCommentPanel token={session.accessToken} />
+      <div className="tab-panel" hidden={activeTab !== "ACCOUNTS"}>
+        <section className="content-section" aria-labelledby="accounts-heading">
+          <div className="section-heading">
+            <h1 id="accounts-heading">Akun Telegram</h1>
+            <button className="button button--primary" type="button" onClick={() => setConnectOpen(true)}>Tambah akun</button>
+          </div>
+          {pageError && <div className="notice notice--error" role="alert"><span>{pageError}</span><button className="text-button" type="button" onClick={() => setPageError(null)}>Tutup</button></div>}
+          {loadingAccounts ? <div className="account-grid" aria-busy="true"><div className="account-skeleton" /><div className="account-skeleton" /></div> : accounts.length === 0 ? (
+            <div className="empty-card"><h2>Belum ada akun</h2></div>
+          ) : (
+            <div className="account-grid">{accounts.map((account) => <AccountCard key={account.id} account={account} action={action} onSwitch={(item) => void runAccountAction("SWITCH", item)} onDetach={() => void runAccountAction("DETACH")} onLogout={setLogoutAccount} />)}</div>
+          )}
+        </section>
+      </div>
+      <div className="tab-panel" hidden={activeTab !== "JASEB"}>
+        <JasebPanel token={session.accessToken} />
+      </div>
+      <div className="tab-panel" hidden={activeTab !== "AUTO_COMMENT"}>
+        <AutoCommentPanel token={session.accessToken} />
+      </div>
       {connectOpen && <ConnectDialog token={session.accessToken} onClose={() => setConnectOpen(false)} onConnected={() => loadAccounts(session.accessToken)} />}
       {logoutAccount && <LogoutDialog account={logoutAccount} busy={action === "LOGOUT"} onClose={() => { if (!action) setLogoutAccount(null); }} onConfirm={() => void runAccountAction("LOGOUT", logoutAccount)} />}
+      <BottomNav active={activeTab} onSelect={setActiveTab} />
     </main>
   );
 }
