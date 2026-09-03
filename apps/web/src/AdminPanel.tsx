@@ -30,6 +30,7 @@ import type { AdminUser, BroadcastCampaign, BroadcastLpmTarget, BroadcastMateria
 
 const ADMIN_JASEB_MIN_REPEAT_MINUTES = 5;
 const CANARY_SLOT_LIMIT = 15;
+const PACKAGE_CODE_PATTERN = /^[a-z0-9][a-z0-9_-]{1,63}$/;
 
 type AdminSection = "USERS" | "ADMISSIONS" | "PACKAGES" | "WORKERS";
 
@@ -199,6 +200,10 @@ function PackageDialog({ current, token, onClose, onSaved, onError }: { current:
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!current && !PACKAGE_CODE_PATTERN.test(form.code.trim())) {
+      setFormError("Kode cuma boleh huruf kecil, angka, strip (-), atau underscore (_), tanpa spasi. Contoh: jaseb-otomatis-harian.");
+      return;
+    }
     const value = packageInput(form);
     if (!value) { setFormError("Periksa nama, kode, dan angka paket."); return; }
     setBusy(true); setFormError(null);
@@ -218,7 +223,8 @@ function PackageDialog({ current, token, onClose, onSaved, onError }: { current:
       <section className="modal-card modal-card--admin" role="dialog" aria-modal="true" aria-labelledby="package-title">
         <div className="modal-head"><div><p className="eyebrow">Paket</p><h2 id="package-title">{current ? "Ubah paket" : "Paket baru"}</h2></div><button className="close-button" type="button" onClick={onClose}>Tutup</button></div>
         <form className="stack-form package-form" onSubmit={save}>
-          <label>Kode<input value={form.code} onChange={(event) => field("code", event.target.value)} disabled={current !== null} required /></label>
+          <label>Kode<input value={form.code} onChange={(event) => field("code", event.target.value)} placeholder="jaseb-otomatis-harian" disabled={current !== null} required /></label>
+          {!current && <p className="helper-text">ID unik paket ini, bukan nama tampilan. Huruf kecil, angka, strip/underscore saja, tanpa spasi -- ga bisa diubah lagi setelah disimpan.</p>}
           <label>Nama<input value={form.name} onChange={(event) => field("name", event.target.value)} required /></label>
           <label>Jenis<select value={form.type} onChange={(event) => field("type", event.target.value as ServicePackage["type"])}><option value="USERBOT">Userbot</option><option value="JASEB_WORKER">Jaseb Worker</option></select></label>
           <div className="form-grid"><label>Harga<input inputMode="numeric" value={form.priceIdr} onChange={(event) => field("priceIdr", event.target.value)} required /></label><label>Masa aktif hari<input inputMode="numeric" value={form.durationDays} onChange={(event) => field("durationDays", event.target.value)} required /></label></div>
