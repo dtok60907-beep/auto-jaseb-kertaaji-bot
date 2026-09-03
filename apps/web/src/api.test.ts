@@ -149,6 +149,17 @@ describe("web API client", () => {
     await expect(updateBroadcastLpmTarget("jas_test", "target-1", { telegramTargetRef: "@lain", label: "Grup baru" })).resolves.toMatchObject({ telegramTargetRef: "@lain" });
   });
 
+  it("deactivates an LPM target instead of deleting it, for the multi-target list", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe("PUT");
+      expect(JSON.parse(String(init?.body))).toEqual({ telegramTargetRef: "@lpm_dua", label: null, active: false });
+      return new Response(JSON.stringify({ target: { id: "target-2", telegramTargetRef: "@lpm_dua", label: null, active: false } }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(updateBroadcastLpmTarget("jas_test", "target-2", { telegramTargetRef: "@lpm_dua", label: null, active: false })).resolves.toMatchObject({ active: false });
+  });
+
   it("creates and reads a broadcast operation", async () => {
     const operation = {
       id: "operation-1", accountId: "account-1", accountMode: "USERBOT", status: "READY", intervalSeconds: 30,

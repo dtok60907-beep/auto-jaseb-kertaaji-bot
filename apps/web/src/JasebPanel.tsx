@@ -94,11 +94,16 @@ function materialSummary(material: BroadcastMaterial): string {
   return `forward dari ${material.source.canonicalLink}`;
 }
 
+function targetSummary(targets: readonly BroadcastLpmTarget[]): string {
+  const labels = targets.map((item) => item.label ?? item.telegramTargetRef);
+  return labels.length <= 3 ? labels.join(", ") : `${labels.slice(0, 3).join(", ")}, dan ${labels.length - 3} lainnya`;
+}
+
 export function JasebPanel({ token }: { token: string }) {
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
   const [material, setMaterial] = useState<BroadcastMaterial | null>(null);
-  const [target, setTarget] = useState<BroadcastLpmTarget | null>(null);
+  const [targets, setTargets] = useState<readonly BroadcastLpmTarget[]>([]);
   const [accountMode, setAccountMode] = useState<"JASEB_WORKER" | "USERBOT" | null>(null);
   const [materialKindChoice, setMaterialKindChoice] = useState<"TEXT" | "FORWARD" | null>(null);
   const [editingMaterial, setEditingMaterial] = useState(false);
@@ -107,9 +112,11 @@ export function JasebPanel({ token }: { token: string }) {
   const [forwardShowSource, setForwardShowSource] = useState(true);
   const [targetRef, setTargetRef] = useState("");
   const [targetLabel, setTargetLabel] = useState("");
-  const [editingTarget, setEditingTarget] = useState(false);
+  const [targetFormOpen, setTargetFormOpen] = useState(false);
+  const [editingTarget, setEditingTarget] = useState<BroadcastLpmTarget | null>(null);
   const [creatingMaterial, setCreatingMaterial] = useState(false);
-  const [creatingTarget, setCreatingTarget] = useState(false);
+  const [savingTarget, setSavingTarget] = useState(false);
+  const [targetBusy, setTargetBusy] = useState<string | null>(null);
   const [launching, setLaunching] = useState(false);
   const [operation, setOperation] = useState<BroadcastOperation | null>(null);
   const pollTimer = useRef<number | null>(null);
@@ -136,7 +143,7 @@ export function JasebPanel({ token }: { token: string }) {
         getBroadcastHistory(token),
       ]);
       setMaterial(settings.materials.find((item) => item.active) ?? null);
-      setTarget(settings.lpmTargets.find((item) => item.active) ?? null);
+      setTargets(settings.lpmTargets.filter((item) => item.active));
       setAccountMode(settings.accountMode);
       setCampaign(currentCampaign);
       setHistory(historyPage.entries);
@@ -257,37 +264,44 @@ export function JasebPanel({ token }: { token: string }) {
     finally { setCreatingMaterial(false); }
   };
 
-  const openTargetEditor = () => {
-    if (!target) return;
-    setTargetRef(target.telegramTargetRef);
-    setTargetLabel(target.label ?? "");
-    setEditingTarget(true);
-  };
-
-  const cancelTargetEdit = () => { setEditingTarget(false); };
+  const openAddTarget = () => { setEditingTarget(null); setTargetRef(""); setTargetLabel(""); setTargetFormOpen(true); };
+  const openEditTarget = (item: BroadcastLpmTarget) => { setEditingTarget(item); setTargetRef(item.telegramTargetRef); setTargetLabel(item.label ?? ""); setTargetFormOpen(true); };
+  const cancelTargetForm = () => { setTargetFormOpen(false); setEditingTarget(null); };
 
   const submitTarget = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setCreatingTarget(true); setPageError(null);
+    setSavingTarget(true); setPageError(null);
     const input = { telegramTargetRef: targetRef.trim(), label: targetLabel.trim() || null };
     try {
-      const saved = editingTarget && target
-        ? await updateBroadcastLpmTarget(token, target.id, input)
+      const saved = editingTarget
+        ? await updateBroadcastLpmTarget(token, editingTarget.id, input)
         : await createBroadcastLpmTarget(token, input);
-      setTarget(saved);
-      setEditingTarget(false);
+      setTargets((current) => {
+        const exists = current.some((item) => item.id === saved.id);
+        return exists ? current.map((item) => (item.id === saved.id ? saved : item)) : [...current, saved];
+      });
+      setTargetFormOpen(false); setEditingTarget(null);
     } catch (cause) { setPageError(jasebErrorLabel(cause)); }
-    finally { setCreatingTarget(false); }
+    finally { setSavingTarget(false); }
+  };
+
+  const deactivateTarget = async (item: BroadcastLpmTarget) => {
+    setTargetBusy(item.id); setPageError(null);
+    try {
+      await updateBroadcastLpmTarget(token, item.id, { telegramTargetRef: item.telegramTargetRef, label: item.label, active: false });
+      setTargets((current) => current.filter((existing) => existing.id !== item.id));
+    } catch (cause) { setPageError(jasebErrorLabel(cause)); }
+    finally { setTargetBusy(null); }
   };
 
   const launchOnce = async () => {
-    if (!material || !target || !accountMode || launching) return;
+    if (!material || targets.length === 0 || !accountMode || launching) return;
     setLaunching(true); setPageError(null);
     try {
       const created = await createBroadcastOperation(token, {
         accountMode,
         materialId: material.id,
-        targetIds: [target.id],
+        targetIds: targets.map((item) => item.id),
         idempotencyKey: newIdempotencyKey(),
       });
       setOperation(created.operation);
@@ -304,7 +318,7 @@ export function JasebPanel({ token }: { token: string }) {
 
   const startRepeat = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!material || !target || !accountMode || startingCampaign) return;
+    if (!material || targets.length === 0 || !accountMode || startingCampaign) return;
     const minutes = Number(repeatMinutes);
     setStartingCampaign(true); setPageError(null);
     try {
@@ -314,7 +328,7 @@ export function JasebPanel({ token }: { token: string }) {
       const created = await createBroadcastCampaign(token, {
         accountMode,
         materialId: material.id,
-        targetIds: [target.id],
+        targetIds: targets.map((item) => item.id),
         intervalSeconds: minutes * 60,
       });
       setCampaign(created);
@@ -430,23 +444,49 @@ export function JasebPanel({ token }: { token: string }) {
         </form>
       )}
 
-      {material && !editingMaterial && (!target || editingTarget) && (
-        <form className="stack-form" onSubmit={submitTarget}>
-          <label htmlFor="jaseb-target-ref">Target Grup LPM (username/link Telegram)</label>
-          <input
-            id="jaseb-target-ref"
-            value={targetRef}
-            onChange={(event) => setTargetRef(event.target.value)}
-            placeholder="@nama_grup atau https://t.me/nama_grup"
-            required
-          />
-          <label htmlFor="jaseb-target-label">Label (opsional)</label>
-          <input id="jaseb-target-label" value={targetLabel} onChange={(event) => setTargetLabel(event.target.value)} placeholder="Contoh: Grup utama" />
-          {editingTarget && <button className="button button--ghost" type="button" onClick={cancelTargetEdit} disabled={creatingTarget}>Batal</button>}
-          <button className="button button--primary button--wide" type="submit" disabled={creatingTarget || !targetRef.trim()}>
-            {creatingTarget ? "Menyimpan target" : "Simpan target"}
-          </button>
-        </form>
+      {material && !editingMaterial && (
+        <div className="stack-form" style={{ marginBottom: 18 }}>
+          <div className="section-heading" style={{ marginBottom: 8 }}>
+            <h3>Target Grup LPM</h3>
+            {!targetFormOpen && <button className="button button--ghost" type="button" onClick={openAddTarget}>+ Tambah Grup</button>}
+          </div>
+          {targets.length === 0 && !targetFormOpen && <p className="helper-text">Belum ada target. Tambahkan minimal satu grup buat mulai sebar.</p>}
+          {targets.length > 0 && (
+            <div className="entitlement-list">
+              {targets.map((item) => (
+                <article key={item.id} className="entitlement-row">
+                  <div><strong>{item.label ?? item.telegramTargetRef}</strong>{item.label && <span>{item.telegramTargetRef}</span>}</div>
+                  <div className="entitlement-actions">
+                    <button className="button button--ghost" type="button" onClick={() => openEditTarget(item)} disabled={targetBusy === item.id}>Ubah</button>
+                    <button className="button button--danger-ghost" type="button" onClick={() => void deactivateTarget(item)} disabled={targetBusy === item.id}>
+                      {targetBusy === item.id ? "Menghapus" : "Hapus"}
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+          {targetFormOpen && (
+            <form className="stack-form" onSubmit={submitTarget}>
+              <label htmlFor="jaseb-target-ref">{editingTarget ? "Ubah target" : "Tambah target"} (username/link Telegram)</label>
+              <input
+                id="jaseb-target-ref"
+                value={targetRef}
+                onChange={(event) => setTargetRef(event.target.value)}
+                placeholder="@nama_grup atau https://t.me/nama_grup"
+                required
+              />
+              <label htmlFor="jaseb-target-label">Label (opsional)</label>
+              <input id="jaseb-target-label" value={targetLabel} onChange={(event) => setTargetLabel(event.target.value)} placeholder="Contoh: Grup utama" />
+              <div className="account-card__actions">
+                <button className="button button--ghost" type="button" onClick={cancelTargetForm} disabled={savingTarget}>Batal</button>
+                <button className="button button--primary" type="submit" disabled={savingTarget || !targetRef.trim()}>
+                  {savingTarget ? "Menyimpan" : "Simpan target"}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
       )}
 
       {campaign?.status === "STOPPED" && campaign.errorCode && dismissedStoppedCampaignId !== campaign.id && (
@@ -456,12 +496,12 @@ export function JasebPanel({ token }: { token: string }) {
         </div>
       )}
 
-      {material && target && campaign?.status === "ACTIVE" && !repeatFormOpen && !editingMaterial && !editingTarget && (
+      {material && targets.length > 0 && campaign?.status === "ACTIVE" && !repeatFormOpen && !editingMaterial && !targetFormOpen && (
         <div className="empty-card empty-card--status empty-card--active">
           <div>
             <div className="status-card__title"><h3>Berjalan otomatis</h3><span className="admin-badge">Aktif</span></div>
             <p>
-              Mengirim {materialSummary(material)} ke {target.label ?? target.telegramTargetRef} tiap {Math.round(campaign.intervalSeconds / 60)} menit.
+              Mengirim {materialSummary(material)} ke {targetSummary(targets)} tiap {Math.round(campaign.intervalSeconds / 60)} menit.
               {campaign.lastCycleAt ? ` Terakhir: ${formatDateTime(campaign.lastCycleAt)}.` : ""}
             </p>
           </div>
@@ -476,18 +516,15 @@ export function JasebPanel({ token }: { token: string }) {
         </div>
       )}
 
-      {material && target && campaign?.status !== "ACTIVE" && !repeatFormOpen && !editingMaterial && !editingTarget && (
+      {material && targets.length > 0 && campaign?.status !== "ACTIVE" && !repeatFormOpen && !editingMaterial && !targetFormOpen && (
         <div className="empty-card empty-card--status">
           <div>
             <div className="status-card__title"><h3>Siap disebar</h3><span className="admin-badge admin-badge--info">Siap</span></div>
-            <p>Kirim {materialSummary(material)} ke {target.label ?? target.telegramTargetRef}.</p>
+            <p>Kirim {materialSummary(material)} ke {targetSummary(targets)}.</p>
           </div>
           <div className="account-card__actions">
             <button className="button button--ghost" type="button" onClick={openMaterialEditor} disabled={launching}>
               Ganti Materi
-            </button>
-            <button className="button button--ghost" type="button" onClick={openTargetEditor} disabled={launching}>
-              Ganti Target
             </button>
             <button className="button button--ghost" type="button" onClick={() => { setRepeatMinutes(String(MINIMUM_REPEAT_MINUTES)); setRepeatFormOpen(true); }} disabled={launching}>
               Sebar Otomatis
@@ -504,7 +541,7 @@ export function JasebPanel({ token }: { token: string }) {
         </div>
       )}
 
-      {material && target && repeatFormOpen && (
+      {material && targets.length > 0 && repeatFormOpen && (
         <form className="stack-form" onSubmit={startRepeat}>
           <label htmlFor="jaseb-repeat-minutes">Ulangi tiap berapa menit</label>
           <input

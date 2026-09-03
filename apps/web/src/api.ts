@@ -305,11 +305,11 @@ export async function createBroadcastLpmTarget(
 }
 
 export async function updateBroadcastLpmTarget(
-  token: string, targetId: string, target: Readonly<{ telegramTargetRef: string; label: string | null }>,
+  token: string, targetId: string, target: Readonly<{ telegramTargetRef: string; label: string | null; active?: boolean }>,
 ): Promise<BroadcastLpmTarget> {
   const result = await request<{ target: BroadcastLpmTarget }>(`/v1/broadcast/lpm-targets/${targetId}`, {
     method: "PUT",
-    body: JSON.stringify({ ...target, active: true }),
+    body: JSON.stringify({ telegramTargetRef: target.telegramTargetRef, label: target.label, active: target.active ?? true }),
   }, token);
   return result.target;
 }
@@ -325,11 +325,11 @@ export async function createAdminBroadcastLpmTarget(
 }
 
 export async function updateAdminBroadcastLpmTarget(
-  token: string, userId: string, targetId: string, target: Readonly<{ telegramTargetRef: string; label: string | null }>,
+  token: string, userId: string, targetId: string, target: Readonly<{ telegramTargetRef: string; label: string | null; active?: boolean }>,
 ): Promise<BroadcastLpmTarget> {
   const result = await request<{ target: BroadcastLpmTarget }>(`/v1/admin/users/${userId}/broadcast/lpm-targets/${targetId}`, {
     method: "PUT",
-    body: JSON.stringify({ ...target, active: true }),
+    body: JSON.stringify({ telegramTargetRef: target.telegramTargetRef, label: target.label, active: target.active ?? true }),
   }, token);
   return result.target;
 }
