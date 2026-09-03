@@ -29,6 +29,11 @@ import {
   startDataRetentionScheduler,
   type DataRetentionSchedulerHandle,
 } from "../data-retention/scheduler.ts";
+import {
+  PostgresEntitlementExpirySource,
+  startEntitlementExpiryScheduler,
+  type EntitlementExpirySchedulerHandle,
+} from "../entitlement-expiry/scheduler.ts";
 import { PostgresBroadcastRuntimeAccountRepository } from "../runtime-accounts/postgres-repository.ts";
 import { PostgresRuntimeAccountLeaseRepository } from "../runtime-leases/postgres-repository.ts";
 import type { ShardConfig } from "../runtime-sharding/shard.ts";
@@ -64,7 +69,8 @@ export type ProductionEngineStartErrorCode =
   | "ENGINE_COMPOSITION_FAILED"
   | "SUPERVISOR_START_FAILED"
   | "CAMPAIGN_SCHEDULER_START_FAILED"
-  | "DATA_RETENTION_SCHEDULER_START_FAILED";
+  | "DATA_RETENTION_SCHEDULER_START_FAILED"
+  | "ENTITLEMENT_EXPIRY_SCHEDULER_START_FAILED";
 
 export class ProductionEngineStartError extends Error {
   readonly code: ProductionEngineStartErrorCode;
@@ -97,6 +103,7 @@ type SupervisorStarter = (
 
 type CampaignSchedulerStarter = (sql: ReturnType<ProductionDatabase["client"]>) => BroadcastCampaignSchedulerHandle;
 type DataRetentionSchedulerStarter = (sql: ReturnType<ProductionDatabase["client"]>) => DataRetentionSchedulerHandle;
+type EntitlementExpirySchedulerStarter = (sql: ReturnType<ProductionDatabase["client"]>) => EntitlementExpirySchedulerHandle;
 
 export type ProductionEngineCoreFactories = Readonly<{
   openDatabase(config: ProductionEngineConfig): Promise<ProductionDatabase>;
@@ -105,6 +112,7 @@ export type ProductionEngineCoreFactories = Readonly<{
   createInstanceId(): string;
   startCampaignScheduler: CampaignSchedulerStarter;
   startDataRetentionScheduler: DataRetentionSchedulerStarter;
+  startEntitlementExpiryScheduler: EntitlementExpirySchedulerStarter;
 }>;
 
 const defaultFactories: ProductionEngineCoreFactories = Object.freeze({
@@ -118,6 +126,9 @@ const defaultFactories: ProductionEngineCoreFactories = Object.freeze({
   }),
   startDataRetentionScheduler: (sql) => startDataRetentionScheduler({
     source: new PostgresDataRetentionSource(sql),
+  }),
+  startEntitlementExpiryScheduler: (sql) => startEntitlementExpiryScheduler({
+    source: new PostgresEntitlementExpirySource(sql),
   }),
 });
 
@@ -221,6 +232,18 @@ export async function startProductionEngineCore(
     throw new ProductionEngineStartError("DATA_RETENTION_SCHEDULER_START_FAILED", cleanupErrorCodes);
   }
 
+  let entitlementExpiryScheduler: EntitlementExpirySchedulerHandle;
+  try {
+    entitlementExpiryScheduler = factories.startEntitlementExpiryScheduler(database.client());
+  } catch {
+    const cleanupErrorCodes: string[] = [];
+    try { await dataRetentionScheduler.stop(); } catch { cleanupErrorCodes.push("DATA_RETENTION_SCHEDULER_STOP_FAILED"); }
+    try { await campaignScheduler.stop(); } catch { cleanupErrorCodes.push("CAMPAIGN_SCHEDULER_STOP_FAILED"); }
+    try { await supervisor.stop(); } catch { cleanupErrorCodes.push("SUPERVISOR_STOP_FAILED"); }
+    cleanupErrorCodes.push(...await closeAfterFailedStart(database));
+    throw new ProductionEngineStartError("ENTITLEMENT_EXPIRY_SCHEDULER_START_FAILED", cleanupErrorCodes);
+  }
+
   let state: ProductionEngineCoreState = "RUNNING";
   let stopPromise: Promise<ProductionEngineCoreSummary> | null = null;
   const snapshot = (): ProductionEngineCoreSnapshot => Object.freeze({
@@ -235,6 +258,8 @@ export async function startProductionEngineCore(
     state = "STOPPING";
     stopPromise = (async () => {
       const cleanupErrorCodes: string[] = [];
+      try { await entitlementExpiryScheduler.stop(); }
+      catch { cleanupErrorCodes.push("ENTITLEMENT_EXPIRY_SCHEDULER_STOP_FAILED"); }
       try { await dataRetentionScheduler.stop(); }
       catch { cleanupErrorCodes.push("DATA_RETENTION_SCHEDULER_STOP_FAILED"); }
       try { await campaignScheduler.stop(); }
