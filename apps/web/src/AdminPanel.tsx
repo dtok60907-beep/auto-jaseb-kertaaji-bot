@@ -30,7 +30,6 @@ import type { AdminUser, BroadcastCampaign, BroadcastLpmTarget, BroadcastMateria
 
 const ADMIN_JASEB_MIN_REPEAT_MINUTES = 5;
 const CANARY_SLOT_LIMIT = 15;
-const PACKAGE_CODE_PATTERN = /^[a-z0-9][a-z0-9_-]{1,63}$/;
 
 type AdminSection = "USERS" | "ADMISSIONS" | "PACKAGES" | "WORKERS";
 
@@ -41,10 +40,7 @@ type PackageForm = {
   priceIdr: string;
   durationDays: string;
   maxTargetsPerMinute: string;
-  maxAccounts: string;
-  intervalMinSeconds: string;
-  intervalMaxSeconds: string;
-  displayOrder: string;
+  intervalMinMinutes: string;
   active: boolean;
 };
 
@@ -55,12 +51,27 @@ const emptyPackageForm: PackageForm = {
   priceIdr: "0",
   durationDays: "30",
   maxTargetsPerMinute: "1",
-  maxAccounts: "1",
-  intervalMinSeconds: "0",
-  intervalMaxSeconds: "0",
-  displayOrder: "0",
+  intervalMinMinutes: "5",
   active: true,
 };
+
+// Kode, Jumlah akun, Interval maksimum, and Urutan tampil are all either
+// pure internal bookkeeping (an ID admin never needs to read) or fields
+// nothing in the system actually enforces yet -- asking admin to fill them
+// in on every package just invites a confusing, meaningless-looking form.
+// Kode is derived from Nama instead; the rest are fixed constants here.
+const PACKAGE_DEFAULT_MAX_ACCOUNTS = 1;
+// Nothing enforces an upper bound on the auto-repeat interval today, so
+// this only has to stay comfortably above whatever "Jeda minimum" admin
+// picks (computed at save time, see packageInput) -- it never needs to be
+// admin-configurable for that to hold.
+const PACKAGE_INTERVAL_MAX_SECONDS = 604_800;
+const PACKAGE_DEFAULT_DISPLAY_ORDER = 0;
+
+function slugify(value: string): string {
+  const base = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+  return base.length >= 2 ? base : `${base || "paket"}-x`;
+}
 
 const API_ERROR_LABEL: Record<string, string> = {
   NETWORK_UNAVAILABLE: "Koneksi ke server sedang bermasalah.",
@@ -111,27 +122,17 @@ function packageForm(pkg: ServicePackage | null): PackageForm {
     priceIdr: String(pkg.priceIdr),
     durationDays: String(pkg.durationDays),
     maxTargetsPerMinute: String(pkg.maxTargetsPerMinute),
-    maxAccounts: String(pkg.maxAccounts),
-    intervalMinSeconds: String(pkg.intervalMinSeconds),
-    intervalMaxSeconds: String(pkg.intervalMaxSeconds),
-    displayOrder: String(pkg.displayOrder),
+    intervalMinMinutes: String(Math.round(pkg.intervalMinSeconds / 60)),
     active: pkg.active,
   };
 }
 
 function packageInput(form: PackageForm): Required<PackageInput> | null {
-  const numericFields = [
-    form.priceIdr,
-    form.durationDays,
-    form.maxTargetsPerMinute,
-    form.maxAccounts,
-    form.intervalMinSeconds,
-    form.intervalMaxSeconds,
-    form.displayOrder,
-  ].map(Number);
+  const numericFields = [form.priceIdr, form.durationDays, form.maxTargetsPerMinute, form.intervalMinMinutes].map(Number);
   if (!form.code.trim() || !form.name.trim() || numericFields.some((value) => !Number.isInteger(value) || value < 0)) return null;
-  const [priceIdr, durationDays, maxTargetsPerMinute, maxAccounts, intervalMinSeconds, intervalMaxSeconds, displayOrder] = numericFields;
-  if (durationDays <= 0 || maxTargetsPerMinute <= 0 || maxAccounts <= 0 || intervalMinSeconds > intervalMaxSeconds) return null;
+  const [priceIdr, durationDays, maxTargetsPerMinute, intervalMinMinutes] = numericFields;
+  if (durationDays <= 0 || maxTargetsPerMinute <= 0) return null;
+  const intervalMinSeconds = intervalMinMinutes * 60;
   return {
     code: form.code.trim(),
     name: form.name.trim(),
@@ -140,10 +141,10 @@ function packageInput(form: PackageForm): Required<PackageInput> | null {
     durationDays,
     features: form.type === "USERBOT" ? ["JASEB", "AUTO_COMMENT_MF"] : ["JASEB"],
     maxTargetsPerMinute,
-    maxAccounts,
+    maxAccounts: PACKAGE_DEFAULT_MAX_ACCOUNTS,
     intervalMinSeconds,
-    intervalMaxSeconds,
-    displayOrder,
+    intervalMaxSeconds: Math.max(PACKAGE_INTERVAL_MAX_SECONDS, intervalMinSeconds + 3_600),
+    displayOrder: PACKAGE_DEFAULT_DISPLAY_ORDER,
     active: form.active,
   };
 }
@@ -192,25 +193,36 @@ function WorkerCard({ worker, token, onSaved, onError }: { worker: WorkerAccount
   );
 }
 
+// The auto-generated code can collide with an existing package's (e.g. two
+// packages both named "Userbot Tester"); retry once with a short random
+// suffix rather than making admin come up with a different code by hand.
+async function createPackageWithUniqueCode(token: string, value: Required<PackageInput>): Promise<ServicePackage> {
+  try {
+    return await createAdminPackage(token, value);
+  } catch (error) {
+    if (error instanceof ApiError && error.code === "PACKAGE_CODE_EXISTS") {
+      return await createAdminPackage(token, { ...value, code: `${value.code}-${Math.random().toString(36).slice(2, 6)}` });
+    }
+    throw error;
+  }
+}
+
 function PackageDialog({ current, token, onClose, onSaved, onError }: { current: ServicePackage | null; token: string; onClose: () => void; onSaved: (pkg: ServicePackage) => void; onError: (error: unknown) => void }) {
   const [form, setForm] = useState<PackageForm>(() => packageForm(current));
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const field = <K extends keyof PackageForm>(key: K, value: PackageForm[K]) => setForm((previous) => ({ ...previous, [key]: value }));
+  const setName = (name: string) => setForm((previous) => ({ ...previous, name, ...(current ? {} : { code: slugify(name) }) }));
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!current && !PACKAGE_CODE_PATTERN.test(form.code.trim())) {
-      setFormError("Kode cuma boleh huruf kecil, angka, strip (-), atau underscore (_), tanpa spasi. Contoh: jaseb-otomatis-harian.");
-      return;
-    }
     const value = packageInput(form);
-    if (!value) { setFormError("Periksa nama, kode, dan angka paket."); return; }
+    if (!value) { setFormError("Periksa nama dan angka paket."); return; }
     setBusy(true); setFormError(null);
     try {
       const saved = current
         ? await updateAdminPackage(token, current.id, (({ code: _code, ...input }) => input)(value))
-        : await createAdminPackage(token, value);
+        : await createPackageWithUniqueCode(token, value);
       onSaved(saved); onClose();
     } catch (error) {
       setFormError(errorLabel(error)); onError(error);
@@ -223,14 +235,13 @@ function PackageDialog({ current, token, onClose, onSaved, onError }: { current:
       <section className="modal-card modal-card--admin" role="dialog" aria-modal="true" aria-labelledby="package-title">
         <div className="modal-head"><div><p className="eyebrow">Paket</p><h2 id="package-title">{current ? "Ubah paket" : "Paket baru"}</h2></div><button className="close-button" type="button" onClick={onClose}>Tutup</button></div>
         <form className="stack-form package-form" onSubmit={save}>
-          <label>Kode<input value={form.code} onChange={(event) => field("code", event.target.value)} placeholder="jaseb-otomatis-harian" disabled={current !== null} required /></label>
-          {!current && <p className="helper-text">ID unik paket ini, bukan nama tampilan. Huruf kecil, angka, strip/underscore saja, tanpa spasi -- ga bisa diubah lagi setelah disimpan.</p>}
-          <label>Nama<input value={form.name} onChange={(event) => field("name", event.target.value)} required /></label>
-          <label>Jenis<select value={form.type} onChange={(event) => field("type", event.target.value as ServicePackage["type"])}><option value="USERBOT">Userbot</option><option value="JASEB_WORKER">Jaseb Worker</option></select></label>
+          <label>Nama<input value={form.name} onChange={(event) => setName(event.target.value)} required /></label>
+          <p className="helper-text">ID sistem: {form.code || "(otomatis dari nama)"} -- dibuat otomatis, bukan sesuatu yang perlu lo atur.</p>
+          <label>Jenis<select value={form.type} onChange={(event) => field("type", event.target.value as ServicePackage["type"])}><option value="USERBOT">Userbot (Jasa Sebar + Auto Komen MF)</option><option value="JASEB_WORKER">Jaseb Worker (Jasa Sebar saja)</option></select></label>
           <div className="form-grid"><label>Harga<input inputMode="numeric" value={form.priceIdr} onChange={(event) => field("priceIdr", event.target.value)} required /></label><label>Masa aktif hari<input inputMode="numeric" value={form.durationDays} onChange={(event) => field("durationDays", event.target.value)} required /></label></div>
-          <div className="form-grid"><label>Batas target per menit<input inputMode="numeric" value={form.maxTargetsPerMinute} onChange={(event) => field("maxTargetsPerMinute", event.target.value)} required /></label><label>Jumlah akun<input inputMode="numeric" value={form.maxAccounts} onChange={(event) => field("maxAccounts", event.target.value)} required /></label></div>
-          <div className="form-grid"><label>Interval minimum<input inputMode="numeric" value={form.intervalMinSeconds} onChange={(event) => field("intervalMinSeconds", event.target.value)} required /></label><label>Interval maksimum<input inputMode="numeric" value={form.intervalMaxSeconds} onChange={(event) => field("intervalMaxSeconds", event.target.value)} required /></label></div>
-          <label>Urutan tampil<input inputMode="numeric" value={form.displayOrder} onChange={(event) => field("displayOrder", event.target.value)} required /></label>
+          <label>Jumlah target LPM & Channel (default)<input inputMode="numeric" value={form.maxTargetsPerMinute} onChange={(event) => field("maxTargetsPerMinute", event.target.value)} required /></label>
+          <p className="helper-text">Angka default buat "jumlah Grup LPM" dan "jumlah Channel Target Auto Komen" pas lo ngasih akses ke user -- masih bisa lo ubah manual per user pas nge-grant.</p>
+          <label>Jeda minimum sebar otomatis (menit)<input inputMode="numeric" value={form.intervalMinMinutes} onChange={(event) => field("intervalMinMinutes", event.target.value)} required /></label>
           <label className="check-control"><input type="checkbox" checked={form.active} onChange={(event) => field("active", event.target.checked)} />Paket aktif</label>
           {formError && <p className="form-error" role="alert">{formError}</p>}
           <button className="button button--primary button--wide" type="submit" disabled={busy}>{busy ? "Menyimpan" : "Simpan paket"}</button>
@@ -627,7 +638,7 @@ export function AdminPanel({ token, onSessionExpired }: { token: string; onSessi
           ))}</div>
         )}
       </section>}
-      {section === "PACKAGES" && <section className="admin-section"><div className="section-heading"><div><p className="eyebrow">Paket</p><h2>Paket layanan</h2></div><button className="button button--primary" type="button" onClick={() => setEditingPackage(null)}>Paket baru</button></div><div className="admin-card-grid">{loading ? <p className="admin-muted">Memuat paket.</p> : packages.length === 0 ? <p className="admin-muted">Belum ada paket.</p> : packages.map((pkg) => <article className="admin-card" key={pkg.id}><div className="admin-card__head"><div><p className="admin-card__label">{pkg.type === "USERBOT" ? "Userbot" : "Jaseb Worker"}</p><h3>{pkg.name}</h3></div><span className={`admin-badge ${pkg.active ? "" : "admin-badge--disabled"}`}>{pkg.active ? "Aktif" : "Nonaktif"}</span></div><div className="admin-meta"><span>Harga</span><strong>{formatRupiah(pkg.priceIdr)}</strong><span>Masa aktif</span><strong>{pkg.durationDays} hari</strong><span>Jumlah akun</span><strong>{pkg.maxAccounts}</strong></div><button className="button button--ghost" type="button" onClick={() => setEditingPackage(pkg)}>Ubah paket</button></article>)}</div></section>}
+      {section === "PACKAGES" && <section className="admin-section"><div className="section-heading"><div><p className="eyebrow">Paket</p><h2>Paket layanan</h2></div><button className="button button--primary" type="button" onClick={() => setEditingPackage(null)}>Paket baru</button></div><div className="admin-card-grid">{loading ? <p className="admin-muted">Memuat paket.</p> : packages.length === 0 ? <p className="admin-muted">Belum ada paket.</p> : packages.map((pkg) => <article className="admin-card" key={pkg.id}><div className="admin-card__head"><div><p className="admin-card__label">{pkg.type === "USERBOT" ? "Userbot" : "Jaseb Worker"}</p><h3>{pkg.name}</h3></div><span className={`admin-badge ${pkg.active ? "" : "admin-badge--disabled"}`}>{pkg.active ? "Aktif" : "Nonaktif"}</span></div><div className="admin-meta"><span>Harga</span><strong>{formatRupiah(pkg.priceIdr)}</strong><span>Masa aktif</span><strong>{pkg.durationDays} hari</strong><span>Target LPM/Channel</span><strong>{pkg.maxTargetsPerMinute}</strong></div><button className="button button--ghost" type="button" onClick={() => setEditingPackage(pkg)}>Ubah paket</button></article>)}</div></section>}
       {section === "WORKERS" && <section className="admin-section"><div className="section-heading"><div><p className="eyebrow">Akun worker</p><h2>Pengaturan worker</h2></div></div><div className="admin-card-grid">{loading ? <p className="admin-muted">Memuat akun worker.</p> : workers.length === 0 ? <p className="admin-muted">Belum ada akun worker.</p> : workers.map((worker) => <WorkerCard key={worker.id} worker={worker} token={token} onSaved={replaceWorker} onError={handleError} />)}</div></section>}
       {editingPackage !== undefined && <PackageDialog current={editingPackage} token={token} onClose={() => setEditingPackage(undefined)} onSaved={replacePackage} onError={handleError} />}
     </main>
