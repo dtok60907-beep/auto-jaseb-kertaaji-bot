@@ -7,8 +7,6 @@ import type {
   AccountSupervisorDependencies,
   AccountSupervisorHandle,
 } from "../src/account-supervisor/contracts.ts";
-import { TelegramAutoCommentNotifier } from "../src/auto-comment-matcher/notifier.ts";
-import { PostgresAutoCommentMatcherRepository } from "../src/auto-comment-matcher/postgres-repository.ts";
 import { PostgresBroadcastExecutorRepository } from "../src/broadcast-executor/postgres-repository.ts";
 import { PostgresBroadcastPreparationRepository } from "../src/broadcast-preparation/postgres-repository.ts";
 import {
@@ -20,6 +18,8 @@ import { ProductionEngineConfig } from "../src/production/config.ts";
 import type { ProductionDatabase } from "../src/production/postgres-database.ts";
 import { PostgresBroadcastRuntimeAccountRepository } from "../src/runtime-accounts/postgres-repository.ts";
 import { PostgresRuntimeAccountLeaseRepository } from "../src/runtime-leases/postgres-repository.ts";
+import { PostgresCentralMonitorRepository } from "../src/central-monitor/postgres-repository.ts";
+import { TeleprotoCentralMonitorClientFactory } from "../src/central-monitor/telegram-client.ts";
 import { productionEnvironment, supervisorSnapshot, supervisorSummary } from "../test-support/production-fixtures.ts";
 
 const instanceId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
@@ -81,21 +81,36 @@ class FakeSupervisor implements AccountSupervisorHandle {
   }
 }
 
+class FakeCentralMonitor {
+  readonly events: string[];
+  stopCalls = 0;
+  stopError: unknown = null;
+  constructor(events: string[] = []) { this.events = events; }
+  async stop() {
+    this.stopCalls += 1;
+    this.events.push("centralMonitor.stop");
+    if (this.stopError) throw this.stopError;
+  }
+}
+
 test("core probes database and wires one process identity through supervisor and runner", async () => {
   const config = ProductionEngineConfig.fromEnvironment(productionEnvironment());
   const events: string[] = [];
   const database = new FakeDatabase(events);
   const supervisor = new FakeSupervisor(events);
+  const centralMonitor = new FakeCentralMonitor(events);
   const captured: {
     supervisorDependencies: AccountSupervisorDependencies | null;
     supervisorInput: Parameters<ProductionEngineCoreFactories["startSupervisor"]>[1] | null;
     runnerDependencies: Parameters<ProductionEngineCoreFactories["runAccount"]>[0] | null;
     runnerInput: Parameters<ProductionEngineCoreFactories["runAccount"]>[1] | null;
+    centralMonitorDependencies: Parameters<ProductionEngineCoreFactories["startCentralMonitor"]>[0] | null;
   } = {
     supervisorDependencies: null,
     supervisorInput: null,
     runnerDependencies: null,
     runnerInput: null,
+    centralMonitorDependencies: null,
   };
 
   const handle = await startProductionEngineCore(config, { factories: {
@@ -105,6 +120,10 @@ test("core probes database and wires one process identity through supervisor and
       captured.supervisorDependencies = dependencies;
       captured.supervisorInput = input;
       return supervisor;
+    },
+    startCentralMonitor: async (dependencies) => {
+      captured.centralMonitorDependencies = dependencies;
+      return centralMonitor;
     },
     runAccount: async (dependencies, input) => {
       captured.runnerDependencies = dependencies;
@@ -129,20 +148,25 @@ test("core probes database and wires one process identity through supervisor and
   assert.ok(captured.runnerDependencies?.accountLeases instanceof PostgresRuntimeAccountLeaseRepository);
   assert.ok(captured.runnerDependencies?.preparations instanceof PostgresBroadcastPreparationRepository);
   assert.ok(captured.runnerDependencies?.executor instanceof PostgresBroadcastExecutorRepository);
-  assert.ok(captured.runnerDependencies?.autoCommentMatcher instanceof PostgresAutoCommentMatcherRepository);
-  assert.ok(captured.runnerDependencies?.autoCommentNotifier instanceof TelegramAutoCommentNotifier);
+  assert.equal(captured.runnerDependencies?.autoCommentMatcher, undefined);
+  assert.equal(captured.runnerDependencies?.autoCommentNotifier, undefined);
   assert.equal(captured.runnerDependencies?.sessionKeyRing, config.sessionKeyRing());
   assert.equal(captured.runnerDependencies?.adapterFactory.constructor.name, "TeleprotoRuntimeAdapterFactory");
+  assert.ok(captured.centralMonitorDependencies?.repository instanceof PostgresCentralMonitorRepository);
+  assert.ok(captured.centralMonitorDependencies?.accountLeases instanceof PostgresRuntimeAccountLeaseRepository);
+  assert.ok(captured.centralMonitorDependencies?.clientFactory instanceof TeleprotoCentralMonitorClientFactory);
+  assert.equal(captured.centralMonitorDependencies?.sessionKeyRing, config.sessionKeyRing());
 
   const firstStop = handle.stop();
   const secondStop = handle.stop();
   assert.equal(firstStop, secondStop);
   const summary = await firstStop;
-  assert.deepEqual(events, ["database.probe", "supervisor.stop", "database.close"]);
+  assert.deepEqual(events, ["database.probe", "centralMonitor.stop", "supervisor.stop", "database.close"]);
   assert.equal(summary.state, "STOPPED");
   assert.equal(summary.instanceId, instanceId);
   assert.deepEqual(summary.cleanupErrorCodes, []);
   assert.equal(supervisor.stopCalls, 1);
+  assert.equal(centralMonitor.stopCalls, 1);
   assert.equal(database.closeCalls, 1);
 });
 
@@ -195,6 +219,7 @@ test("startup failures roll back opened resources and expose only stable codes",
         openDatabase: async () => database ?? new FakeDatabase(),
         createInstanceId: () => instanceId,
         startSupervisor: async () => new FakeSupervisor(),
+        startCentralMonitor: async () => new FakeCentralMonitor(),
         ...item.factories,
       } });
     } catch (caught) { error = caught; }
@@ -213,14 +238,16 @@ test("core stop closes database even when supervisor stop fails", async () => {
   database.closeError = new Error("raw close detail");
   const supervisor = new FakeSupervisor(events);
   supervisor.stopError = new Error("raw supervisor detail");
+  const centralMonitor = new FakeCentralMonitor(events);
   const handle = await startProductionEngineCore(config, { factories: {
     openDatabase: async () => database,
     createInstanceId: () => instanceId,
     startSupervisor: async () => supervisor,
+    startCentralMonitor: async () => centralMonitor,
   } });
 
   const summary = await handle.stop();
-  assert.deepEqual(events, ["database.probe", "supervisor.stop", "database.close"]);
+  assert.deepEqual(events, ["database.probe", "centralMonitor.stop", "supervisor.stop", "database.close"]);
   assert.deepEqual(summary.cleanupErrorCodes, ["SUPERVISOR_STOP_FAILED", "DATABASE_CLOSE_FAILED"]);
   assert.equal(JSON.stringify(summary).includes("raw"), false);
 });

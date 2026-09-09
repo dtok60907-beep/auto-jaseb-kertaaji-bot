@@ -149,7 +149,7 @@ export class TelegramAuthorizationService {
   }
 
   async #requireSubscription(userId: string): Promise<void> {
-    if (this.#accountType === "JASEB_WORKER") return;
+    if (this.#accountType !== "USERBOT") return;
     const access = resolveEntitlementAccess(await this.#entitlements.list(userId), "AUTO_COMMENT_MF");
     if (!access.ok) throw new TelegramAuthorizationServiceError(access.code);
   }

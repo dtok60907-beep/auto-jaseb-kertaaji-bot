@@ -32,7 +32,7 @@ export type TelegramAccountAuthCompletion = Readonly<{
   version: bigint | null;
 }>;
 
-export type TelegramAccountType = "JASEB_WORKER" | "USERBOT";
+export type TelegramAccountType = "JASEB_WORKER" | "USERBOT" | "MONITOR";
 
 export type TelegramAccountView = Readonly<{
   id: string;

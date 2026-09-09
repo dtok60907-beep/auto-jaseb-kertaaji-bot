@@ -24,7 +24,7 @@ export const TELEGRAM_SESSION_CRYPTO_ERROR_CODES = [
 ] as const;
 
 export type TelegramSessionCryptoErrorCode = (typeof TELEGRAM_SESSION_CRYPTO_ERROR_CODES)[number];
-export type TelegramSessionAccountType = "JASEB_WORKER" | "USERBOT";
+export type TelegramSessionAccountType = "JASEB_WORKER" | "USERBOT" | "MONITOR";
 export type TelegramSessionContext = Readonly<{
   accountId: string;
   accountType: TelegramSessionAccountType;
@@ -87,7 +87,7 @@ function sessionContextData(context: TelegramSessionContext): Readonly<{ account
   if (
     typeof context !== "object" || context === null
     || typeof context.accountId !== "string" || !UUID.test(context.accountId)
-    || (context.accountType !== "JASEB_WORKER" && context.accountType !== "USERBOT")
+    || !["JASEB_WORKER", "USERBOT", "MONITOR"].includes(context.accountType)
   ) fail("SESSION_CONTEXT_INVALID");
   return Object.freeze({ accountId: context.accountId.toLowerCase(), accountType: context.accountType });
 }

@@ -20,6 +20,7 @@ import type {
   CurrentUser,
   Entitlement,
   IssuedSession,
+  MonitorAccount,
   PackageInput,
   ServicePackage,
   TelegramAccount,
@@ -168,6 +169,38 @@ export function submitWorkerTelegramPassword(
 
 export function cancelWorkerTelegramAuthorization(token: string, flow: Pick<AuthFlow, "id" | "version">): Promise<void> {
   return request<void>(`/v1/admin/worker/telegram-auth-flows/${flow.id}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ version: flow.version }),
+  }, token);
+}
+
+export function startMonitorTelegramAuthorization(token: string, phoneNumber: string): Promise<AuthorizationResult> {
+  return request<AuthorizationResult>("/v1/admin/monitor/telegram-auth-flows", {
+    method: "POST",
+    body: JSON.stringify({ phoneNumber }),
+  }, token);
+}
+
+export function submitMonitorTelegramCode(
+  token: string, flow: Pick<AuthFlow, "id" | "version">, code: string,
+): Promise<AuthorizationResult> {
+  return request<AuthorizationResult>(`/v1/admin/monitor/telegram-auth-flows/${flow.id}/code`, {
+    method: "POST",
+    body: JSON.stringify({ version: flow.version, code }),
+  }, token);
+}
+
+export function submitMonitorTelegramPassword(
+  token: string, flow: Pick<AuthFlow, "id" | "version">, password: string,
+): Promise<AuthorizationResult> {
+  return request<AuthorizationResult>(`/v1/admin/monitor/telegram-auth-flows/${flow.id}/password`, {
+    method: "POST",
+    body: JSON.stringify({ version: flow.version, password }),
+  }, token);
+}
+
+export function cancelMonitorTelegramAuthorization(token: string, flow: Pick<AuthFlow, "id" | "version">): Promise<void> {
+  return request<void>(`/v1/admin/monitor/telegram-auth-flows/${flow.id}/cancel`, {
     method: "POST",
     body: JSON.stringify({ version: flow.version }),
   }, token);
@@ -470,6 +503,19 @@ export async function updateWorkerAccount(
     body: JSON.stringify(input),
   }, token);
   return result.worker;
+}
+
+export async function listMonitorAccounts(token: string): Promise<readonly MonitorAccount[]> {
+  const result = await request<{ monitors: readonly MonitorAccount[] }>("/v1/admin/monitor-accounts", {}, token);
+  return result.monitors;
+}
+
+export async function updateMonitorAccount(token: string, accountId: string, active: boolean): Promise<MonitorAccount> {
+  const result = await request<{ monitor: MonitorAccount }>(`/v1/admin/monitor-accounts/${accountId}`, {
+    method: "PUT",
+    body: JSON.stringify({ active }),
+  }, token);
+  return result.monitor;
 }
 
 export async function getAutoCommentSettings(token: string): Promise<AutoCommentSettings> {

@@ -139,6 +139,16 @@ export type WorkerAccount = Readonly<{
   availability: "READY" | "NOT_CONFIGURED" | "DISABLED" | "ACCOUNT_NOT_READY";
 }>;
 
+export type MonitorAccount = Readonly<{
+  id: string;
+  label: string;
+  accountStatus: "DISCONNECTED" | "READY" | "DEGRADED" | "REVOKED" | "DISABLED";
+  active: boolean;
+  sourceCount: number;
+  readySourceCount: number;
+  lastRuntimeErrorCode: string | null;
+}>;
+
 export type ForwardBroadcastSource = Readonly<{
   channelUsername: string;
   messageId: number;

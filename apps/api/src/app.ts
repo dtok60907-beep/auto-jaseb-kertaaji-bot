@@ -41,6 +41,8 @@ import type { TelegramCallbackResponder } from "./telegram-bot/decision-responde
 import type { TelegramStartResponder } from "./telegram-bot/start-responder.ts";
 import { registerPaymentRoutes } from "./http/payment-routes.ts";
 import type { PakasirCheckoutService } from "./payments/service.ts";
+import { registerMonitorAccountRoutes } from "./http/monitor-account-routes.ts";
+import type { MonitorAccountRepository } from "./monitors/repository.ts";
 
 type CommonApiOptions = {
   packages: PackageRepository;
@@ -55,6 +57,8 @@ type CommonApiOptions = {
   telegramSessionIssuer?: TelegramSessionExchange;
   telegramAuthorization?: TelegramAuthorizationUseCase;
   workerTelegramAuthorization?: TelegramAuthorizationUseCase;
+  monitorTelegramAuthorization?: TelegramAuthorizationUseCase;
+  monitors?: MonitorAccountRepository;
   telegramAccounts?: TelegramAccountLifecycleRepository;
   adminUsers?: AdminUserRepository;
   canaryAdmissions?: CanaryOperatorRepository;
@@ -128,6 +132,15 @@ export function createApi(options: ApiOptions) {
       unauthorizedStatus: 403,
     });
   }
+  if (options.monitorTelegramAuthorization) {
+    registerTelegramAccountAuthRoutes(app, {
+      authorization: options.monitorTelegramAuthorization,
+      authorizeActor: authorizeAdmin,
+      routePrefix: "/v1/admin/monitor",
+      unauthorizedCode: "ADMIN_REQUIRED",
+      unauthorizedStatus: 403,
+    });
+  }
   if (options.telegramAccounts && options.userbotProfiles) {
     registerTelegramAccountManagementRoutes(app, {
       accounts: options.telegramAccounts,
@@ -143,6 +156,7 @@ export function createApi(options: ApiOptions) {
   registerEntitlementRoutes(app, { ...options, authorizeAdmin });
   if (options.userbotProfiles) registerUserbotProfileRoutes(app, { profiles: options.userbotProfiles, authorizeUser, authorizeAdmin });
   if (options.workers) registerWorkerAccountRoutes(app, { workers: options.workers, authorizeAdmin });
+  if (options.monitors) registerMonitorAccountRoutes(app, { monitors: options.monitors, authorizeAdmin });
   if (options.broadcastOperations) registerBroadcastOperationRoutes(app, { operations: options.broadcastOperations, authorizeUser });
   if (options.broadcastHistory) registerBroadcastHistoryRoutes(app, { history: options.broadcastHistory, authorizeUser });
   if (options.broadcastCampaigns) registerBroadcastCampaignRoutes(app, { campaigns: options.broadcastCampaigns, authorizeUser, authorizeAdmin });

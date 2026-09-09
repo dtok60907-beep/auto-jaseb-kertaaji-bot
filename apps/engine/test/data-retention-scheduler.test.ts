@@ -23,6 +23,9 @@ class FakeScheduler implements RuntimeRepeatingTaskScheduler {
 
 function pruneResult(overrides: Partial<PruneResult> = {}): PruneResult {
   return Object.freeze({
+    monitorEventsDeleted: 0,
+    autoCommentReviewsDeleted: 0,
+    legacyCommentMatchesDeleted: 0,
     broadcastTargetsDeleted: 0,
     workflowOperationsDeleted: 0,
     autoCommentCandidatesDeleted: 0,
@@ -61,7 +64,7 @@ test("each tick prunes using the configured retention windows", async () => {
   assert.deepEqual(source.calls, [{ broadcastHistoryRetentionSeconds: 259_200, internalRetentionSeconds: 172_800 }]);
 });
 
-test("defaults to a 3-day broadcast history window and a 2-day internal window, ticking hourly", async () => {
+test("defaults to one three-day retention window and ticks hourly", async () => {
   const scheduler = new FakeScheduler();
   const source = new FakeSource();
 
@@ -69,7 +72,7 @@ test("defaults to a 3-day broadcast history window and a 2-day internal window, 
   await scheduler.tick();
 
   assert.equal(scheduler.intervalMilliseconds, 60 * 60 * 1_000);
-  assert.deepEqual(source.calls, [{ broadcastHistoryRetentionSeconds: 3 * 24 * 60 * 60, internalRetentionSeconds: 2 * 24 * 60 * 60 }]);
+  assert.deepEqual(source.calls, [{ broadcastHistoryRetentionSeconds: 3 * 24 * 60 * 60, internalRetentionSeconds: 3 * 24 * 60 * 60 }]);
 });
 
 test("a successful prune reports its result and a failed prune does not throw or stop the loop", async () => {

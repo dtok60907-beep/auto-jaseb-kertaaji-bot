@@ -79,7 +79,7 @@ export function registerTelegramAccountAuthRoutes(
     authorization: TelegramAuthorizationUseCase;
     authorizeUser?: UserAuthorizer;
     authorizeActor?: UserAuthorizer;
-    routePrefix?: "/v1/userbot" | "/v1/admin/worker";
+    routePrefix?: "/v1/userbot" | "/v1/admin/worker" | "/v1/admin/monitor";
     unauthorizedCode?: "USER_REQUIRED" | "ADMIN_REQUIRED";
     unauthorizedStatus?: 401 | 403;
   }>,

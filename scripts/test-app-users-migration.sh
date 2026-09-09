@@ -133,6 +133,10 @@ PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/20260909000000_worker_account_authorization.sql" >/dev/null
 PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/20260909130000_pakasir_checkout.sql" >/dev/null
+PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
+  -f "${PROJECT_ROOT}/supabase/tests/20260910120000_centralized_auto_comment_monitoring.sql" >/dev/null
+PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
+  -f "${PROJECT_ROOT}/supabase/tests/20260910130000_three_day_operational_retention.sql" >/dev/null
 
 (
   cd "${PROJECT_ROOT}/apps/api"
@@ -154,6 +158,8 @@ PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
   F5_DATABASE_URL="postgresql://postgres@127.0.0.1:${PG_TEST_PORT}/app_users_fresh" \
     node --experimental-strip-types --test --test-concurrency=1 \
       test/broadcast-executor-postgres.integration.test.ts \
+      test/central-monitor-postgres.integration.test.ts \
+      test/data-retention-postgres.integration.test.ts \
       test/runtime-accounts-postgres.integration.test.ts
 )
 
@@ -175,6 +181,8 @@ printf '%s\n' \
   'CANARY_SESSION_GATE_UPGRADE_MIGRATION_OK' \
   'PUBLIC_BUYER_ONBOARDING_OK' \
   'PAKASIR_PAYMENT_FULFILLMENT_OK' \
+  'CENTRALIZED_AUTO_COMMENT_MONITORING_OK' \
+  'THREE_DAY_OPERATIONAL_RETENTION_OK' \
   'TELEGRAM_ACCOUNT_LIFECYCLE_FRESH_MIGRATION_OK' \
   'TELEGRAM_ACCOUNT_LIFECYCLE_UPGRADE_MIGRATION_OK' \
   'TELEGRAM_ACCOUNT_AUTH_FLOW_CONCURRENCY_OK' \

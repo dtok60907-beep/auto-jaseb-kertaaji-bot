@@ -14,7 +14,6 @@ import type {
 import { startBroadcastShardSupervisor } from "../account-supervisor/service.ts";
 import { PostgresAutoCommentExecutorRepository } from "../auto-comment-executor/postgres-repository.ts";
 import { TelegramAutoCommentNotifier } from "../auto-comment-matcher/notifier.ts";
-import { PostgresAutoCommentMatcherRepository } from "../auto-comment-matcher/postgres-repository.ts";
 import { PostgresAutoCommentPreparationRepository } from "../auto-comment-preparation/postgres-repository.ts";
 import {
   createPostgresBroadcastCampaignCycleRunner,
@@ -37,6 +36,13 @@ import {
 import { PostgresBroadcastRuntimeAccountRepository } from "../runtime-accounts/postgres-repository.ts";
 import { PostgresRuntimeAccountLeaseRepository } from "../runtime-leases/postgres-repository.ts";
 import type { ShardConfig } from "../runtime-sharding/shard.ts";
+import { PostgresCentralMonitorRepository } from "../central-monitor/postgres-repository.ts";
+import {
+  startCentralAutoCommentMonitor,
+  type CentralMonitorDependencies,
+  type CentralMonitorHandle,
+} from "../central-monitor/service.ts";
+import { TeleprotoCentralMonitorClientFactory } from "../central-monitor/telegram-client.ts";
 import type { ProductionEngineConfig } from "./config.ts";
 import {
   openPostgresProductionDatabase,
@@ -68,6 +74,7 @@ export type ProductionEngineStartErrorCode =
   | "INSTANCE_ID_INVALID"
   | "ENGINE_COMPOSITION_FAILED"
   | "SUPERVISOR_START_FAILED"
+  | "CENTRAL_MONITOR_START_FAILED"
   | "CAMPAIGN_SCHEDULER_START_FAILED"
   | "DATA_RETENTION_SCHEDULER_START_FAILED"
   | "ENTITLEMENT_EXPIRY_SCHEDULER_START_FAILED";
@@ -104,10 +111,15 @@ type SupervisorStarter = (
 type CampaignSchedulerStarter = (sql: ReturnType<ProductionDatabase["client"]>) => BroadcastCampaignSchedulerHandle;
 type DataRetentionSchedulerStarter = (sql: ReturnType<ProductionDatabase["client"]>) => DataRetentionSchedulerHandle;
 type EntitlementExpirySchedulerStarter = (sql: ReturnType<ProductionDatabase["client"]>) => EntitlementExpirySchedulerHandle;
+type CentralMonitorStarter = (
+  dependencies: CentralMonitorDependencies,
+  input: Parameters<typeof startCentralAutoCommentMonitor>[1],
+) => Promise<CentralMonitorHandle>;
 
 export type ProductionEngineCoreFactories = Readonly<{
   openDatabase(config: ProductionEngineConfig): Promise<ProductionDatabase>;
   startSupervisor: SupervisorStarter;
+  startCentralMonitor: CentralMonitorStarter;
   runAccount: typeof runBroadcastAccount;
   createInstanceId(): string;
   startCampaignScheduler: CampaignSchedulerStarter;
@@ -118,6 +130,7 @@ export type ProductionEngineCoreFactories = Readonly<{
 const defaultFactories: ProductionEngineCoreFactories = Object.freeze({
   openDatabase: openPostgresProductionDatabase,
   startSupervisor: startBroadcastShardSupervisor,
+  startCentralMonitor: startCentralAutoCommentMonitor,
   runAccount: runBroadcastAccount,
   createInstanceId: randomUUID,
   startCampaignScheduler: (sql) => startBroadcastCampaignScheduler({
@@ -168,6 +181,7 @@ export async function startProductionEngineCore(
   }
 
   let supervisorDependencies: AccountSupervisorDependencies;
+  let centralMonitorDependencies: CentralMonitorDependencies;
   try {
     const sql = database.client();
     const runtimeAccounts = new PostgresBroadcastRuntimeAccountRepository(sql);
@@ -177,8 +191,6 @@ export async function startProductionEngineCore(
       preparations: new PostgresBroadcastPreparationRepository(sql),
       executor: new PostgresBroadcastExecutorRepository(sql),
       autoCommentPreparations: new PostgresAutoCommentPreparationRepository(sql),
-      autoCommentMatcher: new PostgresAutoCommentMatcherRepository(sql),
-      autoCommentNotifier: new TelegramAutoCommentNotifier({ botToken: config.telegramBotToken() }),
       autoCommentExecutor: new PostgresAutoCommentExecutorRepository(sql),
       sessionKeyRing: config.sessionKeyRing(),
       adapterFactory: new TeleprotoRuntimeAdapterFactory({
@@ -197,6 +209,16 @@ export async function startProductionEngineCore(
         policy: config.runnerPolicy,
       }),
     });
+    centralMonitorDependencies = Object.freeze({
+      repository: new PostgresCentralMonitorRepository(sql),
+      accountLeases: new PostgresRuntimeAccountLeaseRepository(sql),
+      sessionKeyRing: config.sessionKeyRing(),
+      clientFactory: new TeleprotoCentralMonitorClientFactory({
+        apiId: config.telegramApiId,
+        apiHash: config.telegramApiHash(),
+      }),
+      notifier: new TelegramAutoCommentNotifier({ botToken: config.telegramBotToken() }),
+    });
   } catch {
     throw new ProductionEngineStartError("ENGINE_COMPOSITION_FAILED", await closeAfterFailedStart(database));
   }
@@ -211,11 +233,22 @@ export async function startProductionEngineCore(
     throw new ProductionEngineStartError("SUPERVISOR_START_FAILED", await closeAfterFailedStart(database));
   }
 
+  let centralMonitor: CentralMonitorHandle;
+  try {
+    centralMonitor = await factories.startCentralMonitor(centralMonitorDependencies, { instanceId });
+  } catch {
+    const cleanupErrorCodes: string[] = [];
+    try { await supervisor.stop(); } catch { cleanupErrorCodes.push("SUPERVISOR_STOP_FAILED"); }
+    cleanupErrorCodes.push(...await closeAfterFailedStart(database));
+    throw new ProductionEngineStartError("CENTRAL_MONITOR_START_FAILED", cleanupErrorCodes);
+  }
+
   let campaignScheduler: BroadcastCampaignSchedulerHandle;
   try {
     campaignScheduler = factories.startCampaignScheduler(database.client());
   } catch {
     const cleanupErrorCodes: string[] = [];
+    try { await centralMonitor.stop(); } catch { cleanupErrorCodes.push("CENTRAL_MONITOR_STOP_FAILED"); }
     try { await supervisor.stop(); } catch { cleanupErrorCodes.push("SUPERVISOR_STOP_FAILED"); }
     cleanupErrorCodes.push(...await closeAfterFailedStart(database));
     throw new ProductionEngineStartError("CAMPAIGN_SCHEDULER_START_FAILED", cleanupErrorCodes);
@@ -227,6 +260,7 @@ export async function startProductionEngineCore(
   } catch {
     const cleanupErrorCodes: string[] = [];
     try { await campaignScheduler.stop(); } catch { cleanupErrorCodes.push("CAMPAIGN_SCHEDULER_STOP_FAILED"); }
+    try { await centralMonitor.stop(); } catch { cleanupErrorCodes.push("CENTRAL_MONITOR_STOP_FAILED"); }
     try { await supervisor.stop(); } catch { cleanupErrorCodes.push("SUPERVISOR_STOP_FAILED"); }
     cleanupErrorCodes.push(...await closeAfterFailedStart(database));
     throw new ProductionEngineStartError("DATA_RETENTION_SCHEDULER_START_FAILED", cleanupErrorCodes);
@@ -239,6 +273,7 @@ export async function startProductionEngineCore(
     const cleanupErrorCodes: string[] = [];
     try { await dataRetentionScheduler.stop(); } catch { cleanupErrorCodes.push("DATA_RETENTION_SCHEDULER_STOP_FAILED"); }
     try { await campaignScheduler.stop(); } catch { cleanupErrorCodes.push("CAMPAIGN_SCHEDULER_STOP_FAILED"); }
+    try { await centralMonitor.stop(); } catch { cleanupErrorCodes.push("CENTRAL_MONITOR_STOP_FAILED"); }
     try { await supervisor.stop(); } catch { cleanupErrorCodes.push("SUPERVISOR_STOP_FAILED"); }
     cleanupErrorCodes.push(...await closeAfterFailedStart(database));
     throw new ProductionEngineStartError("ENTITLEMENT_EXPIRY_SCHEDULER_START_FAILED", cleanupErrorCodes);
@@ -264,6 +299,8 @@ export async function startProductionEngineCore(
       catch { cleanupErrorCodes.push("DATA_RETENTION_SCHEDULER_STOP_FAILED"); }
       try { await campaignScheduler.stop(); }
       catch { cleanupErrorCodes.push("CAMPAIGN_SCHEDULER_STOP_FAILED"); }
+      try { await centralMonitor.stop(); }
+      catch { cleanupErrorCodes.push("CENTRAL_MONITOR_STOP_FAILED"); }
       let supervisorSummary: AccountSupervisorSummary | null = null;
       try { supervisorSummary = await supervisor.stop(); }
       catch { cleanupErrorCodes.push("SUPERVISOR_STOP_FAILED"); }

@@ -8,6 +8,7 @@ import type {
   TelegramAccountAuthFlowResult,
   TelegramAccountAuthFlowStatus,
   TelegramAccountLifecycleRepository,
+  TelegramAccountType,
 } from "../src/telegram-accounts/repository.ts";
 import {
   TelegramAuthorizationService,
@@ -56,7 +57,7 @@ class FakeAccounts implements TelegramAccountLifecycleRepository {
   encryptionKeyVersion: number | null = null;
   transitions: Array<{ nextStatus: string; errorCode?: string; encryptedState?: Uint8Array }> = [];
   completionCalls = 0;
-  completedAccountType: "JASEB_WORKER" | "USERBOT" | null = null;
+  completedAccountType: TelegramAccountType | null = null;
 
   async beginAuthFlow(): Promise<TelegramAccountAuthFlowResult> {
     return { result: "CREATED", id: FLOW, status: this.status, version: this.version, expiresAt: EXPIRES };

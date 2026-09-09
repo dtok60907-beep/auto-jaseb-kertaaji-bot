@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 
 import {
   ApiError,
+  cancelMonitorTelegramAuthorization,
   cancelWorkerTelegramAuthorization,
   createAdminBroadcastCampaign,
   createAdminBroadcastLpmTarget,
@@ -15,23 +16,28 @@ import {
   listAdminPackages,
   listAdminUsers,
   listEntitlements,
+  listMonitorAccounts,
   listWorkerAccounts,
   revokeEntitlement,
   stopAdminBroadcastCampaign,
+  startMonitorTelegramAuthorization,
   startWorkerTelegramAuthorization,
+  submitMonitorTelegramCode,
+  submitMonitorTelegramPassword,
   submitWorkerTelegramCode,
   submitWorkerTelegramPassword,
   updateAdminBroadcastLpmTarget,
   updateAdminForwardBroadcastMaterial,
   updateAdminPackage,
   updateAdminTextBroadcastMaterial,
+  updateMonitorAccount,
   updateWorkerAccount,
 } from "./api";
-import type { AdminUser, AuthFlow, BroadcastCampaign, BroadcastLpmTarget, BroadcastMaterial, Entitlement, PackageInput, ServicePackage, WorkerAccount } from "./types";
+import type { AdminUser, AuthFlow, BroadcastCampaign, BroadcastLpmTarget, BroadcastMaterial, Entitlement, MonitorAccount, PackageInput, ServicePackage, WorkerAccount } from "./types";
 import { parseTargetInput } from "./target-input";
 
 const ADMIN_JASEB_MIN_REPEAT_MINUTES = 5;
-type AdminSection = "USERS" | "PACKAGES" | "WORKERS";
+type AdminSection = "USERS" | "PACKAGES" | "WORKERS" | "MONITOR";
 
 type PackageForm = {
   code: string;
@@ -168,7 +174,7 @@ function AdminTopbar() {
   );
 }
 
-function WorkerConnectDialog({ token, onClose, onConnected }: { token: string; onClose: () => void; onConnected: () => Promise<void> }) {
+function AdminAccountConnectDialog({ kind, token, onClose, onConnected }: { kind: "WORKER" | "MONITOR"; token: string; onClose: () => void; onConnected: () => Promise<void> }) {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
@@ -184,11 +190,15 @@ function WorkerConnectDialog({ token, onClose, onConnected }: { token: string; o
 
   const expired = flow ? Date.parse(flow.expiresAt) <= now : false;
   const remaining = flow ? Math.max(0, Math.ceil((Date.parse(flow.expiresAt) - now) / 1_000)) : 0;
+  const monitor = kind === "MONITOR";
+  const noun = monitor ? "monitor" : "worker";
   const finish = async () => { await onConnected(); onClose(); };
   const submitPhone = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setBusy(true); setDialogError(null);
     try {
-      const result = await startWorkerTelegramAuthorization(token, phoneNumber);
+      const result = monitor
+        ? await startMonitorTelegramAuthorization(token, phoneNumber)
+        : await startWorkerTelegramAuthorization(token, phoneNumber);
       if (result.status === "CONNECTED") await finish(); else setFlow(result.flow);
     } catch (error) { setDialogError(errorLabel(error)); if (error instanceof ApiError && error.flow) setFlow(error.flow); }
     finally { setBusy(false); }
@@ -196,7 +206,9 @@ function WorkerConnectDialog({ token, onClose, onConnected }: { token: string; o
   const submitCode = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); if (!flow) return; setBusy(true); setDialogError(null);
     try {
-      const result = await submitWorkerTelegramCode(token, flow, code);
+      const result = monitor
+        ? await submitMonitorTelegramCode(token, flow, code)
+        : await submitWorkerTelegramCode(token, flow, code);
       if (result.status === "CONNECTED") await finish(); else { setFlow(result.flow); setCode(""); }
     } catch (error) {
       setDialogError(errorLabel(error));
@@ -207,7 +219,9 @@ function WorkerConnectDialog({ token, onClose, onConnected }: { token: string; o
   const submitPassword = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); if (!flow) return; setBusy(true); setDialogError(null);
     try {
-      const result = await submitWorkerTelegramPassword(token, flow, password);
+      const result = monitor
+        ? await submitMonitorTelegramPassword(token, flow, password)
+        : await submitWorkerTelegramPassword(token, flow, password);
       if (result.status === "CONNECTED") await finish(); else { setFlow(result.flow); setPassword(""); }
     } catch (error) { setDialogError(errorLabel(error)); if (error instanceof ApiError && error.flow) setFlow(error.flow); }
     finally { setBusy(false); }
@@ -215,35 +229,39 @@ function WorkerConnectDialog({ token, onClose, onConnected }: { token: string; o
   const cancel = async () => {
     if (!flow || busy) { onClose(); return; }
     setBusy(true); setDialogError(null);
-    try { await cancelWorkerTelegramAuthorization(token, flow); onClose(); }
+    try {
+      if (monitor) await cancelMonitorTelegramAuthorization(token, flow);
+      else await cancelWorkerTelegramAuthorization(token, flow);
+      onClose();
+    }
     catch (error) { setDialogError(errorLabel(error)); setBusy(false); }
   };
 
   return (
     <div className="modal-layer" role="presentation">
       <div className="modal-backdrop" onClick={() => void cancel()} />
-      <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="worker-connect-title">
-        <div className="modal-head"><div><p className="eyebrow">Akun worker</p><h2 id="worker-connect-title">Hubungkan Telegram</h2></div><button className="close-button" type="button" onClick={() => void cancel()}>Tutup</button></div>
+      <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby={`${noun}-connect-title`}>
+        <div className="modal-head"><div><p className="eyebrow">Akun {noun}</p><h2 id={`${noun}-connect-title`}>Hubungkan Telegram</h2></div><button className="close-button" type="button" onClick={() => void cancel()}>Tutup</button></div>
         {!flow && <form className="stack-form" onSubmit={submitPhone}>
-          <p className="modal-intro">Akun ini disediakan admin dan hanya digunakan untuk Jasa Sebar.</p>
-          <label htmlFor="worker-phone">Nomor telepon</label>
-          <input id="worker-phone" inputMode="tel" autoComplete="tel" placeholder="+62 812 3456 7890" value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value)} required />
+          <p className="modal-intro">{monitor ? "Akun ini membaca posting channel target untuk seluruh pengguna Auto Komen MF." : "Akun ini disediakan admin dan hanya digunakan untuk Jasa Sebar."}</p>
+          <label htmlFor={`${noun}-phone`}>Nomor telepon</label>
+          <input id={`${noun}-phone`} inputMode="tel" autoComplete="tel" placeholder="+62 812 3456 7890" value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value)} required />
           {dialogError && <p className="form-error" role="alert">{dialogError}</p>}
           <button className="button button--primary button--wide" type="submit" disabled={busy}>{busy ? "Meminta kode" : "Kirim kode"}</button>
         </form>}
         {flow?.status === "CODE_REQUIRED" && !expired && <form className="stack-form" onSubmit={submitCode}>
           <div className="step-count"><span>Kode dikirim Telegram</span><strong>{Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, "0")}</strong></div>
-          <label htmlFor="worker-code">Kode Telegram</label>
-          <input id="worker-code" inputMode="numeric" autoComplete="one-time-code" placeholder="12345" value={code} onChange={(event) => setCode(event.target.value)} required />
+          <label htmlFor={`${noun}-code`}>Kode Telegram</label>
+          <input id={`${noun}-code`} inputMode="numeric" autoComplete="one-time-code" placeholder="12345" value={code} onChange={(event) => setCode(event.target.value)} required />
           {dialogError && <p className="form-error" role="alert">{dialogError}</p>}
           <button className="button button--primary button--wide" type="submit" disabled={busy}>{busy ? "Memeriksa kode" : "Lanjutkan"}</button>
         </form>}
         {flow?.status === "PASSWORD_REQUIRED" && !expired && <form className="stack-form" onSubmit={submitPassword}>
           <div className="step-count"><span>Verifikasi 2FA</span><strong>{Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, "0")}</strong></div>
-          <label htmlFor="worker-password">Kata sandi 2FA Telegram</label>
-          <input id="worker-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required />
+          <label htmlFor={`${noun}-password`}>Kata sandi 2FA Telegram</label>
+          <input id={`${noun}-password`} type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required />
           {dialogError && <p className="form-error" role="alert">{dialogError}</p>}
-          <button className="button button--primary button--wide" type="submit" disabled={busy}>{busy ? "Memeriksa" : "Hubungkan worker"}</button>
+          <button className="button button--primary button--wide" type="submit" disabled={busy}>{busy ? "Memeriksa" : `Hubungkan ${noun}`}</button>
         </form>}
         {flow && expired && <div className="expired-state"><h3>Waktu koneksi habis</h3><button className="button button--primary button--wide" type="button" onClick={() => { setFlow(null); setDialogError(null); }}>Mulai lagi</button></div>}
       </section>
@@ -282,6 +300,32 @@ function WorkerCard({ worker, token, onSaved, onError, onReconnect }: { worker: 
         <label className="check-control"><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} />Aktif</label>
         <button className="button button--soft" type="button" onClick={() => void save()} disabled={saving}>{saving ? "Menyimpan" : "Simpan"}</button>
         {worker.accountStatus !== "READY" && <button className="button button--ghost" type="button" onClick={onReconnect}>Login ulang</button>}
+      </div>
+    </article>
+  );
+}
+
+function MonitorCard({ monitor, token, onSaved, onError, onReconnect }: { monitor: MonitorAccount; token: string; onSaved: (monitor: MonitorAccount) => void; onError: (error: unknown) => void; onReconnect: () => void }) {
+  const [active, setActive] = useState(monitor.active);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => setActive(monitor.active), [monitor.active]);
+
+  const save = async () => {
+    setSaving(true);
+    try { onSaved(await updateMonitorAccount(token, monitor.id, active)); }
+    catch (error) { onError(error); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <article className="admin-card">
+      <div className="admin-card__head"><div><p className="admin-card__label">Akun monitor</p><h3>{monitor.label}</h3></div><span className={`admin-badge ${monitor.active && monitor.accountStatus === "READY" ? "" : "admin-badge--disabled"}`}>{monitor.active ? monitor.accountStatus : "NONAKTIF"}</span></div>
+      <div className="admin-meta"><span>Channel terpasang</span><strong>{monitor.sourceCount}</strong><span>Channel siap</span><strong>{monitor.readySourceCount}</strong><span>Error terakhir</span><strong>{monitor.lastRuntimeErrorCode ?? "Tidak ada"}</strong></div>
+      <div className="worker-controls">
+        <label className="check-control"><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} />Aktif</label>
+        <button className="button button--soft" type="button" onClick={() => void save()} disabled={saving}>{saving ? "Menyimpan" : "Simpan"}</button>
+        {monitor.accountStatus !== "READY" && <button className="button button--ghost" type="button" onClick={onReconnect}>Login ulang</button>}
       </div>
     </article>
   );
@@ -653,12 +697,14 @@ export function AdminPanel({ token, onSessionExpired }: { token: string; onSessi
   const [users, setUsers] = useState<readonly AdminUser[]>([]);
   const [packages, setPackages] = useState<readonly ServicePackage[]>([]);
   const [workers, setWorkers] = useState<readonly WorkerAccount[]>([]);
+  const [monitors, setMonitors] = useState<readonly MonitorAccount[]>([]);
   const [query, setQuery] = useState("");
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [editingPackage, setEditingPackage] = useState<ServicePackage | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
   const [workerConnectOpen, setWorkerConnectOpen] = useState(false);
+  const [monitorConnectOpen, setMonitorConnectOpen] = useState(false);
 
   const handleError = useCallback((error: unknown) => {
     if (error instanceof ApiError && (error.status === 401 || error.code === "ADMIN_REQUIRED")) { onSessionExpired(); return; }
@@ -668,10 +714,10 @@ export function AdminPanel({ token, onSessionExpired }: { token: string; onSessi
   const loadAll = useCallback(async () => {
     setLoading(true); setPageError(null);
     try {
-      const [nextUsers, nextPackages, nextWorkers] = await Promise.all([
-        listAdminUsers(token), listAdminPackages(token), listWorkerAccounts(token),
+      const [nextUsers, nextPackages, nextWorkers, nextMonitors] = await Promise.all([
+        listAdminUsers(token), listAdminPackages(token), listWorkerAccounts(token), listMonitorAccounts(token),
       ]);
-      setUsers(nextUsers); setPackages(nextPackages); setWorkers(nextWorkers);
+      setUsers(nextUsers); setPackages(nextPackages); setWorkers(nextWorkers); setMonitors(nextMonitors);
     } catch (error) { handleError(error); }
     finally { setLoading(false); }
   }, [handleError, token]);
@@ -693,18 +739,21 @@ export function AdminPanel({ token, onSessionExpired }: { token: string; onSessi
   };
 
   const replaceWorker = (next: WorkerAccount) => setWorkers((previous) => previous.map((worker) => worker.id === next.id ? next : worker));
+  const replaceMonitor = (next: MonitorAccount) => setMonitors((previous) => previous.map((monitor) => monitor.id === next.id ? next : monitor));
 
   return (
     <main className="page page--admin">
       <AdminTopbar />
-      <section className="admin-hero"><div><p className="eyebrow">Admin</p><h1>Kelola <em>Kertaaji.</em></h1><p>Pengguna, paket, dan akun worker.</p></div><button className="button button--ghost" type="button" onClick={() => void loadAll()} disabled={loading}>{loading ? "Memuat" : "Muat ulang"}</button></section>
-      <nav className="admin-tabs" aria-label="Menu admin"><button className={section === "USERS" ? "active" : ""} type="button" onClick={() => setSection("USERS")}>Pengguna</button><button className={section === "PACKAGES" ? "active" : ""} type="button" onClick={() => setSection("PACKAGES")}>Paket</button><button className={section === "WORKERS" ? "active" : ""} type="button" onClick={() => setSection("WORKERS")}>Akun worker</button></nav>
+      <section className="admin-hero"><div><p className="eyebrow">Admin</p><h1>Kelola <em>Kertaaji.</em></h1><p>Pengguna, paket, dan akun operasional.</p></div><button className="button button--ghost" type="button" onClick={() => void loadAll()} disabled={loading}>{loading ? "Memuat" : "Muat ulang"}</button></section>
+      <nav className="admin-tabs" aria-label="Menu admin"><button className={section === "USERS" ? "active" : ""} type="button" onClick={() => setSection("USERS")}>Pengguna</button><button className={section === "PACKAGES" ? "active" : ""} type="button" onClick={() => setSection("PACKAGES")}>Paket</button><button className={section === "WORKERS" ? "active" : ""} type="button" onClick={() => setSection("WORKERS")}>Akun worker</button><button className={section === "MONITOR" ? "active" : ""} type="button" onClick={() => setSection("MONITOR")}>Akun monitor</button></nav>
       {pageError && <div className="notice notice--error" role="alert"><span>{pageError}</span><button className="text-button" type="button" onClick={() => setPageError(null)}>Tutup</button></div>}
       {section === "USERS" && <section className="admin-section"><div className="section-heading"><div><p className="eyebrow">Pengguna</p><h2>Daftar pengguna</h2></div><form className="admin-search" onSubmit={searchUsers}><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nama, username, atau ID Telegram" /><button className="button button--soft" type="submit" disabled={loading}>Cari</button></form></div><div className="admin-user-layout"><div className="admin-list">{loading ? <p className="admin-muted">Memuat pengguna.</p> : users.length === 0 ? <p className="admin-muted">Tidak ada pengguna.</p> : users.map((user) => <button className={`admin-user-row ${selectedUser?.id === user.id ? "selected" : ""}`} type="button" key={user.id} onClick={() => setSelectedUser(user)}><span><strong>{user.firstName}</strong><small>{userName(user)}</small></span><span>{user.isAdmin ? "Admin" : formatDate(user.lastAuthenticatedAt)}</span></button>)}</div>{selectedUser ? <UserAccess key={selectedUser.id} user={selectedUser} packages={packages} token={token} onError={handleError} /> : <div className="admin-detail admin-detail--placeholder"><p>Pilih pengguna untuk mengatur aksesnya.</p></div>}</div></section>}
       {section === "PACKAGES" && <section className="admin-section"><div className="section-heading"><div><p className="eyebrow">Paket</p><h2>Paket layanan</h2></div><button className="button button--primary" type="button" onClick={() => setEditingPackage(null)}>Paket baru</button></div><div className="admin-card-grid">{loading ? <p className="admin-muted">Memuat paket.</p> : packages.length === 0 ? <p className="admin-muted">Belum ada paket.</p> : packages.map((pkg) => <article className="admin-card" key={pkg.id}><div className="admin-card__head"><div><p className="admin-card__label">{pkg.type === "USERBOT" ? "Userbot" : "Jaseb Worker"}</p><h3>{pkg.name}</h3></div><span className={`admin-badge ${pkg.active ? "" : "admin-badge--disabled"}`}>{pkg.active ? "Aktif" : "Nonaktif"}</span></div><div className="admin-meta"><span>Harga</span><strong>{formatRupiah(pkg.priceIdr)}</strong><span>Masa aktif</span><strong>{pkg.durationDays} hari</strong><span>Target LPM/Channel</span><strong>{pkg.maxTargetsPerMinute}</strong></div><button className="button button--ghost" type="button" onClick={() => setEditingPackage(pkg)}>Ubah paket</button></article>)}</div></section>}
       {section === "WORKERS" && <section className="admin-section"><div className="section-heading"><div><p className="eyebrow">Akun worker</p><h2>Pengaturan worker</h2></div><button className="button button--primary" type="button" onClick={() => setWorkerConnectOpen(true)}>Hubungkan worker</button></div><p className="admin-muted">Worker hanya dipakai untuk Jasa Sebar. Setelah terhubung, atur interval lalu aktifkan akunnya.</p><div className="admin-card-grid">{loading ? <p className="admin-muted">Memuat akun worker.</p> : workers.length === 0 ? <p className="admin-muted">Belum ada akun worker.</p> : workers.map((worker) => <WorkerCard key={worker.id} worker={worker} token={token} onSaved={replaceWorker} onError={handleError} onReconnect={() => setWorkerConnectOpen(true)} />)}</div></section>}
+      {section === "MONITOR" && <section className="admin-section"><div className="section-heading"><div><p className="eyebrow">Akun monitor</p><h2>Central monitor Auto Komen</h2></div><button className="button button--primary" type="button" onClick={() => setMonitorConnectOpen(true)}>Hubungkan monitor</button></div><p className="admin-muted">Akun ini harus dapat bergabung ke semua channel target. Monitoring berjalan terpusat, sedangkan komentar tetap dikirim oleh userbot masing-masing pengguna.</p><div className="admin-card-grid">{loading ? <p className="admin-muted">Memuat akun monitor.</p> : monitors.length === 0 ? <p className="admin-muted">Belum ada akun monitor.</p> : monitors.map((monitor) => <MonitorCard key={monitor.id} monitor={monitor} token={token} onSaved={replaceMonitor} onError={handleError} onReconnect={() => setMonitorConnectOpen(true)} />)}</div></section>}
       {editingPackage !== undefined && <PackageDialog current={editingPackage} token={token} onClose={() => setEditingPackage(undefined)} onSaved={replacePackage} onError={handleError} />}
-      {workerConnectOpen && <WorkerConnectDialog token={token} onClose={() => setWorkerConnectOpen(false)} onConnected={loadAll} />}
+      {workerConnectOpen && <AdminAccountConnectDialog kind="WORKER" token={token} onClose={() => setWorkerConnectOpen(false)} onConnected={loadAll} />}
+      {monitorConnectOpen && <AdminAccountConnectDialog kind="MONITOR" token={token} onClose={() => setMonitorConnectOpen(false)} onConnected={loadAll} />}
     </main>
   );
 }

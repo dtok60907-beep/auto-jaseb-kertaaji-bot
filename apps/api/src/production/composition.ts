@@ -24,6 +24,7 @@ import type { ProductionApiConfig } from "./config.ts";
 import { PostgresPaymentOrderRepository } from "../payments/postgres-repository.ts";
 import { HttpPakasirGateway } from "../payments/pakasir-gateway.ts";
 import { PakasirCheckoutService } from "../payments/service.ts";
+import { PostgresMonitorAccountRepository } from "../monitors/postgres-repository.ts";
 
 export function createProductionApiDatabase(config: ProductionApiConfig): Sql {
   const policy = config.databasePolicy;
@@ -69,6 +70,14 @@ export function composeProductionApi(config: ProductionApiConfig, sql: Sql) {
     flowTtlSeconds: config.telegramAuthorizationPolicy.flowTtlSeconds,
     accountType: "JASEB_WORKER",
   });
+  const monitorTelegramAuthorization = new TelegramAuthorizationService({
+    accounts: telegramAccounts,
+    entitlements,
+    transport: telegramTransport,
+    keyRing: config.telegramSessionKeyRing(),
+    flowTtlSeconds: config.telegramAuthorizationPolicy.flowTtlSeconds,
+    accountType: "MONITOR",
+  });
   const packages = new PostgresPackageRepository(sql);
   const checkout = new PakasirCheckoutService({
     orders: new PostgresPaymentOrderRepository(sql),
@@ -97,6 +106,8 @@ export function composeProductionApi(config: ProductionApiConfig, sql: Sql) {
     telegramSessionIssuer: sessionIssuer,
     telegramAuthorization,
     workerTelegramAuthorization,
+    monitorTelegramAuthorization,
+    monitors: new PostgresMonitorAccountRepository(sql),
     checkout,
     telegramAccounts,
     adminUsers: new PostgresAdminUserRepository(sql),
