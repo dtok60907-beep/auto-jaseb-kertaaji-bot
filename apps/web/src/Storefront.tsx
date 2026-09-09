@@ -4,10 +4,10 @@ import { ApiError, createPakasirOrder, refreshPaymentOrder } from "./api";
 import type { BuyerStorefront, ServicePackage } from "./types";
 
 const ERROR_LABEL: Record<string, string> = {
-  NETWORK_UNAVAILABLE: "Koneksi pembayaran sedang bermasalah. Coba lagi.",
-  PAKASIR_UNAVAILABLE: "Pakasir belum bisa dihubungi. Coba beberapa saat lagi.",
-  PAYMENT_NOT_COMPLETED: "Pembayaran belum tercatat lunas di Pakasir.",
-  PAYMENT_VERIFICATION_FAILED: "Data pembayaran tidak cocok. Tim kami perlu memeriksanya.",
+  NETWORK_UNAVAILABLE: "Status pembayaran belum bisa diperiksa. Coba lagi.",
+  PAKASIR_UNAVAILABLE: "Status pembayaran belum bisa diperiksa. Coba lagi.",
+  PAYMENT_NOT_COMPLETED: "Pembayaran belum terverifikasi.",
+  PAYMENT_VERIFICATION_FAILED: "Data pembayaran tidak cocok.",
   PAYMENT_ORDER_NOT_FOUND: "Invoice pembayaran tidak ditemukan.",
   PACKAGE_NOT_FOUND: "Paket ini sudah tidak tersedia.",
   PACKAGE_NOT_PURCHASABLE: "Paket ini belum dapat dibeli otomatis.",
@@ -48,7 +48,7 @@ export function Storefront({ token, storefront, onChanged }: {
     try {
       const order = await refreshPaymentOrder(token, orderId);
       if (order.status === "PAID") await onChanged();
-      else setError("Pembayaran belum tercatat lunas di Pakasir.");
+      else setError("Pembayaran belum terverifikasi.");
     } catch (cause) { setError(errorLabel(cause)); }
     finally { setChecking(false); }
   };
@@ -79,13 +79,11 @@ export function Storefront({ token, storefront, onChanged }: {
     <main className="storefront-page">
       <header className="storefront-topbar">
         <div className="wordmark"><span className="wordmark-dot" aria-hidden="true" />kertaaji</div>
-        <span className="storefront-secure"><span aria-hidden="true">◇</span> Pembayaran aman</span>
       </header>
 
       <section className="storefront-hero">
-        <p className="eyebrow">Mulai promosi</p>
-        <h1>Pilih cara kerja yang <em>paling pas.</em></h1>
-        <p>Satu paket, langsung aktif setelah pembayaran terverifikasi. Tidak perlu menunggu admin.</p>
+        <p className="eyebrow">Paket langganan</p>
+        <h1>Pilih paket</h1>
       </section>
 
       {error && <div className="notice notice--error storefront-notice" role="alert"><span>{error}</span><button className="text-button" type="button" onClick={() => setError(null)}>Tutup</button></div>}
@@ -94,39 +92,34 @@ export function Storefront({ token, storefront, onChanged }: {
         <section className="payment-resume-card">
           <div className="payment-resume-card__mark" aria-hidden="true"><span /></div>
           <div className="payment-resume-card__copy">
-            <p className="eyebrow">Invoice berjalan</p>
+            <p className="eyebrow">Pembayaran tertunda</p>
             <h2>{storefront.pendingOrder.packageName}</h2>
             <p>{storefront.pendingOrder.orderCode} · {rupiah(storefront.pendingOrder.amountIdr)}</p>
           </div>
           <div className="payment-resume-card__actions">
-            <button className="button button--primary" type="button" onClick={() => window.location.assign(storefront.pendingOrder!.checkoutUrl)}>Lanjut bayar</button>
-            <button className="button button--ghost" type="button" onClick={() => void checkPayment()} disabled={checking}>{checking ? "Memeriksa" : "Sudah bayar? Cek status"}</button>
+            <button className="button button--primary" type="button" onClick={() => window.location.assign(storefront.pendingOrder!.checkoutUrl)}>Bayar</button>
+            <button className="button button--ghost" type="button" onClick={() => void checkPayment()} disabled={checking}>{checking ? "Memeriksa" : "Cek pembayaran"}</button>
           </div>
         </section>
       )}
 
       <section className="package-showcase" aria-label="Daftar paket">
         {storefront.packages.length === 0 ? (
-          <div className="storefront-empty"><p className="eyebrow">Belum tersedia</p><h2>Paket sedang disiapkan.</h2><p>Coba buka lagi beberapa saat.</p></div>
+          <div className="storefront-empty"><h2>Belum ada paket aktif</h2></div>
         ) : storefront.packages.map((pkg, index) => (
           <article className={`package-offer ${pkg.type === "USERBOT" ? "package-offer--userbot" : "package-offer--worker"}`} key={pkg.id} style={{ animationDelay: `${index * 90}ms` }}>
             <div className="package-offer__header">
-              <span className="package-offer__number">0{index + 1}</span>
               <span className="package-offer__kind">{packageKind(pkg)}</span>
             </div>
-            <div className="package-offer__title"><h2>{pkg.name}</h2><p>{pkg.durationDays} hari akses</p></div>
+            <div className="package-offer__title"><h2>{pkg.name}</h2></div>
             <div className="package-offer__price"><strong>{rupiah(pkg.priceIdr)}</strong><span>/ {pkg.durationDays} hari</span></div>
             <ul>{packageFeatures(pkg).map((feature) => <li key={feature}><span aria-hidden="true">✓</span>{feature}</li>)}</ul>
             <button className="button button--primary button--wide package-offer__buy" type="button" disabled={creating !== null || pkg.priceIdr <= 0} onClick={() => void buy(pkg)}>
-              {creating === pkg.id ? "Membuat invoice" : pkg.priceIdr <= 0 ? "Hubungi admin" : "Pilih paket ini"}
+              {creating === pkg.id ? "Memproses" : pkg.priceIdr <= 0 ? "Hubungi admin" : "Beli paket"}
             </button>
           </article>
         ))}
       </section>
-
-      <footer className="storefront-footer">
-        <span>Pembayaran diproses oleh Pakasir</span><span>Aktivasi otomatis setelah status completed terverifikasi</span>
-      </footer>
     </main>
   );
 }
