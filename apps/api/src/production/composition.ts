@@ -16,12 +16,14 @@ import { PostgresUserbotProfileRepository } from "../userbot-profiles/postgres-r
 import { PostgresWorkerAccountSettingsRepository } from "../workers/postgres-repository.ts";
 import { PostgresTelegramAccountLifecycleRepository } from "../telegram-accounts/postgres-repository.ts";
 import { PostgresAdminUserRepository } from "../admin-users/postgres-repository.ts";
-import { PostgresCanaryOperatorRepository } from "../operations/postgres-canary-operator-repository.ts";
 import { TelegramBotCallbackResponder } from "../telegram-bot/decision-responder.ts";
 import { TelegramBotStartResponder } from "../telegram-bot/start-responder.ts";
 import { TelegramAuthorizationService } from "../telegram-authorization/service.ts";
 import { TeleprotoAuthorizationTransport } from "../telegram-authorization/teleproto-transport.ts";
 import type { ProductionApiConfig } from "./config.ts";
+import { PostgresPaymentOrderRepository } from "../payments/postgres-repository.ts";
+import { HttpPakasirGateway } from "../payments/pakasir-gateway.ts";
+import { PakasirCheckoutService } from "../payments/service.ts";
 
 export function createProductionApiDatabase(config: ProductionApiConfig): Sql {
   const policy = config.databasePolicy;
@@ -67,8 +69,21 @@ export function composeProductionApi(config: ProductionApiConfig, sql: Sql) {
     flowTtlSeconds: config.telegramAuthorizationPolicy.flowTtlSeconds,
     accountType: "JASEB_WORKER",
   });
+  const packages = new PostgresPackageRepository(sql);
+  const checkout = new PakasirCheckoutService({
+    orders: new PostgresPaymentOrderRepository(sql),
+    packages,
+    entitlements,
+    gateway: new HttpPakasirGateway({
+      projectSlug: config.pakasirPolicy.projectSlug,
+      apiKey: config.pakasirApiKey(),
+      timeoutMilliseconds: config.pakasirPolicy.timeoutMilliseconds,
+    }),
+    projectSlug: config.pakasirPolicy.projectSlug,
+    returnUrl: config.pakasirPolicy.returnUrl,
+  });
   return createApi({
-    packages: new PostgresPackageRepository(sql),
+    packages,
     broadcasts: new PostgresBroadcastSettingsRepository(sql),
     autoComments: new PostgresAutoCommentSettingsRepository(sql),
     entitlements,
@@ -82,9 +97,9 @@ export function composeProductionApi(config: ProductionApiConfig, sql: Sql) {
     telegramSessionIssuer: sessionIssuer,
     telegramAuthorization,
     workerTelegramAuthorization,
+    checkout,
     telegramAccounts,
     adminUsers: new PostgresAdminUserRepository(sql),
-    canaryAdmissions: new PostgresCanaryOperatorRepository(sql),
     telegramBot: {
       webhookSecret: config.telegramWebhookSecret(),
       responder: new TelegramBotStartResponder({

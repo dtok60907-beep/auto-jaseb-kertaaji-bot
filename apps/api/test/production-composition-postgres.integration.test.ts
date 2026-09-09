@@ -24,6 +24,10 @@ function config() {
     TELEGRAM_MINI_APP_URL: "https://mini.example.com/app",
     TELEGRAM_BOT_WEBHOOK_URL: "https://api.example.com/v1/telegram/bot/webhook",
     TELEGRAM_WEBHOOK_SECRET: "ef".repeat(32),
+    PAKASIR_PROJECT_SLUG: "auto-promosi-kertaaji",
+    PAKASIR_API_KEY: "pakasir-test-secret",
+    PAKASIR_RETURN_URL: "https://mini.example.com/app",
+    PAKASIR_API_TIMEOUT_MS: "8000",
     API_DATABASE_MAX_CONNECTIONS: "3",
     API_DATABASE_CONNECT_TIMEOUT_SECONDS: "5",
     API_DATABASE_IDLE_TIMEOUT_SECONDS: "10",
@@ -57,7 +61,7 @@ function signedInitData(): string {
   return fields.toString();
 }
 
-test("production composition wires canary login, user auth, admin auth, and every business repository", { skip: !databaseUrl }, async () => {
+test("production composition wires public buyer login, user auth, admin auth, and every business repository", { skip: !databaseUrl }, async () => {
   const sql = postgres(databaseUrl!, { max: 3, prepare: false });
   const api = composeProductionApi(config(), sql);
   try {
@@ -68,16 +72,6 @@ test("production composition wires canary login, user auth, admin auth, and ever
     assert.equal(packages.statusCode, 200);
     assert.deepEqual(packages.json(), { packages: [] });
 
-    const denied = await api.inject({
-      method: "POST",
-      url: "/v1/auth/telegram",
-      payload: { initData: signedInitData() },
-    });
-    assert.equal(denied.statusCode, 403);
-    assert.deepEqual(denied.json(), { code: "CANARY_ACCESS_REQUIRED" });
-    assert.equal((await sql`select count(*)::integer count from public.app_users where telegram_user_id = ${telegramUserId}::bigint`)[0].count, 0);
-
-    await sql`select * from public.set_canary_admission(${telegramUserId}::bigint, true)`;
     const login = await api.inject({
       method: "POST",
       url: "/v1/auth/telegram",
@@ -87,6 +81,15 @@ test("production composition wires canary login, user auth, admin auth, and ever
     const token = login.json().accessToken as string;
     const userId = login.json().user.id as string;
     assert.match(token, /^jas_[A-Za-z0-9_-]{43}$/);
+    assert.equal((await sql`select count(*)::integer count from public.app_users where telegram_user_id = ${telegramUserId}::bigint`)[0].count, 1);
+
+    const storefront = await api.inject({
+      method: "GET",
+      url: "/v1/storefront",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(storefront.statusCode, 200);
+    assert.deepEqual(storefront.json(), { packages: [], activeEntitlements: [], pendingOrder: null });
 
     const userSettings = await api.inject({
       method: "GET",

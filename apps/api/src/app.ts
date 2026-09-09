@@ -39,6 +39,8 @@ import { registerCanaryAdmissionRoutes } from "./http/canary-admission-routes.ts
 import { registerTelegramBotWebhookRoutes } from "./http/telegram-bot-webhook-routes.ts";
 import type { TelegramCallbackResponder } from "./telegram-bot/decision-responder.ts";
 import type { TelegramStartResponder } from "./telegram-bot/start-responder.ts";
+import { registerPaymentRoutes } from "./http/payment-routes.ts";
+import type { PakasirCheckoutService } from "./payments/service.ts";
 
 type CommonApiOptions = {
   packages: PackageRepository;
@@ -57,6 +59,7 @@ type CommonApiOptions = {
   adminUsers?: AdminUserRepository;
   canaryAdmissions?: CanaryOperatorRepository;
   telegramBot?: Readonly<{ webhookSecret: string; responder: TelegramStartResponder; callbackResponder: TelegramCallbackResponder }>;
+  checkout?: PakasirCheckoutService;
 };
 
 type ApiOptions = CommonApiOptions & (
@@ -109,6 +112,7 @@ export function createApi(options: ApiOptions) {
     autoComments: options.autoComments,
   });
   registerCurrentUserRoutes(app, { authorizeUser, authorizeAdmin });
+  if (options.checkout) registerPaymentRoutes(app, { checkout: options.checkout, authorizeUser });
   if (options.telegramAuthorization) {
     registerTelegramAccountAuthRoutes(app, {
       authorization: options.telegramAuthorization,

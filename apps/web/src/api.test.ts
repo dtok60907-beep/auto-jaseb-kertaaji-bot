@@ -13,6 +13,7 @@ import {
   createBroadcastCampaign,
   createBroadcastLpmTarget,
   createBroadcastOperation,
+  createPakasirOrder,
   createForwardBroadcastMaterial,
   createTextBroadcastMaterial,
   deleteAutoCommentChannelTarget,
@@ -28,9 +29,11 @@ import {
   getBroadcastSettings,
   getCurrentAdminBroadcastCampaign,
   getCurrentBroadcastCampaign,
+  getBuyerStorefront,
   listCanaryAdmissions,
   listTelegramAccounts,
   revokeCanaryUser,
+  refreshPaymentOrder,
   startWorkerTelegramAuthorization,
   stopAdminBroadcastCampaign,
   stopBroadcastCampaign,
@@ -114,6 +117,25 @@ describe("web API client", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ materials: [], lpmTargets: [], accountMode: "USERBOT" }), { status: 200 })));
 
     await expect(getBroadcastSettings("jas_test")).resolves.toEqual({ materials: [], lpmTargets: [], accountMode: "USERBOT" });
+  });
+
+  it("loads buyer storefront and creates or refreshes a Pakasir order", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "https://web.example").pathname;
+      calls.push(`${init?.method ?? "GET"} ${path}`);
+      if (path === "/v1/storefront") return new Response(JSON.stringify({ packages: [], activeEntitlements: [], pendingOrder: null }), { status: 200 });
+      return new Response(JSON.stringify({ order: { id: "order-1", status: "PENDING", checkoutUrl: "https://app.pakasir.com/pay/project/1000" } }), { status: path.endsWith("/refresh") ? 200 : 201 });
+    }));
+
+    await expect(getBuyerStorefront("jas_test")).resolves.toMatchObject({ packages: [] });
+    await expect(createPakasirOrder("jas_test", "package-1")).resolves.toMatchObject({ id: "order-1" });
+    await expect(refreshPaymentOrder("jas_test", "order-1")).resolves.toMatchObject({ status: "PENDING" });
+    expect(calls).toEqual([
+      "GET /v1/storefront",
+      "POST /v1/payments/pakasir/orders",
+      "POST /v1/payments/orders/order-1/refresh",
+    ]);
   });
 
   it("creates a TEXT broadcast material", async () => {

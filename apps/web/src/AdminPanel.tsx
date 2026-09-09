@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
 import {
-  admitCanaryUser,
   ApiError,
   cancelWorkerTelegramAuthorization,
   createAdminBroadcastCampaign,
@@ -15,10 +14,8 @@ import {
   grantEntitlement,
   listAdminPackages,
   listAdminUsers,
-  listCanaryAdmissions,
   listEntitlements,
   listWorkerAccounts,
-  revokeCanaryUser,
   revokeEntitlement,
   stopAdminBroadcastCampaign,
   startWorkerTelegramAuthorization,
@@ -30,13 +27,11 @@ import {
   updateAdminTextBroadcastMaterial,
   updateWorkerAccount,
 } from "./api";
-import type { AdminUser, AuthFlow, BroadcastCampaign, BroadcastLpmTarget, BroadcastMaterial, CanaryAdmission, Entitlement, PackageInput, ServicePackage, WorkerAccount } from "./types";
+import type { AdminUser, AuthFlow, BroadcastCampaign, BroadcastLpmTarget, BroadcastMaterial, Entitlement, PackageInput, ServicePackage, WorkerAccount } from "./types";
 import { parseTargetInput } from "./target-input";
 
 const ADMIN_JASEB_MIN_REPEAT_MINUTES = 5;
-const CANARY_SLOT_LIMIT = 15;
-
-type AdminSection = "USERS" | "ADMISSIONS" | "PACKAGES" | "WORKERS";
+type AdminSection = "USERS" | "PACKAGES" | "WORKERS";
 
 type PackageForm = {
   code: string;
@@ -656,7 +651,6 @@ function UserAccess({ user, packages, token, onError }: { user: AdminUser; packa
 export function AdminPanel({ token, onSessionExpired }: { token: string; onSessionExpired: () => void }) {
   const [section, setSection] = useState<AdminSection>("USERS");
   const [users, setUsers] = useState<readonly AdminUser[]>([]);
-  const [admissions, setAdmissions] = useState<readonly CanaryAdmission[]>([]);
   const [packages, setPackages] = useState<readonly ServicePackage[]>([]);
   const [workers, setWorkers] = useState<readonly WorkerAccount[]>([]);
   const [query, setQuery] = useState("");
@@ -664,9 +658,6 @@ export function AdminPanel({ token, onSessionExpired }: { token: string; onSessi
   const [editingPackage, setEditingPackage] = useState<ServicePackage | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
-  const [newTelegramUserId, setNewTelegramUserId] = useState("");
-  const [admissionBusy, setAdmissionBusy] = useState<string | null>(null);
-  const [admissionNotice, setAdmissionNotice] = useState<string | null>(null);
   const [workerConnectOpen, setWorkerConnectOpen] = useState(false);
 
   const handleError = useCallback((error: unknown) => {
@@ -677,10 +668,10 @@ export function AdminPanel({ token, onSessionExpired }: { token: string; onSessi
   const loadAll = useCallback(async () => {
     setLoading(true); setPageError(null);
     try {
-      const [nextUsers, nextPackages, nextWorkers, nextAdmissions] = await Promise.all([
-        listAdminUsers(token), listAdminPackages(token), listWorkerAccounts(token), listCanaryAdmissions(token),
+      const [nextUsers, nextPackages, nextWorkers] = await Promise.all([
+        listAdminUsers(token), listAdminPackages(token), listWorkerAccounts(token),
       ]);
-      setUsers(nextUsers); setPackages(nextPackages); setWorkers(nextWorkers); setAdmissions(nextAdmissions);
+      setUsers(nextUsers); setPackages(nextPackages); setWorkers(nextWorkers);
     } catch (error) { handleError(error); }
     finally { setLoading(false); }
   }, [handleError, token]);
@@ -703,68 +694,13 @@ export function AdminPanel({ token, onSessionExpired }: { token: string; onSessi
 
   const replaceWorker = (next: WorkerAccount) => setWorkers((previous) => previous.map((worker) => worker.id === next.id ? next : worker));
 
-  const admitUser = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const telegramUserId = newTelegramUserId.trim();
-    if (!telegramUserId) return;
-    setAdmissionBusy("add"); setPageError(null); setAdmissionNotice(null);
-    try {
-      const result = await admitCanaryUser(token, telegramUserId);
-      if (result.status === "LIMIT_REACHED") {
-        setAdmissionNotice(`Slot canary sudah penuh (${CANARY_SLOT_LIMIT}/${CANARY_SLOT_LIMIT}). Cabut salah satu dulu sebelum menambah user baru.`);
-      } else {
-        setAdmissionNotice(result.status === "ALREADY_ADMITTED" ? `ID ${telegramUserId} sudah aktif sebelumnya.` : `ID ${telegramUserId} berhasil ditambahkan (slot ${result.slot}).`);
-        setNewTelegramUserId("");
-        await loadAll();
-      }
-    } catch (error) { handleError(error); }
-    finally { setAdmissionBusy(null); }
-  };
-
-  const revokeUser = (telegramUserId: string) => async () => {
-    setAdmissionBusy(telegramUserId); setPageError(null); setAdmissionNotice(null);
-    try { await revokeCanaryUser(token, telegramUserId); await loadAll(); }
-    catch (error) { handleError(error); }
-    finally { setAdmissionBusy(null); }
-  };
-
   return (
     <main className="page page--admin">
       <AdminTopbar />
       <section className="admin-hero"><div><p className="eyebrow">Admin</p><h1>Kelola <em>Kertaaji.</em></h1><p>Pengguna, paket, dan akun worker.</p></div><button className="button button--ghost" type="button" onClick={() => void loadAll()} disabled={loading}>{loading ? "Memuat" : "Muat ulang"}</button></section>
-      <nav className="admin-tabs" aria-label="Menu admin"><button className={section === "USERS" ? "active" : ""} type="button" onClick={() => setSection("USERS")}>Pengguna</button><button className={section === "ADMISSIONS" ? "active" : ""} type="button" onClick={() => setSection("ADMISSIONS")}>Akses masuk</button><button className={section === "PACKAGES" ? "active" : ""} type="button" onClick={() => setSection("PACKAGES")}>Paket</button><button className={section === "WORKERS" ? "active" : ""} type="button" onClick={() => setSection("WORKERS")}>Akun worker</button></nav>
+      <nav className="admin-tabs" aria-label="Menu admin"><button className={section === "USERS" ? "active" : ""} type="button" onClick={() => setSection("USERS")}>Pengguna</button><button className={section === "PACKAGES" ? "active" : ""} type="button" onClick={() => setSection("PACKAGES")}>Paket</button><button className={section === "WORKERS" ? "active" : ""} type="button" onClick={() => setSection("WORKERS")}>Akun worker</button></nav>
       {pageError && <div className="notice notice--error" role="alert"><span>{pageError}</span><button className="text-button" type="button" onClick={() => setPageError(null)}>Tutup</button></div>}
       {section === "USERS" && <section className="admin-section"><div className="section-heading"><div><p className="eyebrow">Pengguna</p><h2>Daftar pengguna</h2></div><form className="admin-search" onSubmit={searchUsers}><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nama, username, atau ID Telegram" /><button className="button button--soft" type="submit" disabled={loading}>Cari</button></form></div><div className="admin-user-layout"><div className="admin-list">{loading ? <p className="admin-muted">Memuat pengguna.</p> : users.length === 0 ? <p className="admin-muted">Tidak ada pengguna.</p> : users.map((user) => <button className={`admin-user-row ${selectedUser?.id === user.id ? "selected" : ""}`} type="button" key={user.id} onClick={() => setSelectedUser(user)}><span><strong>{user.firstName}</strong><small>{userName(user)}</small></span><span>{user.isAdmin ? "Admin" : formatDate(user.lastAuthenticatedAt)}</span></button>)}</div>{selectedUser ? <UserAccess key={selectedUser.id} user={selectedUser} packages={packages} token={token} onError={handleError} /> : <div className="admin-detail admin-detail--placeholder"><p>Pilih pengguna untuk mengatur aksesnya.</p></div>}</div></section>}
-      {section === "ADMISSIONS" && <section className="admin-section">
-        <div className="section-heading"><div><p className="eyebrow">Akses masuk</p><h2>Slot canary ({admissions.filter((item) => item.revokedAt === null).length}/{CANARY_SLOT_LIMIT})</h2></div></div>
-        <p className="admin-muted">Sebelum paket apapun berlaku, ID Telegram user harus di-admit dulu di sini. Batasnya {CANARY_SLOT_LIMIT} user aktif sekaligus.</p>
-        <form className="admin-search" onSubmit={admitUser}>
-          <input inputMode="numeric" value={newTelegramUserId} onChange={(event) => setNewTelegramUserId(event.target.value)} placeholder="ID Telegram, contoh: 8046200601" />
-          <button className="button button--primary" type="submit" disabled={admissionBusy !== null || !newTelegramUserId.trim()}>{admissionBusy === "add" ? "Menambah" : "Tambahkan"}</button>
-        </form>
-        {admissionNotice && <div className="notice notice--info" role="status"><span>{admissionNotice}</span><button className="text-button" type="button" onClick={() => setAdmissionNotice(null)}>Tutup</button></div>}
-        {loading ? <p className="admin-muted">Memuat daftar akses.</p> : admissions.length === 0 ? <p className="admin-muted">Belum ada user yang di-admit.</p> : (
-          <div className="entitlement-list">{admissions.map((item) => (
-            <article key={item.telegramUserId} className="entitlement-row">
-              <div>
-                <strong>{item.telegramUserId}</strong>
-                <span>
-                  {item.revokedAt ? "Akses dicabut" : `Slot ${item.slot} · sejak ${formatDate(item.admittedAt)}`}
-                  {" · "}{item.appUserReady ? "sudah buka Mini App" : "belum pernah buka Mini App"}
-                  {item.adminActive ? " · Admin" : ""}
-                </span>
-              </div>
-              <div className="entitlement-actions">
-                {!item.revokedAt && (
-                  <button className="button button--danger-ghost" type="button" disabled={admissionBusy !== null} onClick={() => void revokeUser(item.telegramUserId)()}>
-                    {admissionBusy === item.telegramUserId ? "Mencabut" : "Cabut akses"}
-                  </button>
-                )}
-              </div>
-            </article>
-          ))}</div>
-        )}
-      </section>}
       {section === "PACKAGES" && <section className="admin-section"><div className="section-heading"><div><p className="eyebrow">Paket</p><h2>Paket layanan</h2></div><button className="button button--primary" type="button" onClick={() => setEditingPackage(null)}>Paket baru</button></div><div className="admin-card-grid">{loading ? <p className="admin-muted">Memuat paket.</p> : packages.length === 0 ? <p className="admin-muted">Belum ada paket.</p> : packages.map((pkg) => <article className="admin-card" key={pkg.id}><div className="admin-card__head"><div><p className="admin-card__label">{pkg.type === "USERBOT" ? "Userbot" : "Jaseb Worker"}</p><h3>{pkg.name}</h3></div><span className={`admin-badge ${pkg.active ? "" : "admin-badge--disabled"}`}>{pkg.active ? "Aktif" : "Nonaktif"}</span></div><div className="admin-meta"><span>Harga</span><strong>{formatRupiah(pkg.priceIdr)}</strong><span>Masa aktif</span><strong>{pkg.durationDays} hari</strong><span>Target LPM/Channel</span><strong>{pkg.maxTargetsPerMinute}</strong></div><button className="button button--ghost" type="button" onClick={() => setEditingPackage(pkg)}>Ubah paket</button></article>)}</div></section>}
       {section === "WORKERS" && <section className="admin-section"><div className="section-heading"><div><p className="eyebrow">Akun worker</p><h2>Pengaturan worker</h2></div><button className="button button--primary" type="button" onClick={() => setWorkerConnectOpen(true)}>Hubungkan worker</button></div><p className="admin-muted">Worker hanya dipakai untuk Jasa Sebar. Setelah terhubung, atur interval lalu aktifkan akunnya.</p><div className="admin-card-grid">{loading ? <p className="admin-muted">Memuat akun worker.</p> : workers.length === 0 ? <p className="admin-muted">Belum ada akun worker.</p> : workers.map((worker) => <WorkerCard key={worker.id} worker={worker} token={token} onSaved={replaceWorker} onError={handleError} onReconnect={() => setWorkerConnectOpen(true)} />)}</div></section>}
       {editingPackage !== undefined && <PackageDialog current={editingPackage} token={token} onClose={() => setEditingPackage(undefined)} onSaved={replacePackage} onError={handleError} />}

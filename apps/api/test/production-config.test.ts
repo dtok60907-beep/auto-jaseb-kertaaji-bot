@@ -9,6 +9,7 @@ const BOT_SECRET = "123456789:telegram-bot-secret-token";
 const API_HASH_SECRET = "ab".repeat(16);
 const SESSION_KEY_SECRET = "cd".repeat(32);
 const WEBHOOK_SECRET = "ef".repeat(32);
+const PAKASIR_SECRET = "pakasir-test-secret";
 
 function validEnvironment(): Record<string, string> {
   return {
@@ -22,6 +23,10 @@ function validEnvironment(): Record<string, string> {
     TELEGRAM_MINI_APP_URL: "https://mini.example.com/app",
     TELEGRAM_BOT_WEBHOOK_URL: "https://api.example.com/v1/telegram/bot/webhook",
     TELEGRAM_WEBHOOK_SECRET: WEBHOOK_SECRET,
+    PAKASIR_PROJECT_SLUG: "auto-promosi-kertaaji",
+    PAKASIR_API_KEY: PAKASIR_SECRET,
+    PAKASIR_RETURN_URL: "https://mini.example.com/app",
+    PAKASIR_API_TIMEOUT_MS: "8000",
     API_DATABASE_MAX_CONNECTIONS: "5",
     API_DATABASE_CONNECT_TIMEOUT_SECONDS: "10",
     API_DATABASE_IDLE_TIMEOUT_SECONDS: "30",
@@ -60,6 +65,12 @@ test("parses a complete explicit production policy and freezes public views", ()
     miniAppUrl: "https://mini.example.com/app",
     webhookUrl: "https://api.example.com/v1/telegram/bot/webhook",
   });
+  assert.deepEqual(config.pakasirPolicy, {
+    projectSlug: "auto-promosi-kertaaji",
+    returnUrl: "https://mini.example.com/app",
+    timeoutMilliseconds: 8_000,
+  });
+  assert.equal(config.pakasirApiKey(), PAKASIR_SECRET);
   assert.equal(config.telegramApiId, 12345);
   assert.equal(config.telegramApiHash(), API_HASH_SECRET);
   assert.equal(config.telegramWebhookSecret(), WEBHOOK_SECRET);
@@ -87,6 +98,7 @@ test("redacts both production secrets from JSON, string, and inspect", () => {
   assert.equal(rendered.includes(API_HASH_SECRET), false);
   assert.equal(rendered.includes(SESSION_KEY_SECRET), false);
   assert.equal(rendered.includes(WEBHOOK_SECRET), false);
+  assert.equal(rendered.includes(PAKASIR_SECRET), false);
   assert.equal(rendered.includes("telegram-bot-secret-token"), false);
   assert.deepEqual(JSON.parse(JSON.stringify(config)), {
     redacted: true,
@@ -94,6 +106,7 @@ test("redacts both production secrets from JSON, string, and inspect", () => {
     authPolicy: config.authPolicy,
     telegramAuthorizationPolicy: config.telegramAuthorizationPolicy,
     telegramBotPolicy: config.telegramBotPolicy,
+    pakasirPolicy: config.pakasirPolicy,
     serverPolicy: config.serverPolicy,
     telegramApiId: 12345,
   });
@@ -108,6 +121,9 @@ test("rejects missing or malformed secret, host, boolean, and timeout relation b
     ["TELEGRAM_WEBHOOK_SECRET", "too-short", "TELEGRAM_WEBHOOK_SECRET"],
     ["TELEGRAM_MINI_APP_URL", "http://mini.example.com", "TELEGRAM_MINI_APP_URL"],
     ["TELEGRAM_BOT_WEBHOOK_URL", "not-a-url", "TELEGRAM_BOT_WEBHOOK_URL"],
+    ["PAKASIR_PROJECT_SLUG", "Bad Slug", "PAKASIR_PROJECT_SLUG"],
+    ["PAKASIR_API_KEY", undefined, "PAKASIR_API_KEY"],
+    ["PAKASIR_RETURN_URL", "http://mini.example.com", "PAKASIR_RETURN_URL"],
     ["TELEGRAM_SESSION_KEYS", "not-json", "TELEGRAM_SESSION_KEYRING"],
     ["API_DATABASE_PREPARE_STATEMENTS", "yes", "API_DATABASE_PREPARE_STATEMENTS"],
     ["API_HOST", "0.0.0.0/path", "API_HOST"],
@@ -128,6 +144,7 @@ test("rejects missing or malformed secret, host, boolean, and timeout relation b
     assert.equal(rendered.includes(API_HASH_SECRET), false);
     assert.equal(rendered.includes(SESSION_KEY_SECRET), false);
     assert.equal(rendered.includes(WEBHOOK_SECRET), false);
+    assert.equal(rendered.includes(PAKASIR_SECRET), false);
   }
 });
 
@@ -148,6 +165,7 @@ test("enforces both numeric boundaries for every production number", () => {
     ["API_READINESS_PROBE_TIMEOUT_MS", "0", "120001"],
     ["API_READINESS_FAILURE_THRESHOLD", "0", "101"],
     ["API_SHUTDOWN_GRACE_MS", "99", "300001"],
+    ["PAKASIR_API_TIMEOUT_MS", "999", "30001"],
   ];
   for (const [field, below, above] of boundaries) {
     for (const value of [below, above]) {

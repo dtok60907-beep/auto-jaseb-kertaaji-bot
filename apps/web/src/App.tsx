@@ -5,6 +5,7 @@ import {
   cancelTelegramAuthorization,
   detachTelegramAccount,
   exchangeTelegramInitData,
+  getBuyerStorefront,
   getCurrentUser,
   listTelegramAccounts,
   logoutTelegramAccount,
@@ -13,11 +14,12 @@ import {
   submitTelegramPassword,
   switchTelegramAccount,
 } from "./api";
-import type { AuthFlow, AuthorizationResult, IssuedSession, SessionRole, TelegramAccount } from "./types";
+import type { AuthFlow, AuthorizationResult, BuyerStorefront, IssuedSession, PackageType, SessionRole, TelegramAccount } from "./types";
 import { readTelegramInitData } from "./telegram";
 import { AdminPanel } from "./AdminPanel";
 import { AutoCommentPanel } from "./AutoCommentPanel";
 import { JasebPanel } from "./JasebPanel";
+import { Storefront } from "./Storefront";
 
 const SESSION_STORAGE_KEY = "jaseb.telegram.api-session";
 
@@ -29,7 +31,6 @@ type TelegramAccessIssue =
   | "AUTH_EXPIRED"
   | "AUTH_REPLAYED"
   | "CLOCK_INVALID"
-  | "CANARY_ACCESS"
   | "UNAVAILABLE";
 
 const STATUS_LABEL: Record<TelegramAccount["status"], string> = {
@@ -146,10 +147,11 @@ const TAB_ITEMS: ReadonlyArray<{ id: UserTab; label: string; icon: (active: bool
   },
 ];
 
-function BottomNav({ active, onSelect }: { active: UserTab; onSelect: (tab: UserTab) => void }) {
+function BottomNav({ active, onSelect, packageType }: { active: UserTab; onSelect: (tab: UserTab) => void; packageType: PackageType }) {
+  const items = packageType === "USERBOT" ? TAB_ITEMS : TAB_ITEMS.filter((item) => item.id === "JASEB");
   return (
     <nav className="bottom-nav" aria-label="Menu utama">
-      {TAB_ITEMS.map((item) => (
+      {items.map((item) => (
         <button
           key={item.id}
           type="button"
@@ -195,9 +197,7 @@ function TelegramRequired({
           ? "Data pembukaan ini sudah pernah dipakai. Tutup halaman ini, lalu buka lagi dari chat bot."
           : issue === "CLOCK_INVALID"
             ? "Waktu pada data Telegram tidak cocok dengan server. Ini perlu diperbaiki di sistem."
-      : issue === "CANARY_ACCESS"
-        ? "Akun Telegram ini belum mendapat akses uji coba."
-        : "Layanan akun belum dapat dihubungi. Coba lagi beberapa saat.";
+      : "Layanan akun belum dapat dihubungi. Coba lagi beberapa saat.";
 
   return (
     <main className="page page--centered page--auth">
@@ -415,6 +415,7 @@ export default function App() {
   const [session, setSession] = useState<IssuedSession | null>(null);
   const [role, setRole] = useState<SessionRole | null>(null);
   const [accounts, setAccounts] = useState<readonly TelegramAccount[]>([]);
+  const [storefront, setStorefront] = useState<BuyerStorefront | null>(null);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
   const [action, setAction] = useState<ActionState>(null);
@@ -432,12 +433,24 @@ export default function App() {
     } finally { setLoadingAccounts(false); }
   }, []);
 
+  const loadBuyer = useCallback(async (accessToken: string) => {
+    const next = await getBuyerStorefront(accessToken);
+    setStorefront(next);
+    const activeTypes = next.activeEntitlements.map((item) => item.packageType);
+    if (activeTypes.includes("USERBOT")) {
+      await loadAccounts(accessToken);
+    } else if (activeTypes.includes("JASEB_WORKER")) {
+      setAccounts([]);
+      setActiveTab("JASEB");
+    }
+  }, [loadAccounts]);
+
   const openSession = useCallback(async (issued: IssuedSession) => {
     setSession(issued); setRole(null);
     const currentUser = await getCurrentUser(issued.accessToken);
+    if (currentUser.role === "USER") await loadBuyer(issued.accessToken);
     setRole(currentUser.role); setAuthStatus("READY");
-    if (currentUser.role === "USER") await loadAccounts(issued.accessToken);
-  }, [loadAccounts]);
+  }, [loadBuyer]);
 
   const authenticate = useCallback(async () => {
     const webApp = window.Telegram?.WebApp;
@@ -456,9 +469,7 @@ export default function App() {
       const issued = await exchangeTelegramInitData(initData);
       saveSession(issued); await openSession(issued);
     } catch (cause) {
-      if (cause instanceof ApiError && cause.code === "CANARY_ACCESS_REQUIRED") {
-        setTelegramAccessIssue("CANARY_ACCESS");
-      } else if (cause instanceof ApiError && cause.code === "TELEGRAM_AUTH_INVALID") {
+      if (cause instanceof ApiError && cause.code === "TELEGRAM_AUTH_INVALID") {
         setTelegramAccessIssue("AUTH_REJECTED");
       } else if (cause instanceof ApiError && cause.code === "TELEGRAM_AUTH_EXPIRED") {
         setTelegramAccessIssue("AUTH_EXPIRED");
@@ -501,14 +512,21 @@ export default function App() {
     }} />;
   }
 
+  if (!storefront) return <LoadingScreen />;
+  if (storefront.activeEntitlements.length === 0) {
+    return <Storefront token={session.accessToken} storefront={storefront} onChanged={() => loadBuyer(session.accessToken)} />;
+  }
+
+  const packageType: PackageType = storefront.activeEntitlements.some((item) => item.packageType === "USERBOT") ? "USERBOT" : "JASEB_WORKER";
+
   return (
     <main className="page page--user">
       <header className="topbar">
         <div className="wordmark"><span className="wordmark-dot" aria-hidden="true" />kertaaji</div>
-        <span className="user-mode">Userbot</span>
+        <span className="user-mode">{packageType === "USERBOT" ? "Userbot" : "Jaseb Worker"}</span>
       </header>
       <div className="tab-scroll">
-        <div className="tab-panel" hidden={activeTab !== "ACCOUNTS"}>
+        {packageType === "USERBOT" && <div className="tab-panel" hidden={activeTab !== "ACCOUNTS"}>
           <section className="content-section" aria-labelledby="accounts-heading">
             <div className="section-heading">
               <h1 id="accounts-heading">Akun Telegram</h1>
@@ -521,17 +539,17 @@ export default function App() {
               <div className="account-grid">{accounts.map((account) => <AccountCard key={account.id} account={account} action={action} onSwitch={(item) => void runAccountAction("SWITCH", item)} onDetach={() => void runAccountAction("DETACH")} onLogout={setLogoutAccount} />)}</div>
             )}
           </section>
-        </div>
+        </div>}
         <div className="tab-panel" hidden={activeTab !== "JASEB"}>
           <JasebPanel token={session.accessToken} />
         </div>
-        <div className="tab-panel" hidden={activeTab !== "AUTO_COMMENT"}>
+        {packageType === "USERBOT" && <div className="tab-panel" hidden={activeTab !== "AUTO_COMMENT"}>
           <AutoCommentPanel token={session.accessToken} />
-        </div>
+        </div>}
       </div>
       {connectOpen && <ConnectDialog token={session.accessToken} onClose={() => setConnectOpen(false)} onConnected={() => loadAccounts(session.accessToken)} />}
       {logoutAccount && <LogoutDialog account={logoutAccount} busy={action === "LOGOUT"} onClose={() => { if (!action) setLogoutAccount(null); }} onConfirm={() => void runAccountAction("LOGOUT", logoutAccount)} />}
-      <BottomNav active={activeTab} onSelect={setActiveTab} />
+      <BottomNav active={activeTab} onSelect={setActiveTab} packageType={packageType} />
     </main>
   );
 }

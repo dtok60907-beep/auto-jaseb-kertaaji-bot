@@ -124,8 +124,6 @@ PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
 PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/20260831040000_canary_admissions.sql" >/dev/null
 PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
-  -f "${PROJECT_ROOT}/supabase/tests/20260831050000_canary_session_gate.sql" >/dev/null
-PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/20260831110000_telegram_account_lifecycle.sql" >/dev/null
 PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/20260831130000_telegram_account_authorization.sql" >/dev/null
@@ -133,6 +131,8 @@ PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/20260831150000_telegram_account_management.sql" >/dev/null
 PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/20260909000000_worker_account_authorization.sql" >/dev/null
+PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
+  -f "${PROJECT_ROOT}/supabase/tests/20260909130000_pakasir_checkout.sql" >/dev/null
 
 (
   cd "${PROJECT_ROOT}/apps/api"
@@ -172,9 +172,9 @@ printf '%s\n' \
   'CANARY_ADMISSIONS_UPGRADE_MIGRATION_OK' \
   'CANARY_ADMISSIONS_HARD_CAP_OK' \
   'CANARY_ADMISSIONS_SESSION_REVOKE_OK' \
-  'CANARY_SESSION_GATE_FRESH_MIGRATION_OK' \
   'CANARY_SESSION_GATE_UPGRADE_MIGRATION_OK' \
-  'CANARY_SESSION_GATE_NO_PARTIAL_ROWS_OK' \
+  'PUBLIC_BUYER_ONBOARDING_OK' \
+  'PAKASIR_PAYMENT_FULFILLMENT_OK' \
   'TELEGRAM_ACCOUNT_LIFECYCLE_FRESH_MIGRATION_OK' \
   'TELEGRAM_ACCOUNT_LIFECYCLE_UPGRADE_MIGRATION_OK' \
   'TELEGRAM_ACCOUNT_AUTH_FLOW_CONCURRENCY_OK' \

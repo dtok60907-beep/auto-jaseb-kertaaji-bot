@@ -13,6 +13,8 @@ import type {
   BroadcastLpmTarget,
   BroadcastMaterial,
   BroadcastOperation,
+  BuyerPaymentOrder,
+  BuyerStorefront,
   CanaryAdmission,
   CanaryAdmissionChange,
   CurrentUser,
@@ -81,6 +83,23 @@ export function exchangeTelegramInitData(initData: string): Promise<IssuedSessio
 export async function getCurrentUser(token: string): Promise<CurrentUser> {
   const result = await request<{ user: CurrentUser }>("/v1/me", {}, token);
   return result.user;
+}
+
+export function getBuyerStorefront(token: string): Promise<BuyerStorefront> {
+  return request<BuyerStorefront>("/v1/storefront", {}, token);
+}
+
+export async function createPakasirOrder(token: string, packageId: string): Promise<BuyerPaymentOrder> {
+  const result = await request<{ order: BuyerPaymentOrder }>("/v1/payments/pakasir/orders", {
+    method: "POST",
+    body: JSON.stringify({ packageId }),
+  }, token);
+  return result.order;
+}
+
+export async function refreshPaymentOrder(token: string, orderId: string): Promise<BuyerPaymentOrder> {
+  const result = await request<{ order: BuyerPaymentOrder }>(`/v1/payments/orders/${orderId}/refresh`, { method: "POST" }, token);
+  return result.order;
 }
 
 export async function listTelegramAccounts(token: string): Promise<readonly TelegramAccount[]> {

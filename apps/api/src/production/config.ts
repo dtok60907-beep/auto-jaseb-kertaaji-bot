@@ -27,6 +27,12 @@ export type TelegramBotPolicy = Readonly<{
   webhookUrl: string;
 }>;
 
+export type PakasirPolicy = Readonly<{
+  projectSlug: string;
+  returnUrl: string;
+  timeoutMilliseconds: number;
+}>;
+
 export type ApiServerPolicy = Readonly<{
   host: string;
   port: number;
@@ -143,11 +149,13 @@ export class ProductionApiConfig {
   readonly authPolicy: ApiAuthPolicy;
   readonly telegramAuthorizationPolicy: TelegramAuthorizationPolicy;
   readonly telegramBotPolicy: TelegramBotPolicy;
+  readonly pakasirPolicy: PakasirPolicy;
   readonly serverPolicy: ApiServerPolicy;
   readonly #databaseUrl: string;
   readonly #telegramBotToken: string;
   readonly #telegramApiHash: string;
   readonly #telegramWebhookSecret: string;
+  readonly #pakasirApiKey: string;
   readonly #telegramSessionKeyRing: TelegramSessionKeyRing;
   readonly telegramApiId: number;
 
@@ -162,6 +170,8 @@ export class ProductionApiConfig {
     telegramApiId: number;
     telegramApiHash: string;
     telegramWebhookSecret: string;
+    pakasirApiKey: string;
+    pakasirPolicy: PakasirPolicy;
     telegramSessionKeyRing: TelegramSessionKeyRing;
   }>) {
     this.databasePolicy = input.databasePolicy;
@@ -174,6 +184,8 @@ export class ProductionApiConfig {
     this.telegramApiId = input.telegramApiId;
     this.#telegramApiHash = input.telegramApiHash;
     this.#telegramWebhookSecret = input.telegramWebhookSecret;
+    this.#pakasirApiKey = input.pakasirApiKey;
+    this.pakasirPolicy = input.pakasirPolicy;
     this.#telegramSessionKeyRing = input.telegramSessionKeyRing;
     Object.freeze(this);
   }
@@ -193,6 +205,7 @@ export class ProductionApiConfig {
       telegramApiId: integer(env, "TELEGRAM_API_ID", 1, 2_147_483_647),
       telegramApiHash: telegramApiHash(env),
       telegramWebhookSecret: telegramWebhookSecret(env),
+      pakasirApiKey: requiredText(env, "PAKASIR_API_KEY", 512),
       telegramSessionKeyRing,
       databasePolicy: Object.freeze({
         maxConnections: integer(env, "API_DATABASE_MAX_CONNECTIONS", 1, 50),
@@ -214,6 +227,15 @@ export class ProductionApiConfig {
         miniAppUrl: httpsUrl(env, "TELEGRAM_MINI_APP_URL"),
         webhookUrl: httpsUrl(env, "TELEGRAM_BOT_WEBHOOK_URL"),
       }),
+      pakasirPolicy: Object.freeze({
+        projectSlug: (() => {
+          const value = requiredText(env, "PAKASIR_PROJECT_SLUG", 63);
+          if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(value)) fail("PAKASIR_PROJECT_SLUG");
+          return value;
+        })(),
+        returnUrl: httpsUrl(env, "PAKASIR_RETURN_URL"),
+        timeoutMilliseconds: integer(env, "PAKASIR_API_TIMEOUT_MS", 1_000, 30_000),
+      }),
       serverPolicy: Object.freeze({
         host: host(env),
         port: integer(env, "PORT", 1, 65_535),
@@ -229,6 +251,7 @@ export class ProductionApiConfig {
   telegramBotToken(): string { return this.#telegramBotToken; }
   telegramApiHash(): string { return this.#telegramApiHash; }
   telegramWebhookSecret(): string { return this.#telegramWebhookSecret; }
+  pakasirApiKey(): string { return this.#pakasirApiKey; }
   telegramSessionKeyRing(): TelegramSessionKeyRing { return this.#telegramSessionKeyRing; }
 
   toJSON(): Readonly<Record<string, unknown>> {
@@ -238,6 +261,7 @@ export class ProductionApiConfig {
       authPolicy: this.authPolicy,
       telegramAuthorizationPolicy: this.telegramAuthorizationPolicy,
       telegramBotPolicy: this.telegramBotPolicy,
+      pakasirPolicy: this.pakasirPolicy,
       serverPolicy: this.serverPolicy,
       telegramApiId: this.telegramApiId,
     });

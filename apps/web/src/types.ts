@@ -109,6 +109,27 @@ export type Entitlement = Readonly<{
   maxChannelTargets: number;
 }>;
 
+export type BuyerPaymentOrder = Readonly<{
+  id: string;
+  orderCode: string;
+  packageId: string;
+  packageName: string;
+  packageType: PackageType;
+  amountIdr: number;
+  status: "PENDING" | "PAID";
+  paymentMethod: string | null;
+  createdAt: string;
+  paidAt: string | null;
+  entitlementId: string | null;
+  checkoutUrl: string;
+}>;
+
+export type BuyerStorefront = Readonly<{
+  packages: readonly ServicePackage[];
+  activeEntitlements: readonly Entitlement[];
+  pendingOrder: BuyerPaymentOrder | null;
+}>;
+
 export type WorkerAccount = Readonly<{
   id: string;
   label: string;
