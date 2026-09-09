@@ -94,7 +94,7 @@ test("production composition wires canary login, user auth, admin auth, and ever
       headers: { authorization: `Bearer ${token}` },
     });
     assert.equal(userSettings.statusCode, 200);
-    assert.deepEqual(userSettings.json(), { materials: [], lpmTargets: [] });
+    assert.deepEqual(userSettings.json(), { materials: [], lpmTargets: [], accountMode: null });
 
     const noAdmin = await api.inject({
       method: "GET",

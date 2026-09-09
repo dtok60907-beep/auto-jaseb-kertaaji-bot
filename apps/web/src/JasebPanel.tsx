@@ -17,6 +17,7 @@ import {
   updateTextBroadcastMaterial,
 } from "./api";
 import type { BroadcastCampaign, BroadcastHistoryEntry, BroadcastLpmTarget, BroadcastMaterial, BroadcastOperation } from "./types";
+import { parseTargetInput } from "./target-input";
 
 const OPERATION_TERMINAL_STATUSES = new Set(["SUCCEEDED", "FAILED_FINAL", "CANCELLED", "SIDE_EFFECT_UNCERTAIN"]);
 const MAX_TEXT_LENGTH = 4096;
@@ -111,7 +112,6 @@ export function JasebPanel({ token }: { token: string }) {
   const [forwardLink, setForwardLink] = useState("");
   const [forwardShowSource, setForwardShowSource] = useState(true);
   const [targetRef, setTargetRef] = useState("");
-  const [targetLabel, setTargetLabel] = useState("");
   const [targetFormOpen, setTargetFormOpen] = useState(false);
   const [editingTarget, setEditingTarget] = useState<BroadcastLpmTarget | null>(null);
   const [creatingMaterial, setCreatingMaterial] = useState(false);
@@ -264,24 +264,35 @@ export function JasebPanel({ token }: { token: string }) {
     finally { setCreatingMaterial(false); }
   };
 
-  const openAddTarget = () => { setEditingTarget(null); setTargetRef(""); setTargetLabel(""); setTargetFormOpen(true); };
-  const openEditTarget = (item: BroadcastLpmTarget) => { setEditingTarget(item); setTargetRef(item.telegramTargetRef); setTargetLabel(item.label ?? ""); setTargetFormOpen(true); };
+  const openAddTarget = () => { setEditingTarget(null); setTargetRef(""); setTargetFormOpen(true); };
+  const openEditTarget = (item: BroadcastLpmTarget) => { setEditingTarget(item); setTargetRef(item.telegramTargetRef); setTargetFormOpen(true); };
   const cancelTargetForm = () => { setTargetFormOpen(false); setEditingTarget(null); };
 
   const submitTarget = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSavingTarget(true); setPageError(null);
-    const input = { telegramTargetRef: targetRef.trim(), label: targetLabel.trim() || null };
+    const refs = editingTarget ? [targetRef.trim()] : [...parseTargetInput(targetRef)];
+    if (refs.length === 0) { setSavingTarget(false); return; }
     try {
-      const saved = editingTarget
-        ? await updateBroadcastLpmTarget(token, editingTarget.id, input)
-        : await createBroadcastLpmTarget(token, input);
-      setTargets((current) => {
-        const exists = current.some((item) => item.id === saved.id);
-        return exists ? current.map((item) => (item.id === saved.id ? saved : item)) : [...current, saved];
-      });
+      const saved: BroadcastLpmTarget[] = [];
+      if (editingTarget) {
+        saved.push(await updateBroadcastLpmTarget(token, editingTarget.id, { telegramTargetRef: refs[0], label: null }));
+      } else {
+        for (const telegramTargetRef of refs) {
+          saved.push(await createBroadcastLpmTarget(token, { telegramTargetRef, label: null }));
+        }
+      }
+      setTargets((current) => saved.reduce<BroadcastLpmTarget[]>((next, item) => {
+        const exists = next.some((target) => target.id === item.id);
+        return exists ? next.map((target) => target.id === item.id ? item : target) : [...next, item];
+      }, [...current]));
+      setTargetRef("");
       setTargetFormOpen(false); setEditingTarget(null);
-    } catch (cause) { setPageError(jasebErrorLabel(cause)); }
+    } catch (cause) {
+      const message = jasebErrorLabel(cause);
+      await load();
+      setPageError(message);
+    }
     finally { setSavingTarget(false); }
   };
 
@@ -468,16 +479,16 @@ export function JasebPanel({ token }: { token: string }) {
           )}
           {targetFormOpen && (
             <form className="stack-form" onSubmit={submitTarget}>
-              <label htmlFor="jaseb-target-ref">{editingTarget ? "Ubah target" : "Tambah target"} (username/link Telegram)</label>
-              <input
+              <label htmlFor="jaseb-target-ref">{editingTarget ? "Ubah target" : "Target grup (username/link Telegram)"}</label>
+              <textarea
                 id="jaseb-target-ref"
+                rows={editingTarget ? 2 : 4}
                 value={targetRef}
                 onChange={(event) => setTargetRef(event.target.value)}
-                placeholder="@nama_grup atau https://t.me/nama_grup"
+                placeholder={editingTarget ? "@nama_grup" : "@grup_satu, @grup_dua\nhttps://t.me/grup_tiga"}
                 required
               />
-              <label htmlFor="jaseb-target-label">Label (opsional)</label>
-              <input id="jaseb-target-label" value={targetLabel} onChange={(event) => setTargetLabel(event.target.value)} placeholder="Contoh: Grup utama" />
+              {!editingTarget && <span className="helper-text">Pisahkan banyak grup dengan koma atau Enter.</span>}
               <div className="account-card__actions">
                 <button className="button button--ghost" type="button" onClick={cancelTargetForm} disabled={savingTarget}>Batal</button>
                 <button className="button button--primary" type="submit" disabled={savingTarget || !targetRef.trim()}>

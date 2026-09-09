@@ -6,6 +6,7 @@ import type { EntitlementRepository } from "../entitlements/repository.ts";
 import type {
   TelegramAccountAuthFlowResult,
   TelegramAccountLifecycleRepository,
+  TelegramAccountType,
 } from "../telegram-accounts/repository.ts";
 import {
   parseTelegramAuthorizationState,
@@ -125,6 +126,7 @@ export class TelegramAuthorizationService {
   readonly #keyRing: KeyRing;
   readonly #flowTtlSeconds: number;
   readonly #newAccountId: () => string;
+  readonly #accountType: TelegramAccountType;
 
   constructor(input: Readonly<{
     accounts: TelegramAccountLifecycleRepository;
@@ -133,6 +135,7 @@ export class TelegramAuthorizationService {
     keyRing: KeyRing;
     flowTtlSeconds?: number;
     newAccountId?: () => string;
+    accountType?: TelegramAccountType;
   }>) {
     const ttl = input.flowTtlSeconds ?? DEFAULT_FLOW_TTL_SECONDS;
     if (!Number.isInteger(ttl) || ttl < 60 || ttl > 900) throw new TypeError("INVALID_AUTH_FLOW_TTL");
@@ -142,9 +145,11 @@ export class TelegramAuthorizationService {
     this.#keyRing = input.keyRing;
     this.#flowTtlSeconds = ttl;
     this.#newAccountId = input.newAccountId ?? randomUUID;
+    this.#accountType = input.accountType ?? "USERBOT";
   }
 
   async #requireSubscription(userId: string): Promise<void> {
+    if (this.#accountType === "JASEB_WORKER") return;
     const access = resolveEntitlementAccess(await this.#entitlements.list(userId), "AUTO_COMMENT_MF");
     if (!access.ok) throw new TelegramAuthorizationServiceError(access.code);
   }
@@ -164,6 +169,7 @@ export class TelegramAuthorizationService {
   }>): Promise<void> {
     await this.#accounts.transitionAuthFlow({
       userId: input.userId,
+      accountType: this.#accountType,
       authFlowId: input.authFlowId,
       expectedVersion: input.version,
       nextStatus: "FAILED",
@@ -175,7 +181,7 @@ export class TelegramAuthorizationService {
     const phoneNumber = normalizeTelegramPhoneNumber(rawPhoneNumber);
     if (!phoneNumber) throw new TelegramAuthorizationServiceError("INVALID_PHONE_NUMBER");
     await this.#requireSubscription(userId);
-    const begun = await this.#accounts.beginAuthFlow(userId, this.#flowTtlSeconds);
+    const begun = await this.#accounts.beginAuthFlow(userId, this.#flowTtlSeconds, this.#accountType);
     if (begun.result === "ACTIVE_FLOW_EXISTS") {
       throw new TelegramAuthorizationServiceError("AUTH_FLOW_ACTIVE", flowView(begun));
     }
@@ -191,6 +197,7 @@ export class TelegramAuthorizationService {
     try {
       claimed = await this.#accounts.transitionAuthFlow({
         userId,
+        accountType: this.#accountType,
         authFlowId: begun.id,
         expectedVersion: begun.version,
         nextStatus: "VERIFYING",
@@ -220,6 +227,7 @@ export class TelegramAuthorizationService {
     try {
       ready = await this.#accounts.transitionAuthFlow({
         userId,
+        accountType: this.#accountType,
         authFlowId: begun.id,
         expectedVersion: claimed.version,
         nextStatus: "CODE_REQUIRED",
@@ -245,7 +253,7 @@ export class TelegramAuthorizationService {
   ): Promise<never> {
     if (error instanceof TelegramAuthorizationServiceError) {
       await this.#accounts.transitionAuthFlow({
-        userId, authFlowId, expectedVersion, nextStatus: "CANCELLED",
+        userId, accountType: this.#accountType, authFlowId, expectedVersion, nextStatus: "CANCELLED",
       }).catch(() => undefined);
       throw error;
     }
@@ -259,7 +267,7 @@ export class TelegramAuthorizationService {
     expectedStatus: "CODE_REQUIRED" | "PASSWORD_REQUIRED",
   ): Promise<Readonly<{ pending: TelegramPendingAuthorization; version: bigint }>> {
     const claim = await this.#accounts.claimAuthFlowStep({
-      userId, authFlowId, expectedVersion: version, expectedStatus,
+      userId, accountType: this.#accountType, authFlowId, expectedVersion: version, expectedStatus,
     });
     if (claim.result !== "CLAIMED") {
       const code = claim.result === "NOT_FOUND" ? "AUTH_FLOW_NOT_FOUND"
@@ -308,6 +316,7 @@ export class TelegramAuthorizationService {
     try {
       restored = await this.#accounts.transitionAuthFlow({
         userId: input.userId,
+        accountType: this.#accountType,
         authFlowId: input.authFlowId,
         expectedVersion: input.version,
         nextStatus: input.status,
@@ -330,6 +339,7 @@ export class TelegramAuthorizationService {
     if (!UUID.test(proposedAccountId)) throw new TelegramAuthorizationServiceError("AUTH_TEMPORARILY_UNAVAILABLE");
     const resolved = await this.#accounts.resolveCompletionAccountId({
       userId,
+      accountType: this.#accountType,
       providerUserId: verified.providerUserId,
       proposedAccountId,
     });
@@ -343,13 +353,14 @@ export class TelegramAuthorizationService {
     let accountId = resolved.accountId;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const encrypted = this.#keyRing.encrypt(
-        { accountId, accountType: "USERBOT" },
+        { accountId, accountType: this.#accountType },
         verified.session,
       );
       let completion;
       try {
         completion = await this.#accounts.completeAuthFlow({
           userId,
+          accountType: this.#accountType,
           authFlowId,
           expectedVersion: version,
           accountId,
@@ -421,6 +432,7 @@ export class TelegramAuthorizationService {
     try {
       advanced = await this.#accounts.transitionAuthFlow({
         userId,
+        accountType: this.#accountType,
         authFlowId,
         expectedVersion: claimed.version,
         nextStatus: "PASSWORD_REQUIRED",
@@ -477,6 +489,7 @@ export class TelegramAuthorizationService {
     }
     const result = await this.#accounts.transitionAuthFlow({
       userId,
+      accountType: this.#accountType,
       authFlowId,
       expectedVersion: BigInt(rawVersion),
       nextStatus: "CANCELLED",

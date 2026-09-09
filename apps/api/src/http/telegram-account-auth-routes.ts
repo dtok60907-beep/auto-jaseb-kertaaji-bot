@@ -77,20 +77,29 @@ export function registerTelegramAccountAuthRoutes(
   app: FastifyInstance,
   options: Readonly<{
     authorization: TelegramAuthorizationUseCase;
-    authorizeUser: UserAuthorizer;
+    authorizeUser?: UserAuthorizer;
+    authorizeActor?: UserAuthorizer;
+    routePrefix?: "/v1/userbot" | "/v1/admin/worker";
+    unauthorizedCode?: "USER_REQUIRED" | "ADMIN_REQUIRED";
+    unauthorizedStatus?: 401 | 403;
   }>,
 ): void {
+  const authorize = options.authorizeActor ?? options.authorizeUser;
+  if (!authorize) throw new TypeError("TELEGRAM_AUTHORIZER_REQUIRED");
+  const routePrefix = options.routePrefix ?? "/v1/userbot";
+  const unauthorizedCode = options.unauthorizedCode ?? "USER_REQUIRED";
+  const unauthorizedStatus = options.unauthorizedStatus ?? 401;
   app.register(async (scope) => {
     scope.setErrorHandler((error, _request, reply) => parserFailure(reply, error));
     const user = async (request: FastifyRequest, reply: FastifyReply): Promise<string | null> => {
       noStore(reply);
-      const actor = await options.authorizeUser(request);
+      const actor = await authorize(request);
       if (actor) return actor.id;
-      reply.code(401).send({ code: "USER_REQUIRED" });
+      reply.code(unauthorizedStatus).send({ code: unauthorizedCode });
       return null;
     };
 
-    scope.post("/v1/userbot/telegram-auth-flows", { bodyLimit: BODY_LIMIT_BYTES }, async (request, reply) => {
+    scope.post(`${routePrefix}/telegram-auth-flows`, { bodyLimit: BODY_LIMIT_BYTES }, async (request, reply) => {
       const userId = await user(request, reply);
       if (!userId) return;
       const body = exactBody(request.body, ["phoneNumber"]);
@@ -101,7 +110,7 @@ export function registerTelegramAccountAuthRoutes(
       } catch (error) { return serviceFailure(reply, error); }
     });
 
-    scope.post("/v1/userbot/telegram-auth-flows/:authFlowId/code", { bodyLimit: BODY_LIMIT_BYTES }, async (request, reply) => {
+    scope.post(`${routePrefix}/telegram-auth-flows/:authFlowId/code`, { bodyLimit: BODY_LIMIT_BYTES }, async (request, reply) => {
       const userId = await user(request, reply);
       if (!userId) return;
       const body = exactBody(request.body, ["code", "version"]);
@@ -113,7 +122,7 @@ export function registerTelegramAccountAuthRoutes(
       } catch (error) { return serviceFailure(reply, error); }
     });
 
-    scope.post("/v1/userbot/telegram-auth-flows/:authFlowId/password", { bodyLimit: BODY_LIMIT_BYTES }, async (request, reply) => {
+    scope.post(`${routePrefix}/telegram-auth-flows/:authFlowId/password`, { bodyLimit: BODY_LIMIT_BYTES }, async (request, reply) => {
       const userId = await user(request, reply);
       if (!userId) return;
       const body = exactBody(request.body, ["password", "version"]);
@@ -125,7 +134,7 @@ export function registerTelegramAccountAuthRoutes(
       } catch (error) { return serviceFailure(reply, error); }
     });
 
-    scope.post("/v1/userbot/telegram-auth-flows/:authFlowId/cancel", { bodyLimit: BODY_LIMIT_BYTES }, async (request, reply) => {
+    scope.post(`${routePrefix}/telegram-auth-flows/:authFlowId/cancel`, { bodyLimit: BODY_LIMIT_BYTES }, async (request, reply) => {
       const userId = await user(request, reply);
       if (!userId) return;
       const body = exactBody(request.body, ["version"]);

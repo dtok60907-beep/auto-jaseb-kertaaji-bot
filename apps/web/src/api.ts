@@ -30,12 +30,14 @@ const API_ROOT = (runtimeApiBase ?? import.meta.env.VITE_API_BASE_URL ?? "").rep
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
+  readonly flow: AuthFlow | null;
 
-  constructor(status: number, code: string) {
+  constructor(status: number, code: string, flow: AuthFlow | null = null) {
     super(code);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.flow = flow;
   }
 }
 
@@ -60,7 +62,11 @@ async function request<T>(path: string, init: RequestInit = {}, token?: string):
       && typeof (body as { code?: unknown }).code === "string"
       ? (body as { code: string }).code
       : "REQUEST_FAILED";
-    throw new ApiError(response.status, code);
+    const flow = typeof body === "object" && body !== null && "flow" in body
+      && typeof (body as { flow?: unknown }).flow === "object"
+      ? (body as { flow: AuthFlow }).flow
+      : null;
+    throw new ApiError(response.status, code, flow);
   }
   return body as T;
 }
@@ -111,6 +117,38 @@ export function submitTelegramPassword(
 
 export function cancelTelegramAuthorization(token: string, flow: Pick<AuthFlow, "id" | "version">): Promise<void> {
   return request<void>(`/v1/userbot/telegram-auth-flows/${flow.id}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ version: flow.version }),
+  }, token);
+}
+
+export function startWorkerTelegramAuthorization(token: string, phoneNumber: string): Promise<AuthorizationResult> {
+  return request<AuthorizationResult>("/v1/admin/worker/telegram-auth-flows", {
+    method: "POST",
+    body: JSON.stringify({ phoneNumber }),
+  }, token);
+}
+
+export function submitWorkerTelegramCode(
+  token: string, flow: Pick<AuthFlow, "id" | "version">, code: string,
+): Promise<AuthorizationResult> {
+  return request<AuthorizationResult>(`/v1/admin/worker/telegram-auth-flows/${flow.id}/code`, {
+    method: "POST",
+    body: JSON.stringify({ version: flow.version, code }),
+  }, token);
+}
+
+export function submitWorkerTelegramPassword(
+  token: string, flow: Pick<AuthFlow, "id" | "version">, password: string,
+): Promise<AuthorizationResult> {
+  return request<AuthorizationResult>(`/v1/admin/worker/telegram-auth-flows/${flow.id}/password`, {
+    method: "POST",
+    body: JSON.stringify({ version: flow.version, password }),
+  }, token);
+}
+
+export function cancelWorkerTelegramAuthorization(token: string, flow: Pick<AuthFlow, "id" | "version">): Promise<void> {
+  return request<void>(`/v1/admin/worker/telegram-auth-flows/${flow.id}/cancel`, {
     method: "POST",
     body: JSON.stringify({ version: flow.version }),
   }, token);

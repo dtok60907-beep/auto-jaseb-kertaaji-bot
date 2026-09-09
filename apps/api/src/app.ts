@@ -52,6 +52,7 @@ type CommonApiOptions = {
   broadcastCampaigns?: BroadcastCampaignRepository;
   telegramSessionIssuer?: TelegramSessionExchange;
   telegramAuthorization?: TelegramAuthorizationUseCase;
+  workerTelegramAuthorization?: TelegramAuthorizationUseCase;
   telegramAccounts?: TelegramAccountLifecycleRepository;
   adminUsers?: AdminUserRepository;
   canaryAdmissions?: CanaryOperatorRepository;
@@ -112,6 +113,15 @@ export function createApi(options: ApiOptions) {
     registerTelegramAccountAuthRoutes(app, {
       authorization: options.telegramAuthorization,
       authorizeUser,
+    });
+  }
+  if (options.workerTelegramAuthorization) {
+    registerTelegramAccountAuthRoutes(app, {
+      authorization: options.workerTelegramAuthorization,
+      authorizeActor: authorizeAdmin,
+      routePrefix: "/v1/admin/worker",
+      unauthorizedCode: "ADMIN_REQUIRED",
+      unauthorizedStatus: 403,
     });
   }
   if (options.telegramAccounts && options.userbotProfiles) {

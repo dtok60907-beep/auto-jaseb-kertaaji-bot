@@ -321,6 +321,7 @@ function ConnectDialog({
       setCode("");
     } catch (cause) {
       setError(errorLabel(cause));
+      if (cause instanceof ApiError && cause.flow) setFlow(cause.flow);
       if (cause instanceof ApiError && cause.code === "AUTH_FLOW_EXPIRED") setFlow(null);
     } finally { setBusy(false); }
   };
@@ -335,7 +336,7 @@ function ConnectDialog({
       }
       setFlow(updateFlow(result));
       setPassword("");
-    } catch (cause) { setError(errorLabel(cause)); }
+    } catch (cause) { setError(errorLabel(cause)); if (cause instanceof ApiError && cause.flow) setFlow(cause.flow); }
     finally { setBusy(false); }
   };
   const cancel = async () => {

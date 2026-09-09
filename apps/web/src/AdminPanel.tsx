@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import {
   admitCanaryUser,
   ApiError,
+  cancelWorkerTelegramAuthorization,
   createAdminBroadcastCampaign,
   createAdminBroadcastLpmTarget,
   createAdminForwardBroadcastMaterial,
@@ -20,13 +21,17 @@ import {
   revokeCanaryUser,
   revokeEntitlement,
   stopAdminBroadcastCampaign,
+  startWorkerTelegramAuthorization,
+  submitWorkerTelegramCode,
+  submitWorkerTelegramPassword,
   updateAdminBroadcastLpmTarget,
   updateAdminForwardBroadcastMaterial,
   updateAdminPackage,
   updateAdminTextBroadcastMaterial,
   updateWorkerAccount,
 } from "./api";
-import type { AdminUser, BroadcastCampaign, BroadcastLpmTarget, BroadcastMaterial, CanaryAdmission, Entitlement, PackageInput, ServicePackage, WorkerAccount } from "./types";
+import type { AdminUser, AuthFlow, BroadcastCampaign, BroadcastLpmTarget, BroadcastMaterial, CanaryAdmission, Entitlement, PackageInput, ServicePackage, WorkerAccount } from "./types";
+import { parseTargetInput } from "./target-input";
 
 const ADMIN_JASEB_MIN_REPEAT_MINUTES = 5;
 const CANARY_SLOT_LIMIT = 15;
@@ -93,6 +98,16 @@ const API_ERROR_LABEL: Record<string, string> = {
   CAMPAIGN_ALREADY_ACTIVE: "Sudah ada Jasa Sebar berulang yang sedang berjalan untuk pengguna ini.",
   INTERVAL_TOO_SHORT: `Jeda pengulangan minimal ${ADMIN_JASEB_MIN_REPEAT_MINUTES} menit.`,
   INVALID_TELEGRAM_USER_ID: "ID Telegram belum sesuai. Pastikan cuma angka.",
+  AUTH_FLOW_ACTIVE: "Masih ada proses koneksi Telegram yang berjalan.",
+  AUTH_FLOW_EXPIRED: "Waktu koneksi habis. Mulai lagi dari awal.",
+  AUTH_FLOW_CONFLICT: "Proses koneksi berubah. Tutup lalu mulai lagi.",
+  PHONE_NUMBER_INVALID: "Nomor telepon belum sesuai format internasional.",
+  PHONE_CODE_INVALID: "Kode Telegram belum benar.",
+  PHONE_CODE_EXPIRED: "Kode Telegram sudah kedaluwarsa.",
+  PASSWORD_INVALID: "Kata sandi 2FA Telegram belum benar.",
+  TELEGRAM_RATE_LIMITED: "Telegram meminta jeda sebelum mencoba lagi.",
+  TELEGRAM_UNAVAILABLE: "Telegram belum bisa dihubungi. Coba lagi nanti.",
+  ACCOUNT_ALREADY_CONNECTED: "Akun Telegram itu sudah dipakai sebagai akun lain.",
 };
 
 function errorLabel(error: unknown): string {
@@ -158,7 +173,90 @@ function AdminTopbar() {
   );
 }
 
-function WorkerCard({ worker, token, onSaved, onError }: { worker: WorkerAccount; token: string; onSaved: (worker: WorkerAccount) => void; onError: (error: unknown) => void }) {
+function WorkerConnectDialog({ token, onClose, onConnected }: { token: string; onClose: () => void; onConnected: () => Promise<void> }) {
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [flow, setFlow] = useState<AuthFlow | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [dialogError, setDialogError] = useState<string | null>(null);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const expired = flow ? Date.parse(flow.expiresAt) <= now : false;
+  const remaining = flow ? Math.max(0, Math.ceil((Date.parse(flow.expiresAt) - now) / 1_000)) : 0;
+  const finish = async () => { await onConnected(); onClose(); };
+  const submitPhone = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); setBusy(true); setDialogError(null);
+    try {
+      const result = await startWorkerTelegramAuthorization(token, phoneNumber);
+      if (result.status === "CONNECTED") await finish(); else setFlow(result.flow);
+    } catch (error) { setDialogError(errorLabel(error)); if (error instanceof ApiError && error.flow) setFlow(error.flow); }
+    finally { setBusy(false); }
+  };
+  const submitCode = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); if (!flow) return; setBusy(true); setDialogError(null);
+    try {
+      const result = await submitWorkerTelegramCode(token, flow, code);
+      if (result.status === "CONNECTED") await finish(); else { setFlow(result.flow); setCode(""); }
+    } catch (error) {
+      setDialogError(errorLabel(error));
+      if (error instanceof ApiError && error.flow) setFlow(error.flow);
+      if (error instanceof ApiError && error.code === "AUTH_FLOW_EXPIRED") setFlow(null);
+    } finally { setBusy(false); }
+  };
+  const submitPassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); if (!flow) return; setBusy(true); setDialogError(null);
+    try {
+      const result = await submitWorkerTelegramPassword(token, flow, password);
+      if (result.status === "CONNECTED") await finish(); else { setFlow(result.flow); setPassword(""); }
+    } catch (error) { setDialogError(errorLabel(error)); if (error instanceof ApiError && error.flow) setFlow(error.flow); }
+    finally { setBusy(false); }
+  };
+  const cancel = async () => {
+    if (!flow || busy) { onClose(); return; }
+    setBusy(true); setDialogError(null);
+    try { await cancelWorkerTelegramAuthorization(token, flow); onClose(); }
+    catch (error) { setDialogError(errorLabel(error)); setBusy(false); }
+  };
+
+  return (
+    <div className="modal-layer" role="presentation">
+      <div className="modal-backdrop" onClick={() => void cancel()} />
+      <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="worker-connect-title">
+        <div className="modal-head"><div><p className="eyebrow">Akun worker</p><h2 id="worker-connect-title">Hubungkan Telegram</h2></div><button className="close-button" type="button" onClick={() => void cancel()}>Tutup</button></div>
+        {!flow && <form className="stack-form" onSubmit={submitPhone}>
+          <p className="modal-intro">Akun ini disediakan admin dan hanya digunakan untuk Jasa Sebar.</p>
+          <label htmlFor="worker-phone">Nomor telepon</label>
+          <input id="worker-phone" inputMode="tel" autoComplete="tel" placeholder="+62 812 3456 7890" value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value)} required />
+          {dialogError && <p className="form-error" role="alert">{dialogError}</p>}
+          <button className="button button--primary button--wide" type="submit" disabled={busy}>{busy ? "Meminta kode" : "Kirim kode"}</button>
+        </form>}
+        {flow?.status === "CODE_REQUIRED" && !expired && <form className="stack-form" onSubmit={submitCode}>
+          <div className="step-count"><span>Kode dikirim Telegram</span><strong>{Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, "0")}</strong></div>
+          <label htmlFor="worker-code">Kode Telegram</label>
+          <input id="worker-code" inputMode="numeric" autoComplete="one-time-code" placeholder="12345" value={code} onChange={(event) => setCode(event.target.value)} required />
+          {dialogError && <p className="form-error" role="alert">{dialogError}</p>}
+          <button className="button button--primary button--wide" type="submit" disabled={busy}>{busy ? "Memeriksa kode" : "Lanjutkan"}</button>
+        </form>}
+        {flow?.status === "PASSWORD_REQUIRED" && !expired && <form className="stack-form" onSubmit={submitPassword}>
+          <div className="step-count"><span>Verifikasi 2FA</span><strong>{Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, "0")}</strong></div>
+          <label htmlFor="worker-password">Kata sandi 2FA Telegram</label>
+          <input id="worker-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required />
+          {dialogError && <p className="form-error" role="alert">{dialogError}</p>}
+          <button className="button button--primary button--wide" type="submit" disabled={busy}>{busy ? "Memeriksa" : "Hubungkan worker"}</button>
+        </form>}
+        {flow && expired && <div className="expired-state"><h3>Waktu koneksi habis</h3><button className="button button--primary button--wide" type="button" onClick={() => { setFlow(null); setDialogError(null); }}>Mulai lagi</button></div>}
+      </section>
+    </div>
+  );
+}
+
+function WorkerCard({ worker, token, onSaved, onError, onReconnect }: { worker: WorkerAccount; token: string; onSaved: (worker: WorkerAccount) => void; onError: (error: unknown) => void; onReconnect: () => void }) {
   const [interval, setInterval] = useState(String(worker.intervalSeconds ?? 60));
   const [active, setActive] = useState(worker.active ?? false);
   const [saving, setSaving] = useState(false);
@@ -188,6 +286,7 @@ function WorkerCard({ worker, token, onSaved, onError }: { worker: WorkerAccount
         <label>Interval detik<input inputMode="numeric" value={interval} onChange={(event) => setInterval(event.target.value)} /></label>
         <label className="check-control"><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} />Aktif</label>
         <button className="button button--soft" type="button" onClick={() => void save()} disabled={saving}>{saving ? "Menyimpan" : "Simpan"}</button>
+        {worker.accountStatus !== "READY" && <button className="button button--ghost" type="button" onClick={onReconnect}>Login ulang</button>}
       </div>
     </article>
   );
@@ -268,7 +367,6 @@ function UserJasebPanel({ user, token, onError }: { user: AdminUser; token: stri
   const [targetFormOpen, setTargetFormOpen] = useState(false);
   const [editingTarget, setEditingTarget] = useState<BroadcastLpmTarget | null>(null);
   const [targetRef, setTargetRef] = useState("");
-  const [targetLabel, setTargetLabel] = useState("");
   const [savingTarget, setSavingTarget] = useState(false);
   const [targetBusy, setTargetBusy] = useState<string | null>(null);
 
@@ -317,23 +415,30 @@ function UserJasebPanel({ user, token, onError }: { user: AdminUser; token: stri
     finally { setSavingMaterial(false); }
   };
 
-  const openAddTarget = () => { setEditingTarget(null); setTargetRef(""); setTargetLabel(""); setTargetFormOpen(true); };
-  const openEditTarget = (item: BroadcastLpmTarget) => { setEditingTarget(item); setTargetRef(item.telegramTargetRef); setTargetLabel(item.label ?? ""); setTargetFormOpen(true); };
+  const openAddTarget = () => { setEditingTarget(null); setTargetRef(""); setTargetFormOpen(true); };
+  const openEditTarget = (item: BroadcastLpmTarget) => { setEditingTarget(item); setTargetRef(item.telegramTargetRef); setTargetFormOpen(true); };
 
   const saveTarget = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSavingTarget(true);
-    const input = { telegramTargetRef: targetRef.trim(), label: targetLabel.trim() || null };
+    const refs = editingTarget ? [targetRef.trim()] : [...parseTargetInput(targetRef)];
+    if (refs.length === 0) { setSavingTarget(false); return; }
     try {
-      const saved = editingTarget
-        ? await updateAdminBroadcastLpmTarget(token, user.id, editingTarget.id, input)
-        : await createAdminBroadcastLpmTarget(token, user.id, input);
-      setTargets((current) => {
-        const exists = current.some((item) => item.id === saved.id);
-        return exists ? current.map((item) => (item.id === saved.id ? saved : item)) : [...current, saved];
-      });
+      const saved: BroadcastLpmTarget[] = [];
+      if (editingTarget) {
+        saved.push(await updateAdminBroadcastLpmTarget(token, user.id, editingTarget.id, { telegramTargetRef: refs[0], label: null }));
+      } else {
+        for (const telegramTargetRef of refs) {
+          saved.push(await createAdminBroadcastLpmTarget(token, user.id, { telegramTargetRef, label: null }));
+        }
+      }
+      setTargets((current) => saved.reduce<BroadcastLpmTarget[]>((next, item) => {
+        const exists = next.some((target) => target.id === item.id);
+        return exists ? next.map((target) => target.id === item.id ? item : target) : [...next, item];
+      }, [...current]));
+      setTargetRef("");
       setTargetFormOpen(false); setEditingTarget(null);
-    } catch (error) { onError(error); }
+    } catch (error) { onError(error); await reload(); }
     finally { setSavingTarget(false); }
   };
 
@@ -423,10 +528,9 @@ function UserJasebPanel({ user, token, onError }: { user: AdminUser; token: stri
           ))}
           {targetFormOpen && (
             <form className="stack-form" onSubmit={saveTarget}>
-              <label htmlFor={`admin-jaseb-target-${user.id}`}>{editingTarget ? "Ubah target" : "Tambah target"}</label>
-              <input id={`admin-jaseb-target-${user.id}`} value={targetRef} onChange={(event) => setTargetRef(event.target.value)} placeholder="@nama_grup atau https://t.me/nama_grup" required />
-              <label htmlFor={`admin-jaseb-target-label-${user.id}`}>Label (opsional)</label>
-              <input id={`admin-jaseb-target-label-${user.id}`} value={targetLabel} onChange={(event) => setTargetLabel(event.target.value)} />
+              <label htmlFor={`admin-jaseb-target-${user.id}`}>{editingTarget ? "Ubah target" : "Target grup"}</label>
+              <textarea id={`admin-jaseb-target-${user.id}`} rows={editingTarget ? 2 : 4} value={targetRef} onChange={(event) => setTargetRef(event.target.value)} placeholder={editingTarget ? "@nama_grup" : "@grup_satu, @grup_dua\nhttps://t.me/grup_tiga"} required />
+              {!editingTarget && <span className="helper-text">Pisahkan banyak grup dengan koma atau Enter.</span>}
               <div className="account-card__actions">
                 <button className="button button--ghost" type="button" onClick={() => { setTargetFormOpen(false); setEditingTarget(null); }} disabled={savingTarget}>Batal</button>
                 <button className="button button--primary" type="submit" disabled={savingTarget || !targetRef.trim()}>{savingTarget ? "Menyimpan" : "Simpan target"}</button>
@@ -563,6 +667,7 @@ export function AdminPanel({ token, onSessionExpired }: { token: string; onSessi
   const [newTelegramUserId, setNewTelegramUserId] = useState("");
   const [admissionBusy, setAdmissionBusy] = useState<string | null>(null);
   const [admissionNotice, setAdmissionNotice] = useState<string | null>(null);
+  const [workerConnectOpen, setWorkerConnectOpen] = useState(false);
 
   const handleError = useCallback((error: unknown) => {
     if (error instanceof ApiError && (error.status === 401 || error.code === "ADMIN_REQUIRED")) { onSessionExpired(); return; }
@@ -661,8 +766,9 @@ export function AdminPanel({ token, onSessionExpired }: { token: string; onSessi
         )}
       </section>}
       {section === "PACKAGES" && <section className="admin-section"><div className="section-heading"><div><p className="eyebrow">Paket</p><h2>Paket layanan</h2></div><button className="button button--primary" type="button" onClick={() => setEditingPackage(null)}>Paket baru</button></div><div className="admin-card-grid">{loading ? <p className="admin-muted">Memuat paket.</p> : packages.length === 0 ? <p className="admin-muted">Belum ada paket.</p> : packages.map((pkg) => <article className="admin-card" key={pkg.id}><div className="admin-card__head"><div><p className="admin-card__label">{pkg.type === "USERBOT" ? "Userbot" : "Jaseb Worker"}</p><h3>{pkg.name}</h3></div><span className={`admin-badge ${pkg.active ? "" : "admin-badge--disabled"}`}>{pkg.active ? "Aktif" : "Nonaktif"}</span></div><div className="admin-meta"><span>Harga</span><strong>{formatRupiah(pkg.priceIdr)}</strong><span>Masa aktif</span><strong>{pkg.durationDays} hari</strong><span>Target LPM/Channel</span><strong>{pkg.maxTargetsPerMinute}</strong></div><button className="button button--ghost" type="button" onClick={() => setEditingPackage(pkg)}>Ubah paket</button></article>)}</div></section>}
-      {section === "WORKERS" && <section className="admin-section"><div className="section-heading"><div><p className="eyebrow">Akun worker</p><h2>Pengaturan worker</h2></div></div><div className="admin-card-grid">{loading ? <p className="admin-muted">Memuat akun worker.</p> : workers.length === 0 ? <p className="admin-muted">Belum ada akun worker.</p> : workers.map((worker) => <WorkerCard key={worker.id} worker={worker} token={token} onSaved={replaceWorker} onError={handleError} />)}</div></section>}
+      {section === "WORKERS" && <section className="admin-section"><div className="section-heading"><div><p className="eyebrow">Akun worker</p><h2>Pengaturan worker</h2></div><button className="button button--primary" type="button" onClick={() => setWorkerConnectOpen(true)}>Hubungkan worker</button></div><p className="admin-muted">Worker hanya dipakai untuk Jasa Sebar. Setelah terhubung, atur interval lalu aktifkan akunnya.</p><div className="admin-card-grid">{loading ? <p className="admin-muted">Memuat akun worker.</p> : workers.length === 0 ? <p className="admin-muted">Belum ada akun worker.</p> : workers.map((worker) => <WorkerCard key={worker.id} worker={worker} token={token} onSaved={replaceWorker} onError={handleError} onReconnect={() => setWorkerConnectOpen(true)} />)}</div></section>}
       {editingPackage !== undefined && <PackageDialog current={editingPackage} token={token} onClose={() => setEditingPackage(undefined)} onSaved={replacePackage} onError={handleError} />}
+      {workerConnectOpen && <WorkerConnectDialog token={token} onClose={() => setWorkerConnectOpen(false)} onConnected={loadAll} />}
     </main>
   );
 }

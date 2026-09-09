@@ -48,15 +48,24 @@ export function composeProductionApi(config: ProductionApiConfig, sql: Sql) {
   });
   const entitlements = new PostgresEntitlementRepository(sql);
   const telegramAccounts = new PostgresTelegramAccountLifecycleRepository(sql);
+  const telegramTransport = new TeleprotoAuthorizationTransport({
+    apiId: config.telegramApiId,
+    apiHash: config.telegramApiHash(),
+  });
   const telegramAuthorization = new TelegramAuthorizationService({
     accounts: telegramAccounts,
     entitlements,
-    transport: new TeleprotoAuthorizationTransport({
-      apiId: config.telegramApiId,
-      apiHash: config.telegramApiHash(),
-    }),
+    transport: telegramTransport,
     keyRing: config.telegramSessionKeyRing(),
     flowTtlSeconds: config.telegramAuthorizationPolicy.flowTtlSeconds,
+  });
+  const workerTelegramAuthorization = new TelegramAuthorizationService({
+    accounts: telegramAccounts,
+    entitlements,
+    transport: telegramTransport,
+    keyRing: config.telegramSessionKeyRing(),
+    flowTtlSeconds: config.telegramAuthorizationPolicy.flowTtlSeconds,
+    accountType: "JASEB_WORKER",
   });
   return createApi({
     packages: new PostgresPackageRepository(sql),
@@ -72,6 +81,7 @@ export function composeProductionApi(config: ProductionApiConfig, sql: Sql) {
     adminAccess: new PostgresAdminAccessRepository(sql),
     telegramSessionIssuer: sessionIssuer,
     telegramAuthorization,
+    workerTelegramAuthorization,
     telegramAccounts,
     adminUsers: new PostgresAdminUserRepository(sql),
     canaryAdmissions: new PostgresCanaryOperatorRepository(sql),

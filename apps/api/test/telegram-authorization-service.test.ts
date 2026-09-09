@@ -56,6 +56,7 @@ class FakeAccounts implements TelegramAccountLifecycleRepository {
   encryptionKeyVersion: number | null = null;
   transitions: Array<{ nextStatus: string; errorCode?: string; encryptedState?: Uint8Array }> = [];
   completionCalls = 0;
+  completedAccountType: "JASEB_WORKER" | "USERBOT" | null = null;
 
   async beginAuthFlow(): Promise<TelegramAccountAuthFlowResult> {
     return { result: "CREATED", id: FLOW, status: this.status, version: this.version, expiresAt: EXPIRES };
@@ -90,6 +91,7 @@ class FakeAccounts implements TelegramAccountLifecycleRepository {
   async resolveCompletionAccountId() { return { result: "RESOLVED" as const, accountId: ACCOUNT }; }
   async completeAuthFlow(input: Parameters<TelegramAccountLifecycleRepository["completeAuthFlow"]>[0]) {
     this.completionCalls += 1;
+    this.completedAccountType = input.accountType;
     this.status = "SUCCEEDED";
     this.version += 1n;
     return { result: "CONNECTED" as const, accountId: input.accountId, label: input.label, version: this.version };
@@ -117,13 +119,13 @@ class FakeTransport implements TelegramAuthorizationTransport {
   }
 }
 
-function fixture() {
+function fixture(accountType: "JASEB_WORKER" | "USERBOT" = "USERBOT") {
   const accounts = new FakeAccounts();
   const entitlements = new FakeEntitlements();
   const transport = new FakeTransport();
   const keyRing = TelegramSessionKeyRing.fromHexKeys({ activeKeyVersion: 1, keys: { 1: "11".repeat(32) } });
   const service = new TelegramAuthorizationService({
-    accounts, entitlements, transport, keyRing, newAccountId: () => ACCOUNT,
+    accounts, entitlements, transport, keyRing, newAccountId: () => ACCOUNT, accountType,
   });
   return { accounts, entitlements, transport, keyRing, service };
 }
@@ -180,4 +182,14 @@ test("expired subscription cancels durable auth state before another Telegram at
   );
   assert.equal(accounts.status, "CANCELLED");
   assert.deepEqual(transport.calls.map((item) => item.kind), ["request"]);
+});
+
+test("admin worker authorization skips buyer subscription and completes as JASEB_WORKER", async () => {
+  const { accounts, entitlements, transport, service } = fixture("JASEB_WORKER");
+  entitlements.items = [];
+  transport.codeResult = "AUTHORIZED";
+  await service.start(USER, pending.phoneNumber);
+  const connected = await service.submitCode(USER, FLOW, 3, "12345");
+  assert.equal(connected.status, "CONNECTED");
+  assert.equal(accounts.completedAccountType, "JASEB_WORKER");
 });

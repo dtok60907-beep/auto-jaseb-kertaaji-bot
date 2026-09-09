@@ -74,11 +74,11 @@ export class PostgresTelegramAccountLifecycleRepository implements TelegramAccou
     this.sql = sql;
   }
 
-  async beginAuthFlow(userId: string, ttlSeconds: number) {
+  async beginAuthFlow(userId: string, ttlSeconds: number, accountType: Parameters<TelegramAccountLifecycleRepository["beginAuthFlow"]>[2]) {
     const rows = await this.sql<FlowRow[]>`
       select result_status, auth_flow_id::text, auth_flow_status,
              auth_flow_version::text, auth_flow_expires_at::text
-        from public.begin_userbot_auth_flow(${userId}::uuid, ${ttlSeconds})
+        from public.begin_telegram_account_auth_flow(${userId}::uuid, ${accountType}, ${ttlSeconds})
     `;
     if (!rows[0]) throw new Error("telegram auth flow was not returned");
     return flow(rows[0]);
@@ -90,8 +90,9 @@ export class PostgresTelegramAccountLifecycleRepository implements TelegramAccou
       const rows = await this.sql<FlowRow[]>`
         select result_status, auth_flow_status, auth_flow_version::text,
                auth_flow_expires_at::text
-          from public.transition_userbot_auth_flow(
+          from public.transition_telegram_account_auth_flow(
             ${input.userId}::uuid,
+            ${input.accountType},
             ${input.authFlowId}::uuid,
             ${input.expectedVersion.toString()}::bigint,
             ${input.nextStatus},
@@ -112,8 +113,9 @@ export class PostgresTelegramAccountLifecycleRepository implements TelegramAccou
       select result_status, auth_flow_status, auth_flow_version::text,
              auth_flow_expires_at::text, auth_flow_encrypted_state,
              auth_flow_encryption_key_version
-        from public.claim_userbot_auth_flow_step(
+        from public.claim_telegram_account_auth_flow_step(
           ${input.userId}::uuid,
+          ${input.accountType},
           ${input.authFlowId}::uuid,
           ${input.expectedVersion.toString()}::bigint,
           ${input.expectedStatus}
@@ -138,8 +140,9 @@ export class PostgresTelegramAccountLifecycleRepository implements TelegramAccou
     try {
       const rows = await this.sql<CompletionRow[]>`
         select result_status, account_id::text, account_label, auth_flow_version::text
-          from public.complete_userbot_auth_flow(
+          from public.complete_telegram_account_auth_flow(
             ${input.userId}::uuid,
+            ${input.accountType},
             ${input.authFlowId}::uuid,
             ${input.expectedVersion.toString()}::bigint,
             ${input.accountId}::uuid,
@@ -171,7 +174,8 @@ export class PostgresTelegramAccountLifecycleRepository implements TelegramAccou
     `;
     const existing = rows[0];
     if (!existing) return Object.freeze({ result: "RESOLVED" as const, accountId: input.proposedAccountId });
-    if (existing.account_type !== "USERBOT" || existing.owner_user_id !== input.userId) {
+    const expectedOwner = input.accountType === "USERBOT" ? input.userId : null;
+    if (existing.account_type !== input.accountType || existing.owner_user_id !== expectedOwner) {
       return Object.freeze({ result: "ACCOUNT_ALREADY_CONNECTED" as const, accountId: null });
     }
     return Object.freeze({ result: "RESOLVED" as const, accountId: existing.id });

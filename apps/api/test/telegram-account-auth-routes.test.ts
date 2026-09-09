@@ -53,6 +53,19 @@ function api(authorization: FakeAuthorization, authenticated = true) {
   });
 }
 
+function workerApi(authorization: FakeAuthorization, admin = true) {
+  const empty = new EmptyRepository();
+  return createApi({
+    packages: empty as never,
+    broadcasts: empty as never,
+    autoComments: empty as never,
+    entitlements: empty as never,
+    workerTelegramAuthorization: authorization,
+    authorizeUser: async () => null,
+    authorizeAdmin: async () => admin ? { id: USER } : null,
+  });
+}
+
 test("user-only routes expose versioned OTP and 2FA flow without returning secrets", async (t) => {
   const authorization = new FakeAuthorization();
   const server = api(authorization);
@@ -104,4 +117,20 @@ test("stable service errors map to HTTP status and never expose provider/databas
   assert.equal(unavailable.statusCode, 503);
   assert.equal(unavailable.body.includes("database"), false);
   assert.equal(unavailable.body.includes("provider"), false);
+});
+
+test("worker Telegram flow is admin-only and uses the dedicated route", async (t) => {
+  const authorization = new FakeAuthorization();
+  const server = workerApi(authorization);
+  const denied = workerApi(authorization, false);
+  t.after(() => server.close());
+  t.after(() => denied.close());
+
+  const started = await server.inject({ method: "POST", url: "/v1/admin/worker/telegram-auth-flows", payload: { phoneNumber: "+628123456789" } });
+  const blocked = await denied.inject({ method: "POST", url: "/v1/admin/worker/telegram-auth-flows", payload: { phoneNumber: "+628123456789" } });
+
+  assert.equal(started.statusCode, 201);
+  assert.deepEqual(authorization.calls[0], [USER, "+628123456789"]);
+  assert.equal(blocked.statusCode, 403);
+  assert.deepEqual(blocked.json(), { code: "ADMIN_REQUIRED" });
 });

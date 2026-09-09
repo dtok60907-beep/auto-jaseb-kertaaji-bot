@@ -31,6 +31,7 @@ import {
   listCanaryAdmissions,
   listTelegramAccounts,
   revokeCanaryUser,
+  startWorkerTelegramAuthorization,
   stopAdminBroadcastCampaign,
   stopBroadcastCampaign,
   updateAdminBroadcastLpmTarget,
@@ -86,6 +87,27 @@ describe("web API client", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ code: "USER_REQUIRED" }), { status: 401 })));
 
     await expect(listTelegramAccounts("expired-token")).rejects.toEqual(new ApiError(401, "USER_REQUIRED"));
+  });
+
+  it("preserves the latest Telegram flow version returned with a failed OTP", async () => {
+    const flow = { id: "flow-1", status: "CODE_REQUIRED", version: 4, expiresAt: "2026-09-09T12:00:00.000Z" };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ code: "PHONE_CODE_INVALID", flow }), { status: 422 })));
+
+    await expect(startWorkerTelegramAuthorization("admin-token", "+628123456789"))
+      .rejects.toMatchObject({ status: 422, code: "PHONE_CODE_INVALID", flow });
+  });
+
+  it("starts worker Telegram authorization through the admin-only endpoint", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toContain("/v1/admin/worker/telegram-auth-flows");
+      expect((init?.headers as Headers).get("authorization")).toBe("Bearer admin-token");
+      expect(JSON.parse(String(init?.body))).toEqual({ phoneNumber: "+628123456789" });
+      return new Response(JSON.stringify({ status: "CODE_REQUIRED", flow: { id: "flow-1", status: "CODE_REQUIRED", version: 2, expiresAt: "2026-09-09T12:00:00.000Z" } }), { status: 201 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(startWorkerTelegramAuthorization("admin-token", "+628123456789"))
+      .resolves.toMatchObject({ status: "CODE_REQUIRED" });
   });
 
   it("loads Jasa Sebar settings including the resolved account mode", async () => {

@@ -32,6 +32,8 @@ export type TelegramAccountAuthCompletion = Readonly<{
   version: bigint | null;
 }>;
 
+export type TelegramAccountType = "JASEB_WORKER" | "USERBOT";
+
 export type TelegramAccountView = Readonly<{
   id: string;
   label: string;
@@ -44,9 +46,10 @@ export type TelegramAccountView = Readonly<{
 }>;
 
 export interface TelegramAccountLifecycleRepository {
-  beginAuthFlow(userId: string, ttlSeconds: number): Promise<TelegramAccountAuthFlowResult>;
+  beginAuthFlow(userId: string, ttlSeconds: number, accountType: TelegramAccountType): Promise<TelegramAccountAuthFlowResult>;
   transitionAuthFlow(input: Readonly<{
     userId: string;
+    accountType: TelegramAccountType;
     authFlowId: string;
     expectedVersion: bigint;
     nextStatus: "CODE_REQUIRED" | "PASSWORD_REQUIRED" | "VERIFYING" | "FAILED" | "CANCELLED";
@@ -56,12 +59,14 @@ export interface TelegramAccountLifecycleRepository {
   }>): Promise<TelegramAccountAuthFlowResult>;
   claimAuthFlowStep(input: Readonly<{
     userId: string;
+    accountType: TelegramAccountType;
     authFlowId: string;
     expectedVersion: bigint;
     expectedStatus: "CODE_REQUIRED" | "PASSWORD_REQUIRED";
   }>): Promise<TelegramAccountAuthFlowClaim>;
   completeAuthFlow(input: Readonly<{
     userId: string;
+    accountType: TelegramAccountType;
     authFlowId: string;
     expectedVersion: bigint;
     accountId: string;
@@ -72,6 +77,7 @@ export interface TelegramAccountLifecycleRepository {
   }>): Promise<TelegramAccountAuthCompletion>;
   resolveCompletionAccountId(input: Readonly<{
     userId: string;
+    accountType: TelegramAccountType;
     providerUserId: string;
     proposedAccountId: string;
   }>): Promise<Readonly<{

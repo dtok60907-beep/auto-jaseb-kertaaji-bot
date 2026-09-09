@@ -21,8 +21,8 @@ test("account lifecycle serializes auth flows and destroys only session-bound st
     userId = users[0]!.id;
 
     const [first, second] = await Promise.all([
-      repository.beginAuthFlow(userId, 600),
-      repository.beginAuthFlow(userId, 600),
+      repository.beginAuthFlow(userId, 600, "USERBOT"),
+      repository.beginAuthFlow(userId, 600, "USERBOT"),
     ]);
     assert.deepEqual(new Set([first.result, second.result]), new Set(["CREATED", "ACTIVE_FLOW_EXISTS"]));
     assert.equal(first.id, second.id);
@@ -31,6 +31,7 @@ test("account lifecycle serializes auth flows and destroys only session-bound st
     const encryptedState = Uint8Array.from([1, 2, 3, 4]);
     const transitioned = await repository.transitionAuthFlow({
       userId,
+      accountType: "USERBOT",
       authFlowId: first.id!,
       expectedVersion: 1n,
       nextStatus: "CODE_REQUIRED",
@@ -44,6 +45,7 @@ test("account lifecycle serializes auth flows and destroys only session-bound st
 
     const stale = await repository.transitionAuthFlow({
       userId,
+      accountType: "USERBOT",
       authFlowId: first.id!,
       expectedVersion: 1n,
       nextStatus: "VERIFYING",
@@ -125,9 +127,10 @@ test("account authorization claims one attempt and atomically activates the veri
       )::text id
     `;
     userId = users[0]!.id;
-    const flow = await repository.beginAuthFlow(userId, 600);
+    const flow = await repository.beginAuthFlow(userId, 600, "USERBOT");
     const codeRequired = await repository.transitionAuthFlow({
       userId,
+      accountType: "USERBOT",
       authFlowId: flow.id!,
       expectedVersion: 1n,
       nextStatus: "CODE_REQUIRED",
@@ -139,9 +142,11 @@ test("account authorization claims one attempt and atomically activates the veri
     const [claim, duplicate] = await Promise.all([
       repository.claimAuthFlowStep({
         userId, authFlowId: flow.id!, expectedVersion: 2n, expectedStatus: "CODE_REQUIRED",
+        accountType: "USERBOT",
       }),
       repository.claimAuthFlowStep({
         userId, authFlowId: flow.id!, expectedVersion: 2n, expectedStatus: "CODE_REQUIRED",
+        accountType: "USERBOT",
       }),
     ]);
     assert.deepEqual(new Set([claim.result, duplicate.result]), new Set(["CLAIMED", "VERSION_CONFLICT"]));
@@ -154,6 +159,7 @@ test("account authorization claims one attempt and atomically activates the veri
 
     const passwordRequired = await repository.transitionAuthFlow({
       userId,
+      accountType: "USERBOT",
       authFlowId: flow.id!,
       expectedVersion: 3n,
       nextStatus: "PASSWORD_REQUIRED",
@@ -163,12 +169,14 @@ test("account authorization claims one attempt and atomically activates the veri
     assert.equal(passwordRequired.version, 4n);
     const passwordClaim = await repository.claimAuthFlowStep({
       userId, authFlowId: flow.id!, expectedVersion: 4n, expectedStatus: "PASSWORD_REQUIRED",
+      accountType: "USERBOT",
     });
     assert.equal(passwordClaim.result, "CLAIMED");
     assert.equal(passwordClaim.version, 5n);
 
     const completion = await repository.completeAuthFlow({
       userId,
+      accountType: "USERBOT",
       authFlowId: flow.id!,
       expectedVersion: 5n,
       accountId: "43434343-4343-4343-8343-434343434343",

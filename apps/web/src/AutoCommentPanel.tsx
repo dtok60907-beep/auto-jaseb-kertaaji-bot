@@ -18,6 +18,7 @@ import {
   updateAutoCommentTemplate,
 } from "./api";
 import type { AutoCommentDivision, AutoCommentMode, AutoCommentSettings, AutoCommentTemplate } from "./types";
+import { parseTargetInput } from "./target-input";
 
 const MODE_LABEL: Record<AutoCommentMode, string> = {
   APPROVAL_REQUIRED: "Perlu Review (Tepat/OOT)",
@@ -160,10 +161,18 @@ export function AutoCommentPanel({ token }: { token: string }) {
     if (!accountId) return;
     setCreatingChannel(true); setPageError(null);
     try {
-      await createAutoCommentChannelTarget(token, { accountId, sourceChannelRef: channelRef.trim(), active: true });
+      const refs = parseTargetInput(channelRef);
+      if (refs.length === 0) return;
+      for (const sourceChannelRef of refs) {
+        await createAutoCommentChannelTarget(token, { accountId, sourceChannelRef, active: true });
+      }
       setChannelRef(""); setChannelFormOpen(false);
       await load();
-    } catch (cause) { setPageError(autoCommentErrorLabel(cause)); }
+    } catch (cause) {
+      const message = autoCommentErrorLabel(cause);
+      await load();
+      setPageError(message);
+    }
     finally { setCreatingChannel(false); }
   };
 
@@ -312,13 +321,15 @@ export function AutoCommentPanel({ token }: { token: string }) {
       {channelFormOpen && (
         <form className="stack-form" onSubmit={submitChannel}>
           <label htmlFor="auto-comment-channel-ref">Username/link channel publik</label>
-          <input
+          <textarea
             id="auto-comment-channel-ref"
+            rows={4}
             value={channelRef}
             onChange={(event) => setChannelRef(event.target.value)}
-            placeholder="@nama_channel atau https://t.me/nama_channel"
+            placeholder="@channel_satu, @channel_dua\nhttps://t.me/channel_tiga"
             required
           />
+          <span className="helper-text">Pisahkan banyak channel dengan koma atau Enter.</span>
           <div className="account-card__actions">
             <button className="button button--ghost" type="button" onClick={() => { setChannelFormOpen(false); setChannelRef(""); }} disabled={creatingChannel}>Batal</button>
             <button className="button button--primary" type="submit" disabled={creatingChannel || !channelRef.trim()}>
