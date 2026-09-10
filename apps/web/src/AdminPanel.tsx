@@ -4,11 +4,11 @@ import {
   ApiError,
   cancelMonitorTelegramAuthorization,
   cancelWorkerTelegramAuthorization,
-  createAdminBroadcastCampaign,
   createAdminBroadcastLpmTarget,
   createAdminForwardBroadcastMaterial,
   createAdminPackage,
   createAdminTextBroadcastMaterial,
+  deleteAdminBroadcastLpmTarget,
   extendEntitlement,
   getAdminBroadcastSettings,
   getCurrentAdminBroadcastCampaign,
@@ -19,7 +19,7 @@ import {
   listMonitorAccounts,
   listWorkerAccounts,
   revokeEntitlement,
-  stopAdminBroadcastCampaign,
+  setAdminBroadcastServiceEnabled,
   startMonitorTelegramAuthorization,
   startWorkerTelegramAuthorization,
   submitMonitorTelegramCode,
@@ -409,7 +409,6 @@ function UserJasebPanel({ user, token, onError }: { user: AdminUser; token: stri
   const [savingTarget, setSavingTarget] = useState(false);
   const [targetBusy, setTargetBusy] = useState<string | null>(null);
 
-  const [repeatFormOpen, setRepeatFormOpen] = useState(false);
   const [repeatMinutes, setRepeatMinutes] = useState(String(ADMIN_JASEB_MIN_REPEAT_MINUTES));
   const [savingCampaign, setSavingCampaign] = useState(false);
 
@@ -424,6 +423,7 @@ function UserJasebPanel({ user, token, onError }: { user: AdminUser; token: stri
       setTargets(settings.lpmTargets.filter((item) => item.active));
       setAccountMode(settings.accountMode);
       setCampaign(current);
+      if (current) setRepeatMinutes(String(Math.round(current.intervalSeconds / 60)));
     } catch (error) { onError(error); }
     finally { setLoading(false); }
   }, [onError, token, user.id]);
@@ -481,42 +481,30 @@ function UserJasebPanel({ user, token, onError }: { user: AdminUser; token: stri
     finally { setSavingTarget(false); }
   };
 
-  const deactivateTarget = async (item: BroadcastLpmTarget) => {
+  const deleteTarget = async (item: BroadcastLpmTarget) => {
     setTargetBusy(item.id);
     try {
-      await updateAdminBroadcastLpmTarget(token, user.id, item.id, { telegramTargetRef: item.telegramTargetRef, label: item.label, active: false });
+      await deleteAdminBroadcastLpmTarget(token, user.id, item.id);
       setTargets((current) => current.filter((existing) => existing.id !== item.id));
+      setCampaign(await getCurrentAdminBroadcastCampaign(token, user.id));
     } catch (error) { onError(error); }
     finally { setTargetBusy(null); }
   };
 
-  const openIntervalEditor = () => {
-    setRepeatMinutes(String(campaign ? Math.round(campaign.intervalSeconds / 60) : ADMIN_JASEB_MIN_REPEAT_MINUTES));
-    setRepeatFormOpen(true);
-  };
-
-  const saveCampaign = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!material || targets.length === 0 || !accountMode) return;
+  const toggleCampaign = async () => {
+    if (!accountMode || savingCampaign) return;
+    const enabled = campaign?.status === "ACTIVE";
     const minutes = Number(repeatMinutes);
+    if (!enabled && (!material || targets.length === 0 || !Number.isInteger(minutes) || minutes < ADMIN_JASEB_MIN_REPEAT_MINUTES)) return;
     setSavingCampaign(true);
     try {
-      if (campaign?.status === "ACTIVE") await stopAdminBroadcastCampaign(token, user.id, campaign.id);
-      const created = await createAdminBroadcastCampaign(token, user.id, {
-        accountMode, materialId: material.id, targetIds: targets.map((item) => item.id), intervalSeconds: minutes * 60,
-      });
-      setCampaign(created);
-      setRepeatFormOpen(false);
-    } catch (error) { onError(error); }
-    finally { setSavingCampaign(false); }
-  };
-
-  const stopCampaign = async () => {
-    if (!campaign) return;
-    setSavingCampaign(true);
-    try {
-      await stopAdminBroadcastCampaign(token, user.id, campaign.id);
-      setCampaign(await getCurrentAdminBroadcastCampaign(token, user.id));
+      const result = enabled
+        ? await setAdminBroadcastServiceEnabled(token, user.id, { enabled: false })
+        : await setAdminBroadcastServiceEnabled(token, user.id, {
+          enabled: true, accountMode, materialId: material!.id,
+          targetIds: targets.map((item) => item.id), intervalSeconds: minutes * 60,
+        });
+      setCampaign(result.campaign);
     } catch (error) { onError(error); }
     finally { setSavingCampaign(false); }
   };
@@ -528,6 +516,42 @@ function UserJasebPanel({ user, token, onError }: { user: AdminUser; token: stri
       <div className="admin-detail__head"><h3>Jasa Sebar</h3></div>
 
       {accountMode === null && <p className="admin-muted">Belum ada paket Jasa Sebar aktif untuk pengguna ini.</p>}
+
+      {accountMode !== null && (
+        <div className={`empty-card empty-card--status ${campaign?.status === "ACTIVE" ? "empty-card--active" : ""}`}>
+          <div className="service-status-copy">
+            <div className="status-card__title">
+              <h3>Status Jasa Sebar</h3>
+              <span className={`admin-badge ${campaign?.status === "ACTIVE" ? "" : "admin-badge--disabled"}`}>{campaign?.status === "ACTIVE" ? "Aktif" : "Nonaktif"}</span>
+            </div>
+            {campaign?.status === "ACTIVE" ? (
+              <p>Berjalan tiap {Math.round(campaign.intervalSeconds / 60)} menit{campaign.lastCycleAt ? `, terakhir ${formatDate(campaign.lastCycleAt)}` : ""}.</p>
+            ) : material && targets.length > 0 ? (
+              <label className="service-interval" htmlFor={`admin-jaseb-minutes-${user.id}`}>
+                Jeda pengulangan
+                <span>
+                  <input id={`admin-jaseb-minutes-${user.id}`} type="number" inputMode="numeric" min={ADMIN_JASEB_MIN_REPEAT_MINUTES} value={repeatMinutes} onChange={(event) => setRepeatMinutes(event.target.value)} disabled={savingCampaign} />
+                  menit
+                </span>
+              </label>
+            ) : (
+              <p>Lengkapi materi dan minimal satu target grup.</p>
+            )}
+          </div>
+          <button
+            className="service-switch"
+            type="button"
+            role="switch"
+            aria-label={`Jasa Sebar ${userName(user)}`}
+            aria-checked={campaign?.status === "ACTIVE"}
+            onClick={() => void toggleCampaign()}
+            disabled={savingCampaign || (campaign?.status !== "ACTIVE" && (!material || targets.length === 0 || !Number.isInteger(Number(repeatMinutes)) || Number(repeatMinutes) < ADMIN_JASEB_MIN_REPEAT_MINUTES))}
+          >
+            <span className="service-switch__track"><span className="service-switch__thumb" /></span>
+            <span className="service-switch__label">{savingCampaign ? "Menyimpan" : campaign?.status === "ACTIVE" ? "ON" : "OFF"}</span>
+          </button>
+        </div>
+      )}
 
       {accountMode !== null && (!material || editingMaterial) && (
         <form className="stack-form" onSubmit={saveMaterial}>
@@ -562,7 +586,7 @@ function UserJasebPanel({ user, token, onError }: { user: AdminUser; token: stri
             <div className="account-card__actions" key={item.id}>
               <span className="admin-muted">{item.label ?? item.telegramTargetRef}</span>
               <button className="button button--ghost" type="button" onClick={() => openEditTarget(item)} disabled={targetBusy === item.id}>Ubah</button>
-              <button className="button button--danger-ghost" type="button" onClick={() => void deactivateTarget(item)} disabled={targetBusy === item.id}>{targetBusy === item.id ? "Menghapus" : "Hapus"}</button>
+              <button className="button button--danger-ghost" type="button" onClick={() => void deleteTarget(item)} disabled={targetBusy === item.id}>{targetBusy === item.id ? "Menghapus" : "Hapus"}</button>
             </div>
           ))}
           {targetFormOpen && (
@@ -579,7 +603,7 @@ function UserJasebPanel({ user, token, onError }: { user: AdminUser; token: stri
         </div>
       )}
 
-      {material && targets.length > 0 && !editingMaterial && !targetFormOpen && (
+      {material && !editingMaterial && !targetFormOpen && (
         <>
           <p className="admin-muted">
             Materi: {material.kind === "TEXT" ? `"${material.text.slice(0, 60)}${material.text.length > 60 ? "..." : ""}"` : `forward dari ${material.source.canonicalLink}`}
@@ -587,27 +611,6 @@ function UserJasebPanel({ user, token, onError }: { user: AdminUser; token: stri
           <div className="account-card__actions">
             <button className="button button--ghost" type="button" onClick={openMaterialEditor}>Ganti Materi</button>
           </div>
-
-          {campaign?.status === "ACTIVE" && !repeatFormOpen ? (
-            <div className="account-card__actions">
-              <span className="admin-muted">Otomatis tiap {Math.round(campaign.intervalSeconds / 60)} menit{campaign.lastCycleAt ? `, terakhir ${formatDate(campaign.lastCycleAt)}` : ""}.</span>
-              <button className="button button--ghost" type="button" onClick={openIntervalEditor} disabled={savingCampaign}>Ubah Jeda</button>
-              <button className="button button--danger-ghost" type="button" onClick={() => void stopCampaign()} disabled={savingCampaign}>{savingCampaign ? "Menghentikan" : "Hentikan"}</button>
-            </div>
-          ) : !repeatFormOpen ? (
-            <div className="account-card__actions">
-              <button className="button button--primary" type="button" onClick={() => { setRepeatMinutes(String(ADMIN_JASEB_MIN_REPEAT_MINUTES)); setRepeatFormOpen(true); }}>Nyalakan Sebar Otomatis</button>
-            </div>
-          ) : (
-            <form className="stack-form" onSubmit={saveCampaign}>
-              <label htmlFor={`admin-jaseb-minutes-${user.id}`}>Ulangi tiap berapa menit</label>
-              <input id={`admin-jaseb-minutes-${user.id}`} type="number" inputMode="numeric" min={ADMIN_JASEB_MIN_REPEAT_MINUTES} value={repeatMinutes} onChange={(event) => setRepeatMinutes(event.target.value)} required />
-              <div className="account-card__actions">
-                <button className="button button--ghost" type="button" onClick={() => setRepeatFormOpen(false)} disabled={savingCampaign}>Batal</button>
-                <button className="button button--primary" type="submit" disabled={savingCampaign || Number(repeatMinutes) < ADMIN_JASEB_MIN_REPEAT_MINUTES}>{savingCampaign ? "Menyimpan" : campaign ? "Simpan Jeda" : "Mulai"}</button>
-              </div>
-            </form>
-          )}
         </>
       )}
     </section>

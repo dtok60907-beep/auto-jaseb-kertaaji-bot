@@ -51,6 +51,7 @@ class FakeAutoComments implements AutoCommentSettingsRepository {
   private channels: ChannelRow[] = [];
   private candidates = new Map<string, { userId: string; status: "PENDING_REVIEW" | "COMMENT_QUEUED" | "OOT" }>();
   private counter = 1;
+  private readonly enabled = new Map<string, boolean>();
   private readonly accounts = new Map<string, readonly SafeUserbotAccountView[]>([
     [OWNER, [{ id: OWNER_ACCOUNT, label: "Akun utama", status: "READY" }]],
     [OTHER, [{ id: "00000000-0000-0000-0000-000000000202", label: "Akun lain", status: "READY" }]],
@@ -58,10 +59,16 @@ class FakeAutoComments implements AutoCommentSettingsRepository {
 
   async listSettings(userId: string): Promise<AutoCommentSettingsView> {
     return {
+      enabled: this.enabled.get(userId) ?? true,
       accounts: this.accounts.get(userId) ?? [],
       divisions: this.divisions.filter((row) => row.userId === userId).map((row) => this.divisionView(row)),
       channelTargets: this.channels.filter((row) => row.userId === userId).map((row) => this.channelView(row)),
     };
+  }
+
+  async setEnabled({ userId, enabled }: { userId: string; enabled: boolean }) {
+    this.enabled.set(userId, enabled);
+    return true;
   }
 
   async createDivision({ userId, division }: Parameters<AutoCommentSettingsRepository["createDivision"]>[0]): Promise<AutoCommentDivisionView> {
@@ -258,6 +265,17 @@ test("Auto Komen CRUD validates body, normalizes public channel, and returns sta
   assert.deepEqual(unavailable.json(), { code: "ACCOUNT_NOT_AVAILABLE" });
   assert.deepEqual(channel.json(), { code: "INVALID_AUTO_COMMENT_SETTING", issues: [{ field: "sourceChannelRef", code: "PUBLIC_CHANNEL_REQUIRED" }] });
   assert.deepEqual(badTemplate.json(), { code: "INVALID_AUTO_COMMENT_SETTING", issues: [{ field: "displayOrder", code: "MUST_BE_NON_NEGATIVE_INTEGER" }] });
+});
+
+test("buyer can explicitly disable and enable Auto Komen", async (t) => {
+  const server = app();
+  t.after(() => server.close());
+  const disabled = await server.inject({ method: "PUT", url: "/v1/auto-comment/state", payload: { enabled: false } });
+  const settings = await server.inject({ method: "GET", url: "/v1/auto-comment/settings" });
+  const invalid = await server.inject({ method: "PUT", url: "/v1/auto-comment/state", payload: { enabled: "yes" } });
+  assert.deepEqual(disabled.json(), { enabled: false });
+  assert.equal(settings.json().settings.enabled, false);
+  assert.equal(invalid.json().code, "INVALID_AUTO_COMMENT_STATE");
 });
 
 test("other user cannot read or mutate owner Auto Komen settings", async (t) => {

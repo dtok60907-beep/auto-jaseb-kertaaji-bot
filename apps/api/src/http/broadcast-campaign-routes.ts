@@ -8,6 +8,7 @@ import type { UserAuthorizer } from "./broadcast-setting-routes.ts";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type CreateInput = { accountMode: AccountMode; materialId: string; targetIds: readonly string[]; intervalSeconds: number };
+type StateInput = Readonly<{ enabled: false } | ({ enabled: true } & CreateInput)>;
 
 function parseCreate(body: unknown): CreateInput | null {
   if (body === null || typeof body !== "object" || Array.isArray(body)) return null;
@@ -25,6 +26,15 @@ function parseCreate(body: unknown): CreateInput | null {
   return { accountMode: value.accountMode, materialId: value.materialId, targetIds: value.targetIds, intervalSeconds: value.intervalSeconds };
 }
 
+function parseState(body: unknown): StateInput | null {
+  if (body === null || typeof body !== "object" || Array.isArray(body)) return null;
+  const value = body as Record<string, unknown>;
+  if (value.enabled === false && Object.keys(value).length === 1) return { enabled: false };
+  if (value.enabled !== true) return null;
+  const configuration = parseCreate(Object.fromEntries(Object.entries(value).filter(([key]) => key !== "enabled")));
+  return configuration ? { enabled: true, ...configuration } : null;
+}
+
 function campaignId(request: FastifyRequest): string | null {
   const value = (request.params as { id?: unknown }).id;
   return typeof value === "string" && uuid.test(value) ? value : null;
@@ -40,7 +50,7 @@ function errorCode(error: unknown): string | null { return error instanceof Erro
 function replyError(reply: FastifyReply, code: string) {
   if (code === "SUBSCRIPTION_REQUIRED") return reply.code(403).send({ code });
   if (code === "BROADCAST_MATERIAL_NOT_FOUND_OR_INACTIVE" || code === "LPM_TARGET_NOT_FOUND_OR_INACTIVE") return reply.code(404).send({ code });
-  if (code === "CAMPAIGN_ALREADY_ACTIVE") return reply.code(409).send({ code });
+  if (code === "CAMPAIGN_ALREADY_ACTIVE" || code === "BROADCAST_BUSY") return reply.code(409).send({ code });
   if (code === "INTERVAL_TOO_SHORT") return reply.code(422).send({ code, issues: [{ field: "intervalSeconds", code: "TOO_SHORT" }] });
   return reply.code(422).send({ code: "INVALID_BROADCAST_CAMPAIGN", issues: [{ field: "body", code }] });
 }
@@ -89,11 +99,23 @@ export function registerBroadcastCampaignRoutes(app: FastifyInstance, options: {
     return reply.code(204).send(null);
   };
 
+  const setState = (resolveSubject: typeof userSubject) => async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = await resolveSubject(request, reply); if (!userId) return;
+    const input = parseState(request.body);
+    if (!input) return reply.code(422).send({ code: "INVALID_BROADCAST_STATE" });
+    try {
+      const campaign = await options.campaigns.setEnabled({ userId, ...input });
+      return { enabled: input.enabled, campaign };
+    } catch (error) { return replyError(reply, errorCode(error) ?? "UNKNOWN"); }
+  };
+
+  app.put("/v1/broadcast/state", setState(userSubject));
   app.post("/v1/broadcast/campaigns", create(userSubject));
   app.get("/v1/broadcast/campaigns", getCurrent(userSubject));
   app.post("/v1/broadcast/campaigns/:id/stop", stop(userSubject));
 
   app.post("/v1/admin/users/:userId/broadcast/campaigns", create(adminSubject));
   app.get("/v1/admin/users/:userId/broadcast/campaigns", getCurrent(adminSubject));
+  app.put("/v1/admin/users/:userId/broadcast/state", setState(adminSubject));
   app.post("/v1/admin/users/:userId/broadcast/campaigns/:id/stop", stop(adminSubject));
 }

@@ -24,6 +24,7 @@ export interface CentralMonitorTelegramClient {
   onPost(listener: (post: CentralMonitorPost) => void): void;
   prepareSource(sourceChannelRef: string): Promise<PreparedMonitorSource>;
   listNewPosts(sourceChannelRef: string, afterPostId: number, limit: number): Promise<readonly CentralMonitorPost[]>;
+  listRecentPosts(sourceChannelRef: string, limit: number): Promise<readonly CentralMonitorPost[]>;
 }
 
 export interface CentralMonitorTelegramClientFactory {
@@ -72,6 +73,21 @@ function sourceRef(value: string): string {
 
 function flatten(value: unknown): unknown[] {
   return Array.isArray(value) ? value.flatMap(flatten) : [value];
+}
+
+/**
+ * Teleproto resolves peer ids asynchronously. Keeping this boundary explicit
+ * prevents a Promise from being stringified into "[object Promise]" and then
+ * poisoning the source routing table.
+ */
+export async function resolveProviderPeerId(
+  client: Pick<TelegramClient, "getPeerId">,
+  entity: unknown,
+): Promise<string> {
+  const value = await client.getPeerId(entity as never);
+  const normalized = String(value).trim();
+  if (!normalized || normalized === "[object Promise]") throw new Error("INVALID_PROVIDER_PEER_ID");
+  return normalized;
 }
 
 export class TeleprotoCentralMonitorClient implements CentralMonitorTelegramClient {
@@ -138,7 +154,7 @@ export class TeleprotoCentralMonitorClient implements CentralMonitorTelegramClie
           if (!isTeleprotoErrorNamed(error, "UserAlreadyParticipantError")) throw error;
         }
       }
-      const providerPeerId = this.#client.getPeerId(entity as never).toString();
+      const providerPeerId = await resolveProviderPeerId(this.#client, entity);
       const latest = flatten(await this.#client.getMessages(entity as never, { limit: 1 }))
         .map((value) => post(value, providerPeerId))
         .find((value): value is CentralMonitorPost => value !== null);
@@ -154,13 +170,28 @@ export class TeleprotoCentralMonitorClient implements CentralMonitorTelegramClie
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new TypeError("INVALID_POST_LIMIT");
     try {
       const entity = await this.#client.getEntity(channelRef);
-      const providerPeerId = this.#client.getPeerId(entity as never).toString();
+      const providerPeerId = await resolveProviderPeerId(this.#client, entity);
       const values = flatten(await this.#client.getMessages(entity as never, {
         minId: afterPostId,
         limit,
         reverse: true,
       }));
       return Object.freeze(values
+        .map((value) => post(value, providerPeerId))
+        .filter((value): value is CentralMonitorPost => value !== null)
+        .sort((left, right) => left.providerPostId - right.providerPostId));
+    } catch (error) {
+      throw mapTeleprotoError(error, "LIST_CHANNEL_POSTS");
+    }
+  }
+
+  async listRecentPosts(rawSourceChannelRef: string, limit: number): Promise<readonly CentralMonitorPost[]> {
+    const channelRef = sourceRef(rawSourceChannelRef);
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new TypeError("INVALID_POST_LIMIT");
+    try {
+      const entity = await this.#client.getEntity(channelRef);
+      const providerPeerId = await resolveProviderPeerId(this.#client, entity);
+      return Object.freeze(flatten(await this.#client.getMessages(entity as never, { limit }))
         .map((value) => post(value, providerPeerId))
         .filter((value): value is CentralMonitorPost => value !== null)
         .sort((left, right) => left.providerPostId - right.providerPostId));

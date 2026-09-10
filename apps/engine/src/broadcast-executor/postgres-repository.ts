@@ -54,6 +54,16 @@ export class PostgresBroadcastExecutorRepository implements BroadcastExecutorRep
     return rows[0] ? claim(rows[0]) : null;
   }
 
+  async validateExecution(input: Parameters<BroadcastExecutorRepository["validateExecution"]>[0]) {
+    const rows = await this.sql<{ result: "AUTHORIZED" | "CANCELLED" | "FENCED_OUT" }[]>`
+      select public.validate_broadcast_execution(
+        ${input.commandId}::uuid, ${input.accountId}::uuid, ${input.leaseOwner}::uuid,
+        ${input.accountFencingToken.toString()}::bigint
+      ) result
+    `;
+    return rows[0]?.result ?? "FENCED_OUT";
+  }
+
   async finish(input: Parameters<BroadcastExecutorRepository["finish"]>[0]): Promise<boolean> {
     let rows: readonly { finished: boolean }[];
     if (input.outcome.status === "SUCCEEDED") {

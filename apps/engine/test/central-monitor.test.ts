@@ -31,6 +31,7 @@ class FakeClient implements CentralMonitorTelegramClient {
   async disconnect() { this.disconnected = true; }
   async catchUp() {}
   async prepareSource() { return { providerPeerId: "-10042", latestPostId: this.latestPostId }; }
+  async listRecentPosts(_source: string, limit: number) { return this.history.slice(-limit); }
   async listNewPosts(_source: string, afterPostId: number, limit: number) {
     return this.history.filter((item) => item.providerPostId > afterPostId).slice(0, limit);
   }
@@ -56,6 +57,7 @@ class FakeRepository implements CentralMonitorRepository {
         channelTargetId: "11111111-1111-4111-8111-111111111111",
         discussionTargetRef: "@diskusi",
         startAfterPostId: null,
+        activatedAt: "2026-09-10T00:00:00.000Z",
       }),
       Object.freeze({
         divisionId: "22222222-2222-4222-8222-222222222222",
@@ -67,6 +69,7 @@ class FakeRepository implements CentralMonitorRepository {
         channelTargetId: "55555555-5555-4555-8555-555555555555",
         discussionTargetRef: "@diskusi",
         startAfterPostId: null,
+        activatedAt: "2026-09-10T00:00:00.000Z",
       }),
     ]),
   });
@@ -133,6 +136,31 @@ test("one monitor reads a channel once and routes a post only to matching buyer 
   assert.ok(repository.checkpoints.includes(11));
   await handle.stop();
   assert.equal(client.disconnected, true);
+});
+
+test("a matching post created while a new source is preparing is recovered", async () => {
+  const repository = new FakeRepository();
+  const client = new FakeClient();
+  client.history = [{
+    providerPeerId: "-10042",
+    providerPostId: 10,
+    content: "butuh desain sekarang",
+    providerPostedAt: "2026-09-10T00:00:01.000Z",
+  }];
+  const leases: RuntimeAccountLeaseRepository = {
+    acquire: async () => ({ status: "ACQUIRED", lease: { accountId: ACCOUNT, leaseOwner: OWNER, fencingToken: 1n, leaseUntil: "2099-01-01T00:00:00.000Z" } }),
+    renew: async () => ({ accountId: ACCOUNT, leaseOwner: OWNER, fencingToken: 1n, leaseUntil: "2099-01-01T00:00:00.000Z" }),
+    release: async () => true,
+  };
+  const handle = await startCentralAutoCommentMonitor({
+    repository,
+    accountLeases: leases,
+    sessionKeyRing: { decrypt: () => "telegram-session" },
+    clientFactory: { create: () => client },
+  }, { instanceId: OWNER });
+  await waitFor(() => repository.candidates.length === 1);
+  assert.equal(repository.checkpoints.includes(10), true);
+  await handle.stop();
 });
 
 test("shared source recovery respects each buyer target baseline", async () => {

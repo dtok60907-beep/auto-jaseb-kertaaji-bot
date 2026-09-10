@@ -404,6 +404,10 @@ export async function updateBroadcastLpmTarget(
   return result.target;
 }
 
+export function deleteBroadcastLpmTarget(token: string, targetId: string): Promise<void> {
+  return request<void>(`/v1/broadcast/lpm-targets/${targetId}`, { method: "DELETE" }, token);
+}
+
 export async function createAdminBroadcastLpmTarget(
   token: string, userId: string, target: Readonly<{ telegramTargetRef: string; label: string | null }>,
 ): Promise<BroadcastLpmTarget> {
@@ -424,19 +428,17 @@ export async function updateAdminBroadcastLpmTarget(
   return result.target;
 }
 
-export async function createBroadcastOperation(
-  token: string,
-  input: Readonly<{ accountMode: "JASEB_WORKER" | "USERBOT"; materialId: string; targetIds: readonly string[]; idempotencyKey: string }>,
-): Promise<Readonly<{ idempotent: boolean; operation: BroadcastOperation }>> {
-  return request<{ idempotent: boolean; operation: BroadcastOperation }>("/v1/broadcast/operations", {
-    method: "POST",
-    body: JSON.stringify(input),
-  }, token);
+export function deleteAdminBroadcastLpmTarget(token: string, userId: string, targetId: string): Promise<void> {
+  return request<void>(`/v1/admin/users/${userId}/broadcast/lpm-targets/${targetId}`, { method: "DELETE" }, token);
 }
 
 export async function getBroadcastOperation(token: string, operationId: string): Promise<BroadcastOperation> {
   const result = await request<{ operation: BroadcastOperation }>(`/v1/broadcast/operations/${operationId}`, {}, token);
   return result.operation;
+}
+
+export function cancelBroadcastOperation(token: string, operationId: string): Promise<void> {
+  return request<void>(`/v1/broadcast/operations/${operationId}/cancel`, { method: "POST" }, token);
 }
 
 export async function getBroadcastHistory(
@@ -451,6 +453,19 @@ export async function getBroadcastHistory(
 export async function getCurrentBroadcastCampaign(token: string): Promise<BroadcastCampaign | null> {
   const result = await request<{ campaign: BroadcastCampaign | null }>("/v1/broadcast/campaigns", {}, token);
   return result.campaign;
+}
+
+export async function setBroadcastServiceEnabled(
+  token: string,
+  input: Readonly<
+    | { enabled: false }
+    | { enabled: true; accountMode: "JASEB_WORKER" | "USERBOT"; materialId: string; targetIds: readonly string[]; intervalSeconds: number }
+  >,
+): Promise<Readonly<{ enabled: boolean; campaign: BroadcastCampaign | null }>> {
+  return request<{ enabled: boolean; campaign: BroadcastCampaign | null }>("/v1/broadcast/state", {
+    method: "PUT",
+    body: JSON.stringify(input),
+  }, token);
 }
 
 export async function createBroadcastCampaign(
@@ -471,6 +486,20 @@ export function stopBroadcastCampaign(token: string, campaignId: string): Promis
 export async function getCurrentAdminBroadcastCampaign(token: string, userId: string): Promise<BroadcastCampaign | null> {
   const result = await request<{ campaign: BroadcastCampaign | null }>(`/v1/admin/users/${userId}/broadcast/campaigns`, {}, token);
   return result.campaign;
+}
+
+export async function setAdminBroadcastServiceEnabled(
+  token: string,
+  userId: string,
+  input: Readonly<
+    | { enabled: false }
+    | { enabled: true; accountMode: "JASEB_WORKER" | "USERBOT"; materialId: string; targetIds: readonly string[]; intervalSeconds: number }
+  >,
+): Promise<Readonly<{ enabled: boolean; campaign: BroadcastCampaign | null }>> {
+  return request<{ enabled: boolean; campaign: BroadcastCampaign | null }>(`/v1/admin/users/${userId}/broadcast/state`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  }, token);
 }
 
 export async function createAdminBroadcastCampaign(
@@ -521,6 +550,14 @@ export async function updateMonitorAccount(token: string, accountId: string, act
 export async function getAutoCommentSettings(token: string): Promise<AutoCommentSettings> {
   const result = await request<{ settings: AutoCommentSettings }>("/v1/auto-comment/settings", {}, token);
   return result.settings;
+}
+
+export async function setAutoCommentEnabled(token: string, enabled: boolean): Promise<boolean> {
+  const result = await request<{ enabled: boolean }>("/v1/auto-comment/state", {
+    method: "PUT",
+    body: JSON.stringify({ enabled }),
+  }, token);
+  return result.enabled;
 }
 
 export async function createAutoCommentDivision(

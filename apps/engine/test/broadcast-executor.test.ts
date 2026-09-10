@@ -25,8 +25,10 @@ class FakeRepository implements BroadcastExecutorRepository {
   claimed: ClaimedBroadcastCommand | null = command();
   finishAllowed = true;
   claimInputs: unknown[] = [];
+  authorization: "AUTHORIZED" | "CANCELLED" | "FENCED_OUT" = "AUTHORIZED";
   finishes: Array<{ commandId: string; outcome: BroadcastFinishOutcome }> = [];
   async claimNext(input: Parameters<BroadcastExecutorRepository["claimNext"]>[0]) { this.claimInputs.push(input); return this.claimed; }
+  async validateExecution() { return this.authorization; }
   async finish(input: Parameters<BroadcastExecutorRepository["finish"]>[0]) { this.finishes.push({ commandId: input.commandId, outcome: input.outcome }); return this.finishAllowed; }
 }
 
@@ -61,6 +63,16 @@ test("sends snapshotted text and persists the complete receipt", async () => {
   assert.deepEqual(await executeNextBroadcast(adapter, repository, lease), { status: "SUCCEEDED", commandId: "command-1" });
   assert.deepEqual(adapter.textCalls, [{ targetRef: "@lpm", text: "promo" }]);
   assert.deepEqual(repository.finishes[0]?.outcome, { status: "SUCCEEDED", receipt: adapter.receipt });
+});
+
+test("a target deleted after claim is cancelled before Telegram is called", async () => {
+  const repository = new FakeRepository(); repository.authorization = "CANCELLED";
+  const adapter = new FakeAdapter();
+  assert.deepEqual(await executeNextBroadcast(adapter, repository, lease), {
+    status: "FAILED_FINAL", commandId: "command-1", errorCode: "EXECUTION_CANCELLED",
+  });
+  assert.equal(adapter.textCalls.length, 0);
+  assert.equal(repository.finishes.length, 0);
 });
 
 test("native forward preserves source and attribution in one adapter call", async () => {

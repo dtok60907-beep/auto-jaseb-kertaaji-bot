@@ -25,6 +25,12 @@ export interface BroadcastExecutorRepository {
     accountFencingToken: bigint;
     commandLeaseSeconds: number;
   }>): Promise<ClaimedBroadcastCommand | null>;
+  validateExecution(input: Readonly<{
+    commandId: string;
+    accountId: string;
+    leaseOwner: string;
+    accountFencingToken: bigint;
+  }>): Promise<"AUTHORIZED" | "CANCELLED" | "FENCED_OUT">;
   finish(input: Readonly<{
     commandId: string;
     accountId: string;

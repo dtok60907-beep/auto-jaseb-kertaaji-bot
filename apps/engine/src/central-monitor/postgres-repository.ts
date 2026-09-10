@@ -22,6 +22,7 @@ type SourceRow = Readonly<{
   telegram_user_id: string | null;
   discussion_target_ref: string | null;
   central_monitor_start_post_id: string | null;
+  central_monitor_activated_at: string | null;
   keywords: string[] | null;
   template_id: string | null;
   template_text: string | null;
@@ -92,6 +93,13 @@ export class PostgresCentralMonitorRepository implements CentralMonitorRepositor
               where configured_target.monitor_source_id = source.id
                 and configured_target.active
                 and exists (
+                  select 1 from public.userbot_profiles configured_profile
+                   where configured_profile.user_id = configured_target.user_id
+                     and configured_profile.active_account_id = configured_target.account_id
+                     and configured_profile.status = 'CONNECTED'
+                     and configured_profile.auto_comment_enabled
+                )
+                and exists (
                   select 1 from public.entitlements entitlement
                    where entitlement.user_id = configured_target.user_id
                      and entitlement.status = 'ACTIVE'
@@ -115,6 +123,7 @@ export class PostgresCentralMonitorRepository implements CentralMonitorRepositor
                matched.division_id, matched.mode, matched.telegram_user_id,
                matched.discussion_target_ref,
                matched.central_monitor_start_post_id,
+               matched.central_monitor_activated_at,
                matched.keywords, matched.template_id, matched.template_text
           from eligible_sources source
           left join lateral (
@@ -123,6 +132,7 @@ export class PostgresCentralMonitorRepository implements CentralMonitorRepositor
                    app_user.telegram_user_id::text,
                    target.discussion_target_ref,
                    target.central_monitor_start_post_id::text,
+                   target.central_monitor_activated_at::text,
                    array(
                      select lower(btrim(keyword.keyword))
                        from public.auto_comment_division_keywords keyword
@@ -154,6 +164,7 @@ export class PostgresCentralMonitorRepository implements CentralMonitorRepositor
                and userbot.account_type = 'USERBOT'
                and userbot.status = 'READY'
                and profile.status = 'CONNECTED'
+               and profile.auto_comment_enabled
                and exists (
                  select 1 from public.auto_comment_division_keywords keyword
                   where keyword.division_id = division.id
@@ -191,6 +202,7 @@ export class PostgresCentralMonitorRepository implements CentralMonitorRepositor
         || row.keywords === null
         || row.template_id === null
         || row.template_text === null
+        || row.central_monitor_activated_at === null
       ) continue;
       current.divisions.push(Object.freeze({
         divisionId: row.division_id,
@@ -202,6 +214,7 @@ export class PostgresCentralMonitorRepository implements CentralMonitorRepositor
         channelTargetId: row.channel_target_id,
         discussionTargetRef: row.discussion_target_ref,
         startAfterPostId: row.central_monitor_start_post_id === null ? null : Number(row.central_monitor_start_post_id),
+        activatedAt: new Date(row.central_monitor_activated_at).toISOString(),
       }));
     }
     return Object.freeze([...sources.values()].map(({ base, divisions }) => Object.freeze({

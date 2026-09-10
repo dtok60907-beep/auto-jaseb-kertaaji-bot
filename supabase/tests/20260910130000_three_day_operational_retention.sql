@@ -27,6 +27,9 @@ values (
   '72000000-0000-4000-8000-000000000001',
   '72000000-0000-4000-8000-000000000002', 'CONNECTED'
 );
+select 1 / case when public.set_auto_comment_enabled(
+  '72000000-0000-4000-8000-000000000001', true
+) then 1 else 0 end;
 
 insert into public.auto_comment_divisions (id, user_id, account_id, name, mode)
 values

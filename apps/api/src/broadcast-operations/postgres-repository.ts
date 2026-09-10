@@ -4,8 +4,8 @@ import type { BroadcastOperationRepository, BroadcastOperationTargetView, Broadc
 
 type Payload = { accountMode: "JASEB_WORKER" | "USERBOT"; intervalSeconds: number; material: BroadcastMaterial & { id: string } };
 type OperationRow = { id: string; account_id: string; status: string; payload: Payload };
-type TargetRow = { id: string; source_lpm_target_id: string; telegram_target_ref: string; sequence_number: number; preparation_status: string; delivery_status: string; last_error_code: string | null };
-function target(row: TargetRow): BroadcastOperationTargetView { return Object.freeze({ id: row.id, sourceLpmTargetId: row.source_lpm_target_id, telegramTargetRef: row.telegram_target_ref, sequenceNumber: row.sequence_number, preparationStatus: row.preparation_status, deliveryStatus: row.delivery_status, lastErrorCode: row.last_error_code }); }
+type TargetRow = { id: string; source_lpm_target_id: string; telegram_target_ref: string; sequence_number: number; preparation_status: string; delivery_status: string; last_error_code: string | null; next_eligible_at: string | null };
+function target(row: TargetRow): BroadcastOperationTargetView { return Object.freeze({ id: row.id, sourceLpmTargetId: row.source_lpm_target_id, telegramTargetRef: row.telegram_target_ref, sequenceNumber: row.sequence_number, preparationStatus: row.preparation_status, deliveryStatus: row.delivery_status, lastErrorCode: row.last_error_code, nextEligibleAt: row.next_eligible_at ? new Date(row.next_eligible_at).toISOString() : null }); }
 function view(row: OperationRow, targets: readonly TargetRow[]): BroadcastOperationView {
   const payload = row.payload;
   if (!payload || (payload.accountMode !== "JASEB_WORKER" && payload.accountMode !== "USERBOT") || !Number.isInteger(payload.intervalSeconds) || payload.intervalSeconds < 0 || !payload.material || typeof payload.material.id !== "string") throw new Error("invalid broadcast operation payload");
@@ -38,12 +38,24 @@ export class PostgresBroadcastOperationRepository implements BroadcastOperationR
     const operation = operations[0];
     if (!operation) return null;
     const targets = await this.sql<TargetRow[]>`
-      select id::text, source_lpm_target_id::text, telegram_target_ref, sequence_number,
-             preparation_status, delivery_status, last_error_code
-        from public.broadcast_targets
-       where operation_id = ${operation.id}::uuid
-       order by sequence_number
+      select target.id::text, target.source_lpm_target_id::text, target.telegram_target_ref,
+             target.sequence_number, target.preparation_status, target.delivery_status,
+             target.last_error_code,
+             greatest(target.next_eligible_at, account.broadcast_next_eligible_at)::text as next_eligible_at
+        from public.broadcast_targets target
+        join public.workflow_operations operation on operation.id = target.operation_id
+        join public.telegram_accounts account on account.id = operation.account_id
+       where target.operation_id = ${operation.id}::uuid
+       order by target.sequence_number
     `;
     return view(operation, targets);
+  }
+  async cancel(input: Parameters<BroadcastOperationRepository["cancel"]>[0]) {
+    const rows = await this.sql<{ cancelled: boolean }[]>`
+      select public.cancel_broadcast_operation(
+        ${input.operationId}::uuid, ${input.userId}::uuid, 'USER_CANCELLED'
+      ) cancelled
+    `;
+    return rows[0]?.cancelled ?? false;
   }
 }

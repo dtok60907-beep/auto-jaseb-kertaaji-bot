@@ -170,6 +170,7 @@ class FakePreparationRepository implements BroadcastPreparationRepository {
     this.claimCalls += 1;
     return this.claims.length ? this.claims.shift() ?? null : null;
   }
+  async validatePreparation() { return "AUTHORIZED" as const; }
   async transition(input: Parameters<BroadcastPreparationRepository["transition"]>[0]) {
     this.transitions.push(input);
     return true;
@@ -219,6 +220,7 @@ class FakeAutoCommentExecutorRepository implements AutoCommentExecutorRepository
     this.claimCalls += 1;
     return this.claims.length ? this.claims.shift() ?? null : null;
   }
+  async validateExecution() { return "AUTHORIZED" as const; }
   async finish(input: Parameters<AutoCommentExecutorRepository["finish"]>[0]) {
     this.finishes.push(input);
     return this.finishResult;
@@ -251,6 +253,7 @@ class FakeExecutorRepository implements BroadcastExecutorRepository {
     if (this.endless) return command(`command-${this.claimCalls}`);
     return this.claims.length ? this.claims.shift() ?? null : null;
   }
+  async validateExecution() { return "AUTHORIZED" as const; }
   async finish(input: Parameters<BroadcastExecutorRepository["finish"]>[0]) {
     this.finishes.push(input);
     return this.finishResult;

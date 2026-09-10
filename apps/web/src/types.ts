@@ -178,6 +178,7 @@ export type BroadcastOperationTarget = Readonly<{
   preparationStatus: string;
   deliveryStatus: string;
   lastErrorCode: string | null;
+  nextEligibleAt: string | null;
 }>;
 
 export type BroadcastOperation = Readonly<{
@@ -240,9 +241,12 @@ export type AutoCommentChannelTarget = Readonly<{
   lastErrorCode: string | null;
   active: boolean;
   divisionIds: readonly string[];
+  monitorStatus?: "PENDING" | "JOINING" | "READY" | "ACCESS_REQUIRED" | "FAILED_RETRYABLE" | "FAILED_FINAL";
+  monitorErrorCode?: string | null;
 }>;
 
 export type AutoCommentSettings = Readonly<{
+  enabled?: boolean;
   accounts: readonly AutoCommentAccount[];
   divisions: readonly AutoCommentDivision[];
   channelTargets: readonly AutoCommentChannelTarget[];

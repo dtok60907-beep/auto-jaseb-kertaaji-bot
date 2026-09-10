@@ -40,6 +40,8 @@ class FakeRepository implements BroadcastPreparationRepository {
     };
   }
 
+  async validatePreparation() { return "AUTHORIZED" as const; }
+
   async transition(input: Parameters<BroadcastPreparationRepository["transition"]>[0]) {
     this.transitions.push({
       expectedStatus: input.expectedStatus,
@@ -147,7 +149,7 @@ test("an approved target becomes ready on the next membership check", async () =
   assert.equal(adapter.joinCalls, 0);
 });
 
-test("approval membership rechecks back off exponentially and cap at one hour", async () => {
+test("approval membership rechecks back off exponentially and eventually terminate", async () => {
   const repository = new FakeRepository();
   repository.previousStatus = "WAITING_APPROVAL";
   repository.attemptCount = 4;
@@ -160,10 +162,20 @@ test("approval membership rechecks back off exponentially and cap at one hour", 
   assert.equal(result.retryAfterSeconds, 480);
   assert.equal(adapter.joinCalls, 0);
 
-  repository.attemptCount = 100;
+  repository.attemptCount = 20;
   const capped = await prepareNextBroadcastTarget(adapter, repository, lease);
   if (capped.status !== "WAITING_APPROVAL") assert.fail("expected capped approval wait");
   assert.equal(capped.retryAfterSeconds, 3_600);
+
+  repository.attemptCount = 30;
+  const expired = await prepareNextBroadcastTarget(adapter, repository, lease);
+  assert.deepEqual(expired, {
+    status: "FAILED_FINAL",
+    targetId: "target-1",
+    errorCode: "JOIN_APPROVAL_TIMEOUT",
+    retryAfterSeconds: null,
+  });
+  assert.equal(adapter.joinCalls, 0);
 });
 
 test("legacy approval error maps to waiting while a channel target still fails clearly", async () => {

@@ -16,6 +16,10 @@ type LeaseContext = Readonly<{
 
 const APPROVAL_RECHECK_BASE_SECONDS = 60;
 const APPROVAL_RECHECK_MAX_SECONDS = 3_600;
+// One initial join request plus bounded membership checks covers roughly one
+// day. After that the target reaches a visible terminal state; a user can
+// explicitly start a new run after the join request has been approved.
+const APPROVAL_RECHECK_MAX_ATTEMPTS = 30;
 
 function approvalRecheckSeconds(attemptCount: number): number {
   const exponent = Math.min(Math.max(attemptCount - 1, 0), 20);
@@ -76,6 +80,19 @@ export async function prepareNextBroadcastTarget(
   if (!target) return Object.freeze({ status: "NO_TARGET" });
   const approvalRetrySeconds = approvalRecheckSeconds(target.attemptCount);
 
+  const initialAuthorization = await repository.validatePreparation({ targetId: target.targetId, ...lease });
+  if (initialAuthorization !== "AUTHORIZED") return fenced(target.targetId);
+
+  if (target.previousStatus === "WAITING_APPROVAL" && target.attemptCount >= APPROVAL_RECHECK_MAX_ATTEMPTS) {
+    if (!await move(repository, target, lease, "CHECKING", "FAILED_FINAL", "JOIN_APPROVAL_TIMEOUT")) return fenced(target.targetId);
+    return Object.freeze({
+      status: "FAILED_FINAL",
+      targetId: target.targetId,
+      errorCode: "JOIN_APPROVAL_TIMEOUT",
+      retryAfterSeconds: null,
+    });
+  }
+
   let current: "CHECKING" | "JOINING" = "CHECKING";
   try {
     const resolved = await adapter.resolveTarget(target.telegramTargetRef);
@@ -91,6 +108,8 @@ export async function prepareNextBroadcastTarget(
       }
       if (!await move(repository, target, lease, current, "JOINING")) return fenced(target.targetId);
       current = "JOINING";
+      const joinAuthorization = await repository.validatePreparation({ targetId: target.targetId, ...lease });
+      if (joinAuthorization !== "AUTHORIZED") return fenced(target.targetId);
       const joined = await adapter.joinPublicTarget(target.telegramTargetRef);
       if (joined.state === "APPROVAL_REQUESTED") {
         if (!await move(repository, target, lease, current, "WAITING_APPROVAL", "JOIN_APPROVAL_PENDING", approvalRetrySeconds)) return fenced(target.targetId);

@@ -71,6 +71,23 @@ export class PostgresBroadcastCampaignRepository implements BroadcastCampaignRep
     return rows[0]?.stopped ?? false;
   }
 
+  async setEnabled(input: Parameters<BroadcastCampaignRepository["setEnabled"]>[0]): Promise<BroadcastCampaignView | null> {
+    const rows = await this.sql<{ campaign_id: string | null }[]>`
+      select public.set_broadcast_service_enabled(
+        ${input.userId}::uuid, ${input.enabled}, ${input.accountMode ?? null},
+        ${input.materialId ?? null}::uuid,
+        ${input.targetIds ? this.sql.array([...input.targetIds]) : null}::uuid[],
+        ${input.intervalSeconds ?? null}
+      )::text as campaign_id
+    `;
+    const campaignId = rows[0]?.campaign_id ?? null;
+    if (!input.enabled) return null;
+    if (!campaignId) throw new Error("broadcast service did not return a campaign");
+    const campaign = await this.get(campaignId);
+    if (!campaign) throw new Error("broadcast campaign was not readable after enabling service");
+    return campaign;
+  }
+
   private async get(campaignId: string): Promise<BroadcastCampaignView | null> {
     const rows = await this.sql<Row[]>`
       select c.id::text, c.account_mode, c.material_id::text, c.target_ids::text[], c.interval_seconds,

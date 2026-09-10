@@ -39,6 +39,16 @@ export class PostgresBroadcastPreparationRepository implements BroadcastPreparat
     }) : null;
   }
 
+  async validatePreparation(input: Parameters<BroadcastPreparationRepository["validatePreparation"]>[0]) {
+    const rows = await this.sql<{ result: "AUTHORIZED" | "CANCELLED" | "FENCED_OUT" }[]>`
+      select public.validate_broadcast_preparation(
+        ${input.targetId}::uuid, ${input.accountId}::uuid, ${input.leaseOwner}::uuid,
+        ${input.accountFencingToken.toString()}::bigint
+      ) result
+    `;
+    return rows[0]?.result ?? "FENCED_OUT";
+  }
+
   async transition(input: Parameters<BroadcastPreparationRepository["transition"]>[0]): Promise<boolean> {
     const rows = await this.sql<{ transitioned: boolean }[]>`
       select public.transition_broadcast_preparation(

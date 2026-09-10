@@ -25,6 +25,12 @@ export interface AutoCommentExecutorRepository {
     accountFencingToken: bigint;
     commandLeaseSeconds: number;
   }>): Promise<ClaimedAutoCommentCommand | null>;
+  validateExecution(input: Readonly<{
+    commandId: string;
+    accountId: string;
+    leaseOwner: string;
+    accountFencingToken: bigint;
+  }>): Promise<"AUTHORIZED" | "CANCELLED" | "FENCED_OUT">;
   finish(input: Readonly<{
     commandId: string;
     accountId: string;

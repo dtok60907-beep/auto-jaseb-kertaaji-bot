@@ -83,6 +83,17 @@ function postLink(sourceChannelRef: string, providerPostId: number): string {
   return `https://t.me/${sourceChannelRef.replace(/^@/, "")}/${providerPostId}`;
 }
 
+function divisionAcceptsPostTime(division: CentralMonitorDivision, providerPostedAt: string | null): boolean {
+  if (providerPostedAt === null) return true;
+  const postedAt = Date.parse(providerPostedAt);
+  const activatedAt = Date.parse(division.activatedAt);
+  if (!Number.isFinite(postedAt) || !Number.isFinite(activatedAt)) return true;
+  // Telegram timestamps have second precision while PostgreSQL activation
+  // timestamps have finer precision. The small tolerance avoids dropping a
+  // post created in the same second as activation.
+  return postedAt >= activatedAt - 2_000;
+}
+
 export type CentralMonitorHandle = Readonly<{ stop(): Promise<void> }>;
 
 export type CentralMonitorDependencies = Readonly<{
@@ -146,6 +157,10 @@ class ConnectedMonitorSession {
       try {
         const renewed = await this.#dependencies.accountLeases.renew({ ...this.#lease, leaseSeconds: LEASE_SECONDS });
         if (!renewed || renewed.fencingToken !== this.#lease.fencingToken) { this.stop(); return; }
+        // A single global catch-up keeps Telegram's update state healthy after
+        // a transient disconnect. This is deliberately not a per-user/source
+        // history poll.
+        await this.#client.catchUp();
       } catch { this.stop(); return; }
     }
   }
@@ -210,6 +225,7 @@ class ConnectedMonitorSession {
       if (event.content.trim()) {
         for (const division of source.divisions) {
           if (division.startAfterPostId !== null && event.providerPostId <= division.startAfterPostId) continue;
+          if (!divisionAcceptsPostTime(division, event.providerPostedAt)) continue;
           const keywords = matchedKeywords(event.content, division);
           if (keywords.length === 0) continue;
           const candidate = await this.#dependencies.repository.createCandidate({
@@ -271,23 +287,17 @@ class ConnectedMonitorSession {
       });
 
       if (source.lastPostId === null) {
+        const current = Object.freeze({ ...source, providerPeerId: prepared.providerPeerId });
+        this.#sourcesById.set(source.sourceId, current);
+        this.#sourcesByPeer.set(prepared.providerPeerId, current);
         if (prepared.latestPostId !== null) {
-          await this.#dependencies.repository.advanceCheckpoint({ sourceId: source.sourceId, providerPostId: prepared.latestPostId });
-          const current = Object.freeze({
-            ...source,
-            providerPeerId: prepared.providerPeerId,
-            divisions: Object.freeze(source.divisions.map((division) => Object.freeze({
-              ...division,
-              startAfterPostId: division.startAfterPostId ?? prepared.latestPostId,
-            }))),
-          });
-          this.#sourcesById.set(source.sourceId, current);
-          this.#sourcesByPeer.set(prepared.providerPeerId, current);
-          await this.#backfill(current, prepared.latestPostId);
-        } else {
-          const current = Object.freeze({ ...source, providerPeerId: prepared.providerPeerId });
-          this.#sourcesById.set(source.sourceId, current);
-          this.#sourcesByPeer.set(prepared.providerPeerId, current);
+          const recent = await this.#client.listRecentPosts(source.sourceChannelRef, BACKFILL_BATCH_SIZE);
+          const activationWindow = recent.filter((post) => source.divisions.some((division) => divisionAcceptsPostTime(division, post.providerPostedAt)));
+          if (activationWindow.length === 0) {
+            await this.#dependencies.repository.advanceCheckpoint({ sourceId: source.sourceId, providerPostId: prepared.latestPostId });
+          } else {
+            for (const post of activationWindow) await this.#ingest(current, post);
+          }
         }
         return;
       }

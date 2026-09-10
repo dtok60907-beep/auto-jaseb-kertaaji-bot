@@ -32,6 +32,8 @@ type ChannelRow = {
   resolution_status: "QUEUED" | "CHECKING" | "JOINING" | "WAITING_APPROVAL" | "READY" | "NEEDS_REVALIDATION" | "FAILED_FINAL";
   last_error_code: string | null;
   active: boolean;
+  monitor_status: AutoCommentChannelTargetView["monitorStatus"];
+  monitor_error_code: string | null;
 };
 type MappingRow = { division_id: string; channel_target_id: string };
 
@@ -67,6 +69,8 @@ function channelView(row: ChannelRow, divisionIds: readonly string[] = []): Auto
     lastErrorCode: row.last_error_code,
     active: row.active,
     divisionIds: Object.freeze([...divisionIds]),
+    monitorStatus: row.monitor_status,
+    monitorErrorCode: row.monitor_error_code,
   });
 }
 
@@ -78,7 +82,10 @@ export class PostgresAutoCommentSettingsRepository implements AutoCommentSetting
   }
 
   async listSettings(userId: string): Promise<AutoCommentSettingsView> {
-    const [accounts, divisions, keywords, templates, channels, mappings] = await Promise.all([
+    const [profiles, accounts, divisions, keywords, templates, channels, mappings] = await Promise.all([
+      this.sql<{ auto_comment_enabled: boolean }[]>`
+        select auto_comment_enabled from public.userbot_profiles where user_id = ${userId}::uuid
+      `,
       this.sql<AccountRow[]>`
         select id::text, label, status
           from public.telegram_accounts
@@ -88,14 +95,14 @@ export class PostgresAutoCommentSettingsRepository implements AutoCommentSetting
       this.sql<DivisionRow[]>`
         select id::text, account_id::text, name, mode, active
           from public.auto_comment_divisions
-         where user_id = ${userId}::uuid
+         where user_id = ${userId}::uuid and deleted_at is null
          order by created_at, id
       `,
       this.sql<KeywordRow[]>`
         select keyword.id::text, keyword.division_id::text, keyword.keyword
           from public.auto_comment_division_keywords keyword
           join public.auto_comment_divisions division on division.id = keyword.division_id
-         where division.user_id = ${userId}::uuid
+         where division.user_id = ${userId}::uuid and division.deleted_at is null
          order by keyword.created_at, keyword.id
       `,
       this.sql<TemplateRow[]>`
@@ -103,21 +110,28 @@ export class PostgresAutoCommentSettingsRepository implements AutoCommentSetting
                template.display_order, template.active
           from public.auto_comment_division_templates template
           join public.auto_comment_divisions division on division.id = template.division_id
-         where division.user_id = ${userId}::uuid
+         where division.user_id = ${userId}::uuid and division.deleted_at is null
+           and template.deleted_at is null
          order by template.display_order, template.created_at, template.id
       `,
       this.sql<ChannelRow[]>`
-        select id::text, account_id::text, source_channel_ref, discussion_target_ref,
-               resolution_status, last_error_code, active
-          from public.auto_comment_channel_targets
-         where user_id = ${userId}::uuid
-         order by created_at, id
+        select target.id::text, target.account_id::text, target.source_channel_ref,
+               target.discussion_target_ref, target.resolution_status,
+               target.last_error_code, target.active,
+               source.status as monitor_status,
+               source.last_error_code as monitor_error_code
+          from public.auto_comment_channel_targets target
+          join public.auto_comment_monitor_sources source on source.id = target.monitor_source_id
+         where target.user_id = ${userId}::uuid and target.deleted_at is null
+         order by target.created_at, target.id
       `,
       this.sql<MappingRow[]>`
         select mapping.division_id::text, mapping.channel_target_id::text
           from public.auto_comment_division_channels mapping
           join public.auto_comment_divisions division on division.id = mapping.division_id
+          join public.auto_comment_channel_targets target on target.id = mapping.channel_target_id
          where division.user_id = ${userId}::uuid
+           and division.deleted_at is null and target.deleted_at is null
          order by mapping.created_at, mapping.division_id, mapping.channel_target_id
       `,
     ]);
@@ -134,6 +148,7 @@ export class PostgresAutoCommentSettingsRepository implements AutoCommentSetting
     }
 
     return Object.freeze({
+      enabled: profiles[0]?.auto_comment_enabled ?? false,
       accounts: Object.freeze(accounts.map((account) => Object.freeze({ ...account }))),
       divisions: Object.freeze(divisions.map((division) => divisionView(
         division,
@@ -161,6 +176,7 @@ export class PostgresAutoCommentSettingsRepository implements AutoCommentSetting
          set name = ${input.patch.name}, mode = ${input.patch.mode}, active = ${input.patch.active},
              version = version + 1
        where id = ${input.id}::uuid and user_id = ${input.userId}::uuid
+         and deleted_at is null
       returning id::text, account_id::text, name, mode, active
     `;
     return rows[0] ? divisionView(rows[0]) : null;
@@ -168,8 +184,9 @@ export class PostgresAutoCommentSettingsRepository implements AutoCommentSetting
 
   async deleteDivision(input: Parameters<AutoCommentSettingsRepository["deleteDivision"]>[0]): Promise<boolean> {
     const rows = await this.sql<{ id: string }[]>`
-      delete from public.auto_comment_divisions
-       where id = ${input.id}::uuid and user_id = ${input.userId}::uuid
+      update public.auto_comment_divisions
+         set active = false, deleted_at = now(), version = version + 1
+       where id = ${input.id}::uuid and user_id = ${input.userId}::uuid and deleted_at is null
       returning id::text
     `;
     return rows.length === 1;
@@ -181,6 +198,7 @@ export class PostgresAutoCommentSettingsRepository implements AutoCommentSetting
       select id, ${input.keyword}
         from public.auto_comment_divisions
        where id = ${input.divisionId}::uuid and user_id = ${input.userId}::uuid
+         and deleted_at is null
       returning id::text, keyword
     `;
     return rows[0] ? Object.freeze(rows[0]) : null;
@@ -194,6 +212,7 @@ export class PostgresAutoCommentSettingsRepository implements AutoCommentSetting
          and keyword.division_id = ${input.divisionId}::uuid
          and division.id = keyword.division_id
          and division.user_id = ${input.userId}::uuid
+         and division.deleted_at is null
       returning keyword.id::text
     `;
     return rows.length === 1;
@@ -205,6 +224,7 @@ export class PostgresAutoCommentSettingsRepository implements AutoCommentSetting
       select id, ${input.template.text}, ${input.template.displayOrder}, ${input.template.active}
         from public.auto_comment_divisions
        where id = ${input.divisionId}::uuid and user_id = ${input.userId}::uuid
+         and deleted_at is null
       returning id::text, division_id::text, text_content, display_order, active
     `;
     return rows[0] ? divisionView({ id: "", account_id: "", name: "", mode: "APPROVAL_REQUIRED", active: true }, [], [rows[0]]).templates[0] : null;
@@ -219,6 +239,8 @@ export class PostgresAutoCommentSettingsRepository implements AutoCommentSetting
          and template.division_id = ${input.divisionId}::uuid
          and division.id = template.division_id
          and division.user_id = ${input.userId}::uuid
+         and division.deleted_at is null
+         and template.deleted_at is null
       returning template.id::text, template.division_id::text, template.text_content, template.display_order, template.active
     `;
     return rows[0] ? divisionView({ id: "", account_id: "", name: "", mode: "APPROVAL_REQUIRED", active: true }, [], [rows[0]]).templates[0] : null;
@@ -226,12 +248,14 @@ export class PostgresAutoCommentSettingsRepository implements AutoCommentSetting
 
   async deleteTemplate(input: Parameters<AutoCommentSettingsRepository["deleteTemplate"]>[0]): Promise<boolean> {
     const rows = await this.sql<{ id: string }[]>`
-      delete from public.auto_comment_division_templates template
-       using public.auto_comment_divisions division
+      update public.auto_comment_division_templates template
+         set active = false, deleted_at = now()
+        from public.auto_comment_divisions division
        where template.id = ${input.id}::uuid
          and template.division_id = ${input.divisionId}::uuid
          and division.id = template.division_id
          and division.user_id = ${input.userId}::uuid
+         and template.deleted_at is null
       returning template.id::text
     `;
     return rows.length === 1;
@@ -239,10 +263,18 @@ export class PostgresAutoCommentSettingsRepository implements AutoCommentSetting
 
   async createChannelTarget(input: Parameters<AutoCommentSettingsRepository["createChannelTarget"]>[0]): Promise<AutoCommentChannelTargetView> {
     const rows = await this.sql<ChannelRow[]>`
-      insert into public.auto_comment_channel_targets (user_id, account_id, source_channel_ref, active)
-      values (${input.userId}::uuid, ${input.target.accountId}::uuid, ${input.target.sourceChannelRef}, ${input.target.active})
-      returning id::text, account_id::text, source_channel_ref, discussion_target_ref,
-                resolution_status, last_error_code, active
+      with inserted as (
+        insert into public.auto_comment_channel_targets (user_id, account_id, source_channel_ref, active)
+        values (${input.userId}::uuid, ${input.target.accountId}::uuid, ${input.target.sourceChannelRef}, ${input.target.active})
+        returning id, account_id, source_channel_ref, discussion_target_ref,
+                  resolution_status, last_error_code, active, monitor_source_id
+      )
+      select inserted.id::text, inserted.account_id::text, inserted.source_channel_ref,
+             inserted.discussion_target_ref, inserted.resolution_status,
+             inserted.last_error_code, inserted.active,
+             source.status as monitor_status, source.last_error_code as monitor_error_code
+        from inserted
+        join public.auto_comment_monitor_sources source on source.id = inserted.monitor_source_id
     `;
     if (!rows[0]) throw new Error("auto comment channel target was not persisted");
     return channelView(rows[0]);
@@ -250,22 +282,32 @@ export class PostgresAutoCommentSettingsRepository implements AutoCommentSetting
 
   async updateChannelTarget(input: Parameters<AutoCommentSettingsRepository["updateChannelTarget"]>[0]): Promise<AutoCommentChannelTargetView | null> {
     const rows = await this.sql<ChannelRow[]>`
-      update public.auto_comment_channel_targets
-         set source_channel_ref = ${input.patch.sourceChannelRef}, active = ${input.patch.active},
-             discussion_target_ref = null, resolution_status = 'QUEUED', last_error_code = null,
-             resolution_available_at = now(), resolution_approval_requested_at = null,
-             resolution_lease_owner = null, resolution_fencing_token = null
-       where id = ${input.id}::uuid and user_id = ${input.userId}::uuid
-      returning id::text, account_id::text, source_channel_ref, discussion_target_ref,
-                resolution_status, last_error_code, active
+      with updated as (
+        update public.auto_comment_channel_targets
+           set source_channel_ref = ${input.patch.sourceChannelRef}, active = ${input.patch.active},
+               discussion_target_ref = null, resolution_status = 'QUEUED', last_error_code = null,
+               resolution_available_at = now(), resolution_approval_requested_at = null,
+               resolution_lease_owner = null, resolution_fencing_token = null
+         where id = ${input.id}::uuid and user_id = ${input.userId}::uuid
+           and deleted_at is null
+        returning id, account_id, source_channel_ref, discussion_target_ref,
+                  resolution_status, last_error_code, active, monitor_source_id
+      )
+      select updated.id::text, updated.account_id::text, updated.source_channel_ref,
+             updated.discussion_target_ref, updated.resolution_status,
+             updated.last_error_code, updated.active,
+             source.status as monitor_status, source.last_error_code as monitor_error_code
+        from updated
+        join public.auto_comment_monitor_sources source on source.id = updated.monitor_source_id
     `;
     return rows[0] ? channelView(rows[0]) : null;
   }
 
   async deleteChannelTarget(input: Parameters<AutoCommentSettingsRepository["deleteChannelTarget"]>[0]): Promise<boolean> {
     const rows = await this.sql<{ id: string }[]>`
-      delete from public.auto_comment_channel_targets
-       where id = ${input.id}::uuid and user_id = ${input.userId}::uuid
+      update public.auto_comment_channel_targets
+         set active = false, deleted_at = now()
+       where id = ${input.id}::uuid and user_id = ${input.userId}::uuid and deleted_at is null
       returning id::text
     `;
     return rows.length === 1;
@@ -280,6 +322,8 @@ export class PostgresAutoCommentSettingsRepository implements AutoCommentSetting
           on channel.id = ${input.channelTargetId}::uuid
          and channel.user_id = division.user_id
          and channel.account_id = division.account_id
+         and division.deleted_at is null
+         and channel.deleted_at is null
        where division.id = ${input.divisionId}::uuid
          and division.user_id = ${input.userId}::uuid
       on conflict do nothing
@@ -296,6 +340,8 @@ export class PostgresAutoCommentSettingsRepository implements AutoCommentSetting
          and division.user_id = ${input.userId}::uuid
          and channel.user_id = division.user_id
          and channel.account_id = division.account_id
+         and division.deleted_at is null
+         and channel.deleted_at is null
     `;
     return existing.length === 1 ? "ATTACHED" : "NOT_FOUND";
   }
@@ -308,6 +354,7 @@ export class PostgresAutoCommentSettingsRepository implements AutoCommentSetting
          and mapping.channel_target_id = ${input.channelTargetId}::uuid
          and division.id = mapping.division_id
          and division.user_id = ${input.userId}::uuid
+         and division.deleted_at is null
       returning mapping.division_id::text
     `;
     return rows.length === 1;
@@ -337,5 +384,12 @@ export class PostgresAutoCommentSettingsRepository implements AutoCommentSetting
       select id::text from public.app_users where telegram_user_id = ${telegramUserId}::bigint
     `;
     return rows[0]?.id ?? null;
+  }
+
+  async setEnabled(input: Readonly<{ userId: string; enabled: boolean }>): Promise<boolean> {
+    const rows = await this.sql<{ updated: boolean }[]>`
+      select public.set_auto_comment_enabled(${input.userId}::uuid, ${input.enabled}) updated
+    `;
+    return rows[0]?.updated ?? false;
   }
 }

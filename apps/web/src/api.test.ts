@@ -4,6 +4,7 @@ import {
   ApiError,
   attachAutoCommentChannel,
   admitCanaryUser,
+  cancelBroadcastOperation,
   createAdminBroadcastCampaign,
   createAdminTextBroadcastMaterial,
   createAutoCommentChannelTarget,
@@ -12,7 +13,6 @@ import {
   createAutoCommentTemplate,
   createBroadcastCampaign,
   createBroadcastLpmTarget,
-  createBroadcastOperation,
   createPakasirOrder,
   createForwardBroadcastMaterial,
   createTextBroadcastMaterial,
@@ -20,6 +20,8 @@ import {
   deleteAutoCommentDivision,
   deleteAutoCommentKeyword,
   deleteAutoCommentTemplate,
+  deleteAdminBroadcastLpmTarget,
+  deleteBroadcastLpmTarget,
   detachAutoCommentChannel,
   exchangeTelegramInitData,
   getAdminBroadcastSettings,
@@ -33,6 +35,9 @@ import {
   listCanaryAdmissions,
   listTelegramAccounts,
   revokeCanaryUser,
+  setAutoCommentEnabled,
+  setAdminBroadcastServiceEnabled,
+  setBroadcastServiceEnabled,
   refreshPaymentOrder,
   startWorkerTelegramAuthorization,
   stopAdminBroadcastCampaign,
@@ -204,20 +209,31 @@ describe("web API client", () => {
     await expect(updateBroadcastLpmTarget("jas_test", "target-2", { telegramTargetRef: "@lpm_dua", label: null, active: false })).resolves.toMatchObject({ active: false });
   });
 
-  it("creates and reads a broadcast operation", async () => {
+  it("deletes an LPM target through the cancellation-aware endpoint", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toContain("/v1/broadcast/lpm-targets/target-2");
+      expect(init?.method).toBe("DELETE");
+      return new Response(null, { status: 204 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(deleteBroadcastLpmTarget("jas_test", "target-2")).resolves.toBeNull();
+  });
+
+  it("reads and cancels a broadcast operation", async () => {
     const operation = {
       id: "operation-1", accountId: "account-1", accountMode: "USERBOT", status: "READY", intervalSeconds: 30,
       material: { id: "material-1", kind: "TEXT", text: "halo semua" },
       targets: [{ id: "target-row-1", sourceLpmTargetId: "target-1", telegramTargetRef: "@contoh", sequenceNumber: 1, preparationStatus: "READY", deliveryStatus: "PENDING", lastErrorCode: null }],
     };
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ operation, idempotent: false }), { status: 201 })));
-
-    await expect(createBroadcastOperation("jas_test", {
-      accountMode: "USERBOT", materialId: "material-1", targetIds: ["target-1"], idempotencyKey: "op-idempotency-key-1",
-    })).resolves.toMatchObject({ idempotent: false, operation: { id: "operation-1" } });
-
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ operation }), { status: 200 })));
     await expect(getBroadcastOperation("jas_test", "operation-1")).resolves.toMatchObject({ id: "operation-1", status: "READY" });
+
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe("POST");
+      return new Response(null, { status: 204 });
+    }));
+    await expect(cancelBroadcastOperation("jas_test", "operation-1")).resolves.toBeNull();
   });
 
   it("paginates riwayat sebar with a before cursor", async () => {
@@ -257,6 +273,31 @@ describe("web API client", () => {
     await expect(stopBroadcastCampaign("jas_test", "campaign-1")).resolves.toBeNull();
   });
 
+  it("turns the Jasa Sebar service on and off through its master state", async () => {
+    const campaign = {
+      id: "campaign-1", accountMode: "JASEB_WORKER", materialId: "material-1", targetIds: ["target-1"],
+      intervalSeconds: 600, status: "ACTIVE", errorCode: null, lastCycleAt: null, nextCycleAt: "2026-09-01T00:00:00.000Z",
+      lastOperationId: null,
+    };
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe("PUT");
+      const body = JSON.parse(String(init?.body));
+      if (body.enabled) {
+        expect(body).toEqual({ enabled: true, accountMode: "JASEB_WORKER", materialId: "material-1", targetIds: ["target-1"], intervalSeconds: 600 });
+        return new Response(JSON.stringify({ enabled: true, campaign }), { status: 200 });
+      }
+      expect(body).toEqual({ enabled: false });
+      return new Response(JSON.stringify({ enabled: false, campaign: null }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(setBroadcastServiceEnabled("jas_test", {
+      enabled: true, accountMode: "JASEB_WORKER", materialId: "material-1", targetIds: ["target-1"], intervalSeconds: 600,
+    })).resolves.toMatchObject({ enabled: true, campaign: { id: "campaign-1" } });
+    await expect(setBroadcastServiceEnabled("jas_test", { enabled: false })).resolves.toEqual({ enabled: false, campaign: null });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("manages a user's Jasa Sebar as admin, scoped by userId in the URL", async () => {
     const USER_ID = "target-user-1";
 
@@ -278,6 +319,13 @@ describe("web API client", () => {
       return new Response(JSON.stringify({ target: { id: "target-9", telegramTargetRef: "@lain", label: null, active: true } }), { status: 200 });
     }));
     await expect(updateAdminBroadcastLpmTarget("jas_admin", USER_ID, "target-9", { telegramTargetRef: "@lain", label: null })).resolves.toMatchObject({ id: "target-9" });
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toContain(`/v1/admin/users/${USER_ID}/broadcast/lpm-targets/target-old`);
+      expect(init?.method).toBe("DELETE");
+      return new Response(null, { status: 204 });
+    }));
+    await expect(deleteAdminBroadcastLpmTarget("jas_admin", USER_ID, "target-old")).resolves.toBeNull();
 
     const campaign = {
       id: "campaign-9", accountMode: "USERBOT", materialId: "material-9", targetIds: ["target-9"],
@@ -301,6 +349,14 @@ describe("web API client", () => {
       return new Response(null, { status: 204 });
     }));
     await expect(stopAdminBroadcastCampaign("jas_admin", USER_ID, "campaign-9")).resolves.toBeNull();
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toContain(`/v1/admin/users/${USER_ID}/broadcast/state`);
+      expect(init?.method).toBe("PUT");
+      expect(JSON.parse(String(init?.body))).toEqual({ enabled: false });
+      return new Response(JSON.stringify({ enabled: false, campaign: null }), { status: 200 });
+    }));
+    await expect(setAdminBroadcastServiceEnabled("jas_admin", USER_ID, { enabled: false })).resolves.toEqual({ enabled: false, campaign: null });
   });
 
   it("lists, admits, and revokes canary admissions as admin", async () => {
@@ -333,6 +389,16 @@ describe("web API client", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ settings }), { status: 200 })));
 
     await expect(getAutoCommentSettings("jas_test")).resolves.toEqual(settings);
+  });
+
+  it("changes the Auto Komen master state", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe("PUT");
+      expect(JSON.parse(String(init?.body))).toEqual({ enabled: false });
+      return new Response(JSON.stringify({ enabled: false }), { status: 200 });
+    }));
+
+    await expect(setAutoCommentEnabled("jas_test", false)).resolves.toBe(false);
   });
 
   it("creates, updates, and deletes an Auto Komen division", async () => {

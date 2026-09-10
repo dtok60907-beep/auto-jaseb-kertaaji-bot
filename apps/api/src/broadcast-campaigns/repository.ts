@@ -23,4 +23,12 @@ export interface BroadcastCampaignRepository {
   }>): Promise<BroadcastCampaignView>;
   getCurrent(userId: string): Promise<BroadcastCampaignView | null>;
   stop(input: Readonly<{ userId: string; campaignId: string }>): Promise<boolean>;
+  setEnabled(input: Readonly<{
+    userId: string;
+    enabled: boolean;
+    accountMode?: AccountMode;
+    materialId?: string;
+    targetIds?: readonly string[];
+    intervalSeconds?: number;
+  }>): Promise<BroadcastCampaignView | null>;
 }

@@ -37,9 +37,12 @@ export type AutoCommentChannelTargetView = Readonly<{
   lastErrorCode: string | null;
   active: boolean;
   divisionIds: readonly string[];
+  monitorStatus?: "PENDING" | "JOINING" | "READY" | "ACCESS_REQUIRED" | "FAILED_RETRYABLE" | "FAILED_FINAL";
+  monitorErrorCode?: string | null;
 }>;
 
 export type AutoCommentSettingsView = Readonly<{
+  enabled?: boolean;
   accounts: readonly SafeUserbotAccountView[];
   divisions: readonly AutoCommentDivisionView[];
   channelTargets: readonly AutoCommentChannelTargetView[];
@@ -71,4 +74,5 @@ export interface AutoCommentSettingsRepository {
   decideCandidate(input: Readonly<{ userId: string; candidateId: string; decision: AutoCommentDecision }>): Promise<AutoCommentDecisionResult>;
   /** Resolves a Telegram user id (from a bot update) to their app_users id, or null if they have never authenticated through the Mini App. */
   resolveOwnerId(telegramUserId: string): Promise<string | null>;
+  setEnabled?(input: Readonly<{ userId: string; enabled: boolean }>): Promise<boolean>;
 }

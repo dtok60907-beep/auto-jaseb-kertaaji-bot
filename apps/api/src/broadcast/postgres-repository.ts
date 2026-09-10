@@ -64,7 +64,7 @@ export class PostgresBroadcastSettingsRepository implements BroadcastSettingsRep
       select id::text, kind, text_content, forward_channel_username, forward_message_id,
              source_attribution, active
         from public.broadcast_materials
-       where user_id = ${userId}::uuid
+       where user_id = ${userId}::uuid and deleted_at is null
        order by created_at, id
     `;
     return Object.freeze(rows.map(toMaterialView));
@@ -100,7 +100,7 @@ export class PostgresBroadcastSettingsRepository implements BroadcastSettingsRep
              set kind = 'TEXT', text_content = ${input.material.text},
                  forward_channel_username = null, forward_message_id = null,
                  source_attribution = null, active = ${input.active}
-           where id = ${input.id}::uuid and user_id = ${input.userId}::uuid
+           where id = ${input.id}::uuid and user_id = ${input.userId}::uuid and deleted_at is null
           returning id::text, kind, text_content, forward_channel_username, forward_message_id,
                     source_attribution, active
         `
@@ -111,7 +111,7 @@ export class PostgresBroadcastSettingsRepository implements BroadcastSettingsRep
                  forward_message_id = ${input.material.source.messageId},
                  source_attribution = ${input.material.sourceAttribution},
                  active = ${input.active}
-           where id = ${input.id}::uuid and user_id = ${input.userId}::uuid
+           where id = ${input.id}::uuid and user_id = ${input.userId}::uuid and deleted_at is null
           returning id::text, kind, text_content, forward_channel_username, forward_message_id,
                     source_attribution, active
         `;
@@ -120,8 +120,9 @@ export class PostgresBroadcastSettingsRepository implements BroadcastSettingsRep
 
   async deleteMaterial(input: Parameters<BroadcastSettingsRepository["deleteMaterial"]>[0]): Promise<boolean> {
     const rows = await this.sql<{ id: string }[]>`
-      delete from public.broadcast_materials
-       where id = ${input.id}::uuid and user_id = ${input.userId}::uuid
+      update public.broadcast_materials
+         set active = false, deleted_at = now()
+       where id = ${input.id}::uuid and user_id = ${input.userId}::uuid and deleted_at is null
        returning id::text
     `;
     return rows.length === 1;
@@ -131,7 +132,7 @@ export class PostgresBroadcastSettingsRepository implements BroadcastSettingsRep
     const rows = await this.sql<TargetRow[]>`
       select id::text, telegram_target_ref, label, active
         from public.broadcast_lpm_targets
-       where user_id = ${userId}::uuid
+       where user_id = ${userId}::uuid and deleted_at is null
        order by created_at, id
     `;
     return Object.freeze(rows.map(toTargetView));
@@ -153,7 +154,7 @@ export class PostgresBroadcastSettingsRepository implements BroadcastSettingsRep
          set telegram_target_ref = ${input.target.telegramTargetRef},
              label = ${input.target.label},
              active = ${input.target.active}
-       where id = ${input.id}::uuid and user_id = ${input.userId}::uuid
+       where id = ${input.id}::uuid and user_id = ${input.userId}::uuid and deleted_at is null
       returning id::text, telegram_target_ref, label, active
     `;
     return rows[0] ? toTargetView(rows[0]) : null;
@@ -161,8 +162,9 @@ export class PostgresBroadcastSettingsRepository implements BroadcastSettingsRep
 
   async deleteLpmTarget(input: Parameters<BroadcastSettingsRepository["deleteLpmTarget"]>[0]): Promise<boolean> {
     const rows = await this.sql<{ id: string }[]>`
-      delete from public.broadcast_lpm_targets
-       where id = ${input.id}::uuid and user_id = ${input.userId}::uuid
+      update public.broadcast_lpm_targets
+         set active = false, deleted_at = now()
+       where id = ${input.id}::uuid and user_id = ${input.userId}::uuid and deleted_at is null
        returning id::text
     `;
     return rows.length === 1;

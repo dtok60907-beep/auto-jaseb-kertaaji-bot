@@ -117,6 +117,17 @@ export async function executeNextBroadcast(
       ?? Object.freeze({ status: "FAILED_FINAL", commandId: command.id, errorCode: outcome.errorCode });
   }
 
+  const authorization = await repository.validateExecution({
+    commandId: command.id,
+    accountId: lease.accountId,
+    leaseOwner: lease.leaseOwner,
+    accountFencingToken: lease.fencingToken,
+  });
+  if (authorization === "FENCED_OUT") return Object.freeze({ status: "FENCED_OUT", commandId: command.id });
+  if (authorization === "CANCELLED") {
+    return Object.freeze({ status: "FAILED_FINAL", commandId: command.id, errorCode: "EXECUTION_CANCELLED" });
+  }
+
   try {
     const receipt = material.kind === "TEXT"
       ? await adapter.sendText({ targetRef: command.targetRef, text: material.text })

@@ -13,6 +13,7 @@ import {
   deleteAutoCommentTemplate,
   detachAutoCommentChannel,
   getAutoCommentSettings,
+  setAutoCommentEnabled,
   updateAutoCommentChannelTarget,
   updateAutoCommentDivision,
   updateAutoCommentTemplate,
@@ -33,6 +34,15 @@ const RESOLUTION_STATUS_LABEL: Record<string, string> = {
   READY: "Siap",
   NEEDS_REVALIDATION: "Perlu diperiksa ulang",
   FAILED_FINAL: "Gagal",
+};
+
+const MONITOR_STATUS_LABEL: Record<string, string> = {
+  PENDING: "Monitor menyiapkan channel",
+  JOINING: "Monitor sedang bergabung",
+  READY: "Monitor aktif",
+  ACCESS_REQUIRED: "Monitor tidak punya akses",
+  FAILED_RETRYABLE: "Monitor mencoba lagi",
+  FAILED_FINAL: "Monitor gagal",
 };
 
 const AUTO_COMMENT_ERROR_LABEL: Record<string, string> = {
@@ -80,6 +90,7 @@ export function AutoCommentPanel({ token }: { token: string }) {
   const [settings, setSettings] = useState<AutoCommentSettings | null>(null);
   const [accountId, setAccountId] = useState<string>("");
   const [busy, setBusy] = useState<Set<string>>(new Set());
+  const [stateBusy, setStateBusy] = useState(false);
 
   const [channelFormOpen, setChannelFormOpen] = useState(false);
   const [channelRef, setChannelRef] = useState("");
@@ -155,6 +166,16 @@ export function AutoCommentPanel({ token }: { token: string }) {
   }, [token]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const toggleService = async () => {
+    if (!settings || stateBusy) return;
+    setStateBusy(true); setPageError(null);
+    try {
+      await setAutoCommentEnabled(token, !(settings.enabled ?? true));
+      await load();
+    } catch (cause) { setPageError(autoCommentErrorLabel(cause)); }
+    finally { setStateBusy(false); }
+  };
 
   const submitChannel = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -290,10 +311,38 @@ export function AutoCommentPanel({ token }: { token: string }) {
     );
   }
 
-  if (!settings || settings.accounts.length === 0) {
+  if (!settings) {
     return (
       <section className="content-section" aria-labelledby="auto-comment-heading">
         <div className="section-heading"><h2 id="auto-comment-heading">Auto Komen Menfess</h2></div>
+        {pageError && <div className="notice notice--error" role="alert"><span>{pageError}</span></div>}
+      </section>
+    );
+  }
+
+  if (settings.accounts.length === 0) {
+    return (
+      <section className="content-section" aria-labelledby="auto-comment-heading">
+        <div className="section-heading"><h2 id="auto-comment-heading">Auto Komen Menfess</h2></div>
+        {pageError && <div className="notice notice--error" role="alert"><span>{pageError}</span></div>}
+        <div className={`empty-card empty-card--status ${(settings.enabled ?? true) ? "empty-card--active" : ""}`}>
+          <div className="service-status-copy">
+            <div className="status-card__title"><h3>Status Auto Komen</h3><span className={`admin-badge ${(settings.enabled ?? true) ? "" : "admin-badge--disabled"}`}>{(settings.enabled ?? true) ? "Aktif" : "Nonaktif"}</span></div>
+            <p>Hubungkan akun Userbot untuk menjalankan service ini.</p>
+          </div>
+          <button
+            className="service-switch"
+            type="button"
+            role="switch"
+            aria-label="Auto Komen Menfess"
+            aria-checked={settings.enabled ?? true}
+            onClick={() => void toggleService()}
+            disabled={stateBusy || !(settings.enabled ?? true)}
+          >
+            <span className="service-switch__track"><span className="service-switch__thumb" /></span>
+            <span className="service-switch__label">{stateBusy ? "Menyimpan" : (settings.enabled ?? true) ? "ON" : "OFF"}</span>
+          </button>
+        </div>
         <div className="empty-card"><h3>Belum ada akun Userbot terhubung</h3></div>
       </section>
     );
@@ -303,6 +352,24 @@ export function AutoCommentPanel({ token }: { token: string }) {
     <section className="content-section" aria-labelledby="auto-comment-heading">
       <div className="section-heading"><h2 id="auto-comment-heading">Auto Komen Menfess</h2></div>
       {pageError && <div className="notice notice--error" role="alert"><span>{pageError}</span><button className="text-button" type="button" onClick={() => setPageError(null)}>Tutup</button></div>}
+
+      <div className={`empty-card empty-card--status ${(settings.enabled ?? true) ? "empty-card--active" : ""}`}>
+        <div className="service-status-copy">
+          <div className="status-card__title"><h3>Status Auto Komen</h3><span className={`admin-badge ${(settings.enabled ?? true) ? "" : "admin-badge--disabled"}`}>{(settings.enabled ?? true) ? "Aktif" : "Nonaktif"}</span></div>
+        </div>
+        <button
+          className="service-switch"
+          type="button"
+          role="switch"
+          aria-label="Auto Komen Menfess"
+          aria-checked={settings.enabled ?? true}
+          onClick={() => void toggleService()}
+          disabled={stateBusy}
+        >
+          <span className="service-switch__track"><span className="service-switch__thumb" /></span>
+          <span className="service-switch__label">{stateBusy ? "Menyimpan" : (settings.enabled ?? true) ? "ON" : "OFF"}</span>
+        </button>
+      </div>
 
       {settings.accounts.length > 1 && (
         <div className="stack-form" style={{ marginBottom: 18 }}>
@@ -352,9 +419,11 @@ export function AutoCommentPanel({ token }: { token: string }) {
                     {RESOLUTION_STATUS_LABEL[channel.resolutionStatus] ?? channel.resolutionStatus}
                   </span>
                   {!channel.active && <span className="admin-badge admin-badge--disabled">Nonaktif</span>}
+                  {channel.monitorStatus && <span className={`admin-badge admin-badge--${channel.monitorStatus.toLowerCase()}`}>{MONITOR_STATUS_LABEL[channel.monitorStatus] ?? channel.monitorStatus}</span>}
                 </div>
               </div>
               {channel.lastErrorCode && <p className="form-error">{autoCommentErrorLabel(new ApiError(0, channel.lastErrorCode))}</p>}
+              {channel.monitorErrorCode && <p className="form-error">Monitor: {channel.monitorErrorCode}</p>}
               <p className="helper-text">
                 Divisi terpasang: {channel.divisionIds.length === 0 ? "belum ada" : channel.divisionIds.map((id) => settings.divisions.find((division) => division.id === id)?.name ?? id).join(", ")}
               </p>

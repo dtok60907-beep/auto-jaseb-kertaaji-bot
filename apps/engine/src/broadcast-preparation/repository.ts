@@ -21,6 +21,13 @@ export interface BroadcastPreparationRepository {
     accountFencingToken: bigint;
   }>): Promise<ClaimedBroadcastPreparation | null>;
 
+  validatePreparation(input: Readonly<{
+    targetId: string;
+    accountId: string;
+    leaseOwner: string;
+    accountFencingToken: bigint;
+  }>): Promise<"AUTHORIZED" | "CANCELLED" | "FENCED_OUT">;
+
   transition(input: Readonly<{
     targetId: string;
     accountId: string;

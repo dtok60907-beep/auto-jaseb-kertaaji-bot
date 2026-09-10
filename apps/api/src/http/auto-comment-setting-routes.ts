@@ -105,6 +105,21 @@ export function registerAutoCommentSettingRoutes(app: FastifyInstance, options: 
     return { settings: await options.autoComments.listSettings(userId) };
   };
 
+  const setEnabled = (resolve: SubjectResolver) => async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = await resolve(request, reply);
+    if (!userId) return;
+    const body = request.body;
+    if (body === null || typeof body !== "object" || Array.isArray(body)
+      || Object.keys(body).length !== 1 || typeof (body as { enabled?: unknown }).enabled !== "boolean") {
+      return reply.code(422).send({ code: "INVALID_AUTO_COMMENT_STATE" });
+    }
+    if (!options.autoComments.setEnabled) throw new Error("AUTO_COMMENT_LIFECYCLE_NOT_CONFIGURED");
+    if (!await options.autoComments.setEnabled({ userId, enabled: (body as { enabled: boolean }).enabled })) {
+      return reply.code(404).send({ code: "USERBOT_PROFILE_NOT_FOUND" });
+    }
+    return { enabled: (body as { enabled: boolean }).enabled };
+  };
+
   const createDivision = (resolve: SubjectResolver) => async (request: FastifyRequest, reply: FastifyReply) => {
     const userId = await resolve(request, reply);
     if (!userId) return;
@@ -275,6 +290,7 @@ export function registerAutoCommentSettingRoutes(app: FastifyInstance, options: 
 
   const register = (prefix: string, resolve: SubjectResolver) => {
     app.get(prefix + "/settings", listSettings(resolve));
+    app.put(prefix + "/state", setEnabled(resolve));
     app.post(prefix + "/divisions", createDivision(resolve));
     app.put(prefix + "/divisions/:id", updateDivision(resolve));
     app.delete(prefix + "/divisions/:id", deleteDivision(resolve));

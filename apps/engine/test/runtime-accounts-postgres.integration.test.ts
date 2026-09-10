@@ -22,6 +22,8 @@ test("PostgreSQL runtime discovery is shard-safe, fenced, and commit-woken", { s
   const accountId = "61616161-6161-6161-6161-616161616161";
   const operationId = "62626262-6262-6262-6262-626262626262";
   const targetId = "63636363-6363-6363-6363-636363636363";
+  const sourceTargetId = "64646464-6464-6464-6464-646464646464";
+  const materialId = "67676767-6767-6767-6767-676767676767";
   const leaseOwner = "65656565-6565-6565-6565-656565656565";
   const takeoverOwner = "66666666-6666-6666-6666-666666666666";
   const cleanup = () => sql.begin(async (transaction) => {
@@ -79,19 +81,27 @@ test("PostgreSQL runtime discovery is shard-safe, fenced, and commit-woken", { s
         ) values (${userId}::uuid, ${accountId}::uuid, 'CONNECTED', 0)
       `;
       await transaction`
+        insert into public.broadcast_materials (id, user_id, kind, text_content, active)
+        values (${materialId}::uuid, ${userId}::uuid, 'TEXT', 'promo', true)
+      `;
+      await transaction`
+        insert into public.broadcast_lpm_targets (id, user_id, telegram_target_ref, active)
+        values (${sourceTargetId}::uuid, ${userId}::uuid, '@f53_integration', true)
+      `;
+      await transaction`
         insert into public.workflow_operations (
           id, user_id, account_id, operation_type, status, idempotency_key, payload
         ) values (
           ${operationId}::uuid, ${userId}::uuid, ${accountId}::uuid,
           'BROADCAST', 'READY', 'f53-integration-operation',
-          ${transaction.json({ accountMode: "USERBOT", material: { kind: "TEXT", text: "promo" } })}
+          ${transaction.json({ accountMode: "USERBOT", material: { id: materialId, kind: "TEXT", text: "promo" } })}
         )
       `;
       await transaction`
         insert into public.broadcast_targets (
           id, operation_id, telegram_target_ref, interval_seconds,
-          sequence_number, preparation_status
-        ) values (${targetId}::uuid, ${operationId}::uuid, '@f53_integration', 0, 1, 'READY')
+          sequence_number, preparation_status, source_lpm_target_id
+        ) values (${targetId}::uuid, ${operationId}::uuid, '@f53_integration', 0, 1, 'READY', ${sourceTargetId}::uuid)
       `;
       await pause(50);
       assert.deepEqual(fixtureWakeups(), [], "NOTIFY must not escape an uncommitted transaction");

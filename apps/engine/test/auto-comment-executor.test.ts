@@ -24,8 +24,10 @@ class FakeRepository implements AutoCommentExecutorRepository {
   claimed: ClaimedAutoCommentCommand | null = command();
   finishAllowed = true;
   claimInputs: unknown[] = [];
+  authorization: "AUTHORIZED" | "CANCELLED" | "FENCED_OUT" = "AUTHORIZED";
   finishes: Array<{ commandId: string; outcome: AutoCommentFinishOutcome }> = [];
   async claimNext(input: Parameters<AutoCommentExecutorRepository["claimNext"]>[0]) { this.claimInputs.push(input); return this.claimed; }
+  async validateExecution() { return this.authorization; }
   async finish(input: Parameters<AutoCommentExecutorRepository["finish"]>[0]) { this.finishes.push({ commandId: input.commandId, outcome: input.outcome }); return this.finishAllowed; }
 }
 
@@ -59,6 +61,16 @@ test("sends the claimed reply immediately, with no interval, and persists the re
   assert.deepEqual(await executeNextAutoComment(adapter, repository, lease), { status: "SUCCEEDED", commandId: "command-1" });
   assert.deepEqual(adapter.textCalls, [{ targetRef: "@discussion", text: "gua ready kak pc aja" }]);
   assert.deepEqual(repository.finishes[0]?.outcome, { status: "SUCCEEDED", receipt: adapter.receipt });
+});
+
+test("disable after claim cancels the comment before Telegram is called", async () => {
+  const repository = new FakeRepository(); repository.authorization = "CANCELLED";
+  const adapter = new FakeAdapter();
+  assert.deepEqual(await executeNextAutoComment(adapter, repository, lease), {
+    status: "FAILED_FINAL", commandId: "command-1", errorCode: "EXECUTION_CANCELLED",
+  });
+  assert.equal(adapter.textCalls.length, 0);
+  assert.equal(repository.finishes.length, 0);
 });
 
 test("sends as a comment on the matched post when the payload carries the channel ref and post id", async () => {

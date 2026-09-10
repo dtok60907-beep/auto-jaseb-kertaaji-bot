@@ -26,6 +26,7 @@ class FakeCampaigns implements BroadcastCampaignRepository {
   async create({ userId }: { userId: string }) { this.seenUserIds.push(userId); if (this.failWith) throw new Error(this.failWith); return campaign; }
   async getCurrent(userId: string): Promise<BroadcastCampaignView | null> { this.seenUserIds.push(userId); return campaign; }
   async stop({ userId, campaignId }: { userId: string; campaignId: string }) { this.seenUserIds.push(userId); this.stopped.push(campaignId); return campaignId === CAMPAIGN; }
+  async setEnabled(input: Parameters<BroadcastCampaignRepository["setEnabled"]>[0]) { this.seenUserIds.push(input.userId); return input.enabled ? campaign : null; }
 }
 
 function app({
@@ -58,6 +59,27 @@ test("campaign creates, lists, and stops", async (t) => {
 
   const stopped = await server.inject({ method: "POST", url: `/v1/broadcast/campaigns/${CAMPAIGN}/stop` });
   assert.equal(stopped.statusCode, 204);
+});
+
+test("buyer toggle enables and disables the complete Jasa Sebar lifecycle", async (t) => {
+  const server = app();
+  t.after(() => server.close());
+
+  const enabled = await server.inject({
+    method: "PUT", url: "/v1/broadcast/state",
+    payload: { enabled: true, accountMode: "USERBOT", materialId: MATERIAL, targetIds: [TARGET], intervalSeconds: 300 },
+  });
+  assert.equal(enabled.statusCode, 200);
+  assert.equal(enabled.json().enabled, true);
+  assert.equal(enabled.json().campaign.id, CAMPAIGN);
+
+  const disabled = await server.inject({ method: "PUT", url: "/v1/broadcast/state", payload: { enabled: false } });
+  assert.equal(disabled.statusCode, 200);
+  assert.deepEqual(disabled.json(), { enabled: false, campaign: null });
+
+  const invalid = await server.inject({ method: "PUT", url: "/v1/broadcast/state", payload: { enabled: true } });
+  assert.equal(invalid.statusCode, 422);
+  assert.equal(invalid.json().code, "INVALID_BROADCAST_STATE");
 });
 
 test("campaign rejects an interval under the floor and surfaces a conflicting active campaign", async (t) => {
@@ -123,7 +145,11 @@ test("admin can create, read, and stop a campaign for an arbitrary user", async 
   const stopped = await server.inject({ method: "POST", url: `/v1/admin/users/${OTHER_USER}/broadcast/campaigns/${CAMPAIGN}/stop` });
   assert.equal(stopped.statusCode, 204);
 
-  assert.deepEqual(campaigns.seenUserIds, [OTHER_USER, OTHER_USER, OTHER_USER]);
+  const toggledOff = await server.inject({ method: "PUT", url: `/v1/admin/users/${OTHER_USER}/broadcast/state`, payload: { enabled: false } });
+  assert.equal(toggledOff.statusCode, 200);
+  assert.deepEqual(toggledOff.json(), { enabled: false, campaign: null });
+
+  assert.deepEqual(campaigns.seenUserIds, [OTHER_USER, OTHER_USER, OTHER_USER, OTHER_USER]);
 });
 
 test("admin campaign routes reject a non-admin and an invalid user id", async (t) => {

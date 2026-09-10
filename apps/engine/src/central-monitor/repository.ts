@@ -22,6 +22,7 @@ export type CentralMonitorDivision = Readonly<{
   channelTargetId: string;
   discussionTargetRef: string;
   startAfterPostId: number | null;
+  activatedAt: string;
 }>;
 
 export type CentralMonitorSource = Readonly<{

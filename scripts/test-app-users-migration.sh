@@ -137,6 +137,8 @@ PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/20260910120000_centralized_auto_comment_monitoring.sql" >/dev/null
 PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
   -f "${PROJECT_ROOT}/supabase/tests/20260910130000_three_day_operational_retention.sql" >/dev/null
+PGDATABASE=app_users_fresh psql -v ON_ERROR_STOP=1 \
+  -f "${PROJECT_ROOT}/supabase/tests/20260910160000_automation_lifecycle_guards.sql" >/dev/null
 
 (
   cd "${PROJECT_ROOT}/apps/api"

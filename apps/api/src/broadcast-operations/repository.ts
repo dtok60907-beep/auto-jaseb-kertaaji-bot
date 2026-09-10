@@ -9,6 +9,7 @@ export type BroadcastOperationTargetView = Readonly<{
   preparationStatus: string;
   deliveryStatus: string;
   lastErrorCode: string | null;
+  nextEligibleAt: string | null;
 }>;
 
 export type BroadcastOperationView = Readonly<{
@@ -30,4 +31,5 @@ export interface BroadcastOperationRepository {
     idempotencyKey: string;
   }>): Promise<Readonly<{ status: "CREATED" | "IDEMPOTENT"; operation: BroadcastOperationView }>>;
   get(input: Readonly<{ userId: string; operationId: string }>): Promise<BroadcastOperationView | null>;
+  cancel(input: Readonly<{ userId: string; operationId: string }>): Promise<boolean>;
 }
