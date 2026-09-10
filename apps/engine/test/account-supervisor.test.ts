@@ -213,6 +213,92 @@ test("duplicate wakeups are coalesced and an in-flight account never overlaps", 
   );
 });
 
+test("a wakeup for an in-flight account is routed into its warm runner", async () => {
+  const repository = new FakeDiscoveryRepository();
+  const selected = account("0");
+  repository.accounts = [selected];
+  const runnerWaiting = deferred<void>();
+  let calls = 0;
+  const handle = await startBroadcastShardSupervisor({
+    runtimeAccounts: repository,
+    async runAccount(runtimeAccount, wakeup) {
+      calls += 1;
+      repository.remove(runtimeAccount.accountId);
+      runnerWaiting.resolve();
+      await wakeup.wait(1_000);
+      return runnerResult(runtimeAccount.accountId);
+    },
+  }, { shard, policy: { ...policy, maxConcurrentAccounts: 1 } });
+
+  await runnerWaiting.promise;
+  repository.emit(selected.accountId);
+  await waitUntil(() => handle.snapshot().runsCompleted === 1);
+  const summary = await handle.stop();
+
+  assert.equal(calls, 1);
+  assert.equal(summary.wakeupsAccepted, 1);
+});
+
+test("work for another account preempts an idle warm session when capacity is full", async () => {
+  const repository = new FakeDiscoveryRepository();
+  const first = account("0");
+  const second = account("2");
+  repository.accounts = [first];
+  const firstWaiting = deferred<void>();
+  const calls: string[] = [];
+  let firstDecision: "WORK_AVAILABLE" | "RELEASE_IDLE" | null = null;
+  const handle = await startBroadcastShardSupervisor({
+    runtimeAccounts: repository,
+    async runAccount(runtimeAccount, wakeup) {
+      calls.push(runtimeAccount.accountId);
+      repository.remove(runtimeAccount.accountId);
+      if (runtimeAccount.accountId === first.accountId) {
+        firstWaiting.resolve();
+        firstDecision = await wakeup.wait(1_000);
+      }
+      return runnerResult(runtimeAccount.accountId);
+    },
+  }, { shard, policy: { ...policy, maxConcurrentAccounts: 1 } });
+
+  await firstWaiting.promise;
+  repository.accounts = [second];
+  repository.emit(second.accountId);
+  await waitUntil(() => calls.length === 2);
+  const summary = await handle.stop();
+
+  assert.equal(firstDecision, "RELEASE_IDLE");
+  assert.deepEqual(calls, [first.accountId, second.accountId]);
+  assert.equal(summary.peakConcurrency, 1);
+});
+
+test("a warm session is woken at its durable database deadline without per-account polling", async () => {
+  const repository = new FakeDiscoveryRepository();
+  const selected = Object.freeze({
+    ...account("0"),
+    nextDueAt: new Date(Date.now() + 35).toISOString(),
+  });
+  repository.accounts = [selected];
+  const waiting = deferred<void>();
+  let decision: "WORK_AVAILABLE" | "RELEASE_IDLE" | null = null;
+  const handle = await startBroadcastShardSupervisor({
+    runtimeAccounts: repository,
+    async runAccount(runtimeAccount, wakeup) {
+      waiting.resolve();
+      decision = await wakeup.wait(1_000);
+      repository.remove(runtimeAccount.accountId);
+      return runnerResult(runtimeAccount.accountId);
+    },
+  }, { shard, policy: { ...policy, maxConcurrentAccounts: 1 } });
+
+  await waiting.promise;
+  await waitUntil(() => handle.snapshot().runsCompleted === 1);
+  const summary = await handle.stop();
+
+  assert.equal(decision, "WORK_AVAILABLE");
+  assert.equal(summary.runsStarted, 1);
+  assert.ok(repository.findCalls >= 1);
+});
+
 test("periodic reconciliation finds committed work even when no wakeup arrives", async () => {
   const repository = new FakeDiscoveryRepository();
   repository.hideNext = true;

@@ -14,7 +14,13 @@ type LeaseContext = Readonly<{
   accountFencingToken: bigint;
 }>;
 
-const APPROVAL_RECHECK_SECONDS = 30;
+const APPROVAL_RECHECK_BASE_SECONDS = 60;
+const APPROVAL_RECHECK_MAX_SECONDS = 3_600;
+
+function approvalRecheckSeconds(attemptCount: number): number {
+  const exponent = Math.min(Math.max(attemptCount - 1, 0), 20);
+  return Math.min(APPROVAL_RECHECK_MAX_SECONDS, APPROVAL_RECHECK_BASE_SECONDS * (2 ** exponent));
+}
 
 export type BroadcastPreparationResult =
   | Readonly<{ status: "NO_TARGET" }>
@@ -68,6 +74,7 @@ export async function prepareNextBroadcastTarget(
 ): Promise<BroadcastPreparationResult> {
   const target = await repository.claimNext(lease);
   if (!target) return Object.freeze({ status: "NO_TARGET" });
+  const approvalRetrySeconds = approvalRecheckSeconds(target.attemptCount);
 
   let current: "CHECKING" | "JOINING" = "CHECKING";
   try {
@@ -79,15 +86,15 @@ export async function prepareNextBroadcastTarget(
 
     if (resolved.membership !== "MEMBER") {
       if (target.previousStatus === "WAITING_APPROVAL") {
-        if (!await move(repository, target, lease, current, "WAITING_APPROVAL", "JOIN_APPROVAL_PENDING", APPROVAL_RECHECK_SECONDS)) return fenced(target.targetId);
-        return Object.freeze({ status: "WAITING_APPROVAL", targetId: target.targetId, errorCode: "JOIN_APPROVAL_PENDING", retryAfterSeconds: APPROVAL_RECHECK_SECONDS });
+        if (!await move(repository, target, lease, current, "WAITING_APPROVAL", "JOIN_APPROVAL_PENDING", approvalRetrySeconds)) return fenced(target.targetId);
+        return Object.freeze({ status: "WAITING_APPROVAL", targetId: target.targetId, errorCode: "JOIN_APPROVAL_PENDING", retryAfterSeconds: approvalRetrySeconds });
       }
       if (!await move(repository, target, lease, current, "JOINING")) return fenced(target.targetId);
       current = "JOINING";
       const joined = await adapter.joinPublicTarget(target.telegramTargetRef);
       if (joined.state === "APPROVAL_REQUESTED") {
-        if (!await move(repository, target, lease, current, "WAITING_APPROVAL", "JOIN_APPROVAL_PENDING", APPROVAL_RECHECK_SECONDS)) return fenced(target.targetId);
-        return Object.freeze({ status: "WAITING_APPROVAL", targetId: target.targetId, errorCode: "JOIN_APPROVAL_PENDING", retryAfterSeconds: APPROVAL_RECHECK_SECONDS });
+        if (!await move(repository, target, lease, current, "WAITING_APPROVAL", "JOIN_APPROVAL_PENDING", approvalRetrySeconds)) return fenced(target.targetId);
+        return Object.freeze({ status: "WAITING_APPROVAL", targetId: target.targetId, errorCode: "JOIN_APPROVAL_PENDING", retryAfterSeconds: approvalRetrySeconds });
       }
     }
 
@@ -96,11 +103,13 @@ export async function prepareNextBroadcastTarget(
   } catch (rawError) {
     const error = normalizedError(rawError);
     if (error.code === "JOIN_APPROVAL_REQUIRED") {
-      if (!await move(repository, target, lease, current, "WAITING_APPROVAL", "JOIN_APPROVAL_PENDING", APPROVAL_RECHECK_SECONDS)) return fenced(target.targetId);
-      return Object.freeze({ status: "WAITING_APPROVAL", targetId: target.targetId, errorCode: "JOIN_APPROVAL_PENDING", retryAfterSeconds: APPROVAL_RECHECK_SECONDS });
+      if (!await move(repository, target, lease, current, "WAITING_APPROVAL", "JOIN_APPROVAL_PENDING", approvalRetrySeconds)) return fenced(target.targetId);
+      return Object.freeze({ status: "WAITING_APPROVAL", targetId: target.targetId, errorCode: "JOIN_APPROVAL_PENDING", retryAfterSeconds: approvalRetrySeconds });
     }
     if (error.retryable) {
-      const retryAfterSeconds = error.retryAfterSeconds ?? 1;
+      const retryAfterSeconds = target.previousStatus === "WAITING_APPROVAL"
+        ? Math.max(error.retryAfterSeconds ?? 1, approvalRetrySeconds)
+        : error.retryAfterSeconds ?? 1;
       const retryStatus = target.previousStatus === "WAITING_APPROVAL" && current === "CHECKING"
         ? "WAITING_APPROVAL"
         : "QUEUED";

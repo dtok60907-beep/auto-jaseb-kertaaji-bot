@@ -141,9 +141,11 @@ test("core probes database and wires one process identity through supervisor and
   });
   assert.deepEqual(captured.supervisorInput, { shard: config.shard, policy: config.supervisorPolicy });
   assert.ok(captured.supervisorDependencies?.runtimeAccounts instanceof PostgresBroadcastRuntimeAccountRepository);
-  await captured.supervisorDependencies!.runAccount(runtimeAccount);
+  const idleWakeup = { wait: async () => "WORK_AVAILABLE" as const };
+  await captured.supervisorDependencies!.runAccount(runtimeAccount, idleWakeup);
   assert.equal(captured.runnerInput?.leaseOwner, instanceId);
   assert.equal(captured.runnerInput?.policy, config.runnerPolicy);
+  assert.equal(captured.runnerInput?.idleWakeup, idleWakeup);
   assert.ok(captured.runnerDependencies?.runtimeAccounts instanceof PostgresBroadcastRuntimeAccountRepository);
   assert.ok(captured.runnerDependencies?.accountLeases instanceof PostgresRuntimeAccountLeaseRepository);
   assert.ok(captured.runnerDependencies?.preparations instanceof PostgresBroadcastPreparationRepository);

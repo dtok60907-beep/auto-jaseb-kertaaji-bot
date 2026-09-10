@@ -10,6 +10,7 @@ type ClaimRow = Readonly<{
   operation_id: string;
   telegram_target_ref: string;
   previous_status: "QUEUED" | "WAITING_APPROVAL";
+  attempt_count: number;
 }>;
 
 export class PostgresBroadcastPreparationRepository implements BroadcastPreparationRepository {
@@ -21,7 +22,8 @@ export class PostgresBroadcastPreparationRepository implements BroadcastPreparat
 
   async claimNext(input: Parameters<BroadcastPreparationRepository["claimNext"]>[0]): Promise<ClaimedBroadcastPreparation | null> {
     const rows = await this.sql<ClaimRow[]>`
-      select target_id::text, operation_id::text, telegram_target_ref, previous_status
+      select target_id::text, operation_id::text, telegram_target_ref,
+             previous_status, attempt_count
         from public.claim_next_broadcast_preparation(
           ${input.accountId}::uuid, ${input.leaseOwner}::uuid,
           ${input.accountFencingToken.toString()}::bigint
@@ -33,6 +35,7 @@ export class PostgresBroadcastPreparationRepository implements BroadcastPreparat
       operationId: row.operation_id,
       telegramTargetRef: row.telegram_target_ref,
       previousStatus: row.previous_status,
+      attemptCount: row.attempt_count,
     }) : null;
   }
 

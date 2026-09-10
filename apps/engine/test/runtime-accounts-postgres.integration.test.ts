@@ -22,7 +22,6 @@ test("PostgreSQL runtime discovery is shard-safe, fenced, and commit-woken", { s
   const accountId = "61616161-6161-6161-6161-616161616161";
   const operationId = "62626262-6262-6262-6262-626262626262";
   const targetId = "63636363-6363-6363-6363-636363636363";
-  const commandId = "64646464-6464-6464-6464-646464646464";
   const leaseOwner = "65656565-6565-6565-6565-656565656565";
   const takeoverOwner = "66666666-6666-6666-6666-666666666666";
   const cleanup = () => sql.begin(async (transaction) => {
@@ -94,17 +93,6 @@ test("PostgreSQL runtime discovery is shard-safe, fenced, and commit-woken", { s
           sequence_number, preparation_status
         ) values (${targetId}::uuid, ${operationId}::uuid, '@f53_integration', 0, 1, 'READY')
       `;
-      await transaction`
-        insert into public.workflow_commands (
-          id, operation_id, account_id, kind, target_id, idempotency_key,
-          payload, broadcast_target_id
-        ) values (
-          ${commandId}::uuid, ${operationId}::uuid, ${accountId}::uuid,
-          'SEND_TEXT', '@f53_integration', 'f53-integration-command',
-          ${transaction.json({ material: { kind: "TEXT", text: "promo" } })},
-          ${targetId}::uuid
-        )
-      `;
       await pause(50);
       assert.deepEqual(fixtureWakeups(), [], "NOTIFY must not escape an uncommitted transaction");
     });
@@ -116,9 +104,9 @@ test("PostgreSQL runtime discovery is shard-safe, fenced, and commit-woken", { s
     await assert.rejects(
       sql.begin(async (transaction) => {
         await transaction`
-          update public.workflow_commands
-             set available_at = available_at + interval '1 second'
-           where id = ${commandId}::uuid
+          update public.broadcast_targets
+             set next_eligible_at = now() + interval '1 second'
+           where id = ${targetId}::uuid
         `;
         throw new Error("INTENTIONAL_ROLLBACK");
       }),

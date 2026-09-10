@@ -62,6 +62,7 @@ const policy: AccountRunnerPolicy = Object.freeze({
   maxActionsPerRun: 10,
   commandLeaseSeconds: 60,
   runtimeRetrySeconds: 15,
+  idleGraceMilliseconds: 0,
 });
 
 const lease = Object.freeze({
@@ -368,11 +369,16 @@ function harness(input: Readonly<{
   };
 }
 
-function run(input = harness(), overridePolicy: Partial<AccountRunnerPolicy> = {}) {
+function run(
+  input = harness(),
+  overridePolicy: Partial<AccountRunnerPolicy> = {},
+  idleWakeup?: Readonly<{ wait(milliseconds: number): Promise<"WORK_AVAILABLE" | "RELEASE_IDLE"> }>,
+) {
   return runBroadcastAccount(input.dependencies, {
     account,
     leaseOwner,
     policy: Object.freeze({ ...policy, ...overridePolicy }),
+    ...(idleWakeup ? { idleWakeup } : {}),
   });
 }
 
@@ -424,6 +430,7 @@ test("happy path drains preparation and delivery then cleans up in order", async
     operationId: "operation-1",
     telegramTargetRef: "@lpm_target",
     previousStatus: "QUEUED",
+    attemptCount: 1,
   }, null];
   context.executor.claims = [command("command-1"), null];
 
@@ -449,6 +456,39 @@ test("happy path drains preparation and delivery then cleans up in order", async
   assert.equal(context.executor.finishes[0]?.outcome.status, "SUCCEEDED");
   assert.equal(context.scheduler.stops, 1);
   assert.equal(context.accountLeases.releaseCalls, 1);
+});
+
+test("a nearby wakeup is drained on the same Telegram connection before idle disconnect", async () => {
+  const context = harness();
+  context.executor.claims = [command("warm-1"), null];
+  const firstIdleWait = deferred<void>();
+  const releaseIdleWait = deferred<void>();
+  let waitCalls = 0;
+  const idleWakeup = {
+    async wait(milliseconds: number) {
+      waitCalls += 1;
+      if (waitCalls === 1) {
+        firstIdleWait.resolve();
+        await releaseIdleWait.promise;
+        return "WORK_AVAILABLE" as const;
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, Math.min(milliseconds, 10)));
+      return "WORK_AVAILABLE" as const;
+    },
+  };
+
+  const running = run(context, { idleGraceMilliseconds: 30 }, idleWakeup);
+  await firstIdleWait.promise;
+  context.executor.claims.push(command("warm-2"), null);
+  releaseIdleWait.resolve();
+  const result = await running;
+
+  assert.equal(result.status, "DRAINED");
+  assert.equal(result.actions, 2);
+  assert.equal(context.adapterFactory.adapter.connectCalls, 1);
+  assert.equal(context.adapterFactory.adapter.sendCalls, 2);
+  assert.equal(context.adapterFactory.adapter.disconnectCalls, 1);
+  assert.ok(waitCalls >= 2);
 });
 
 test("auto-comment discussion preparation only runs once broadcast work is exhausted, and counts toward the budget", async () => {

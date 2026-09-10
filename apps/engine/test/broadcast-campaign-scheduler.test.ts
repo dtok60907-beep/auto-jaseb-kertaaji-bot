@@ -42,6 +42,7 @@ function campaign(overrides: Partial<DueBroadcastCampaign> = {}): DueBroadcastCa
 
 class FakeSource implements BroadcastCampaignSource {
   dueQueue: DueBroadcastCampaign[][] = [];
+  dueCalls = 0;
   dueError: unknown = null;
   failed: Array<{ campaignId: string; errorCode: string }> = [];
   reconcileCalls: Array<{ limit: number; failureThreshold: number }> = [];
@@ -49,6 +50,7 @@ class FakeSource implements BroadcastCampaignSource {
   reconcileError: unknown = null;
 
   async due(): Promise<readonly DueBroadcastCampaign[]> {
+    this.dueCalls += 1;
     if (this.dueError) throw this.dueError;
     return Object.freeze(this.dueQueue.shift() ?? []);
   }
@@ -61,6 +63,31 @@ class FakeSource implements BroadcastCampaignSource {
     this.reconcileCalls.push({ limit, failureThreshold });
     if (this.reconcileError) throw this.reconcileError;
     return this.reconcileResult;
+  }
+}
+
+class EventDrivenSource extends FakeSource {
+  listener: (() => void) | null = null;
+  subscriptionClosed = false;
+  nextDue: string | null = null;
+
+  async nextDueAt(): Promise<string | null> { return this.nextDue; }
+
+  async subscribeWakeups(listener: () => void) {
+    this.listener = listener;
+    return Object.freeze({
+      close: async () => { this.subscriptionClosed = true; },
+    });
+  }
+
+  notify(): void { this.listener?.(); }
+}
+
+async function eventually(predicate: () => boolean, timeoutMilliseconds = 1_000): Promise<void> {
+  const deadline = Date.now() + timeoutMilliseconds;
+  while (!predicate()) {
+    if (Date.now() >= deadline) assert.fail("condition was not reached");
+    await new Promise((resolve) => setTimeout(resolve, 5));
   }
 }
 
@@ -155,4 +182,27 @@ test("stop halts the underlying repeating task", async () => {
   assert.equal(scheduler.stopped, false);
   await handle.stop();
   assert.equal(scheduler.stopped, true);
+});
+
+test("event-driven source wakes immediately without starting the fixed-interval scheduler", async () => {
+  const scheduler = new FakeScheduler();
+  const source = new EventDrivenSource();
+  const ran: string[] = [];
+  const handle = startBroadcastCampaignScheduler({
+    source,
+    runCycle: async (due) => { ran.push(due.campaignId); },
+    scheduler,
+    reconciliationIntervalMilliseconds: 60_000,
+  });
+
+  await eventually(() => source.dueCalls >= 1 && source.listener !== null);
+  const baselineCalls = source.dueCalls;
+  source.dueQueue.push([campaign({ campaignId: "event-cycle" })]);
+  source.notify();
+  await eventually(() => ran.includes("event-cycle"));
+
+  assert.equal(scheduler.intervalMilliseconds, null);
+  assert.equal(source.dueCalls, baselineCalls + 1);
+  await handle.stop();
+  assert.equal(source.subscriptionClosed, true);
 });

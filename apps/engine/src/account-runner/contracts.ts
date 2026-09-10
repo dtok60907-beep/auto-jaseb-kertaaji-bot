@@ -19,6 +19,10 @@ export interface RuntimeRepeatingTaskScheduler {
   start(intervalMilliseconds: number, task: () => Promise<RuntimeRepeatDecision>): RuntimeRepeatingTaskHandle;
 }
 
+export interface RuntimeAccountWakeup {
+  wait(milliseconds: number): Promise<"WORK_AVAILABLE" | "RELEASE_IDLE">;
+}
+
 export interface TelegramRuntimeAdapterFactory {
   create(input: Readonly<{
     accountId: string;
@@ -33,6 +37,7 @@ export type AccountRunnerPolicy = Readonly<{
   maxActionsPerRun: number;
   commandLeaseSeconds: number;
   runtimeRetrySeconds: number;
+  idleGraceMilliseconds: number;
 }>;
 
 export type AccountRunnerStatus =

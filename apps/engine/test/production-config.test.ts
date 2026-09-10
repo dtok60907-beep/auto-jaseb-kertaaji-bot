@@ -24,6 +24,7 @@ test("production config requires explicit capacity and exposes only redacted saf
     maxActionsPerRun: 100,
     commandLeaseSeconds: 60,
     runtimeRetrySeconds: 15,
+    idleGraceMilliseconds: 15_000,
   });
   assert.deepEqual(config.supervisorPolicy, {
     maxConcurrentAccounts: 4,

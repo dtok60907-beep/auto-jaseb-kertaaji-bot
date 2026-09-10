@@ -84,10 +84,8 @@ async function seedFixture(sql: Sql, accounts: number): Promise<Fixture> {
   const accountIds = Array.from({ length: accounts }, () => randomUUID());
   const operationIds = Array.from({ length: accounts }, () => randomUUID());
   const targetIds = Array.from({ length: accounts }, () => randomUUID());
-  const commandIds = Array.from({ length: accounts }, () => randomUUID());
   const targetRefs = accountIds.map((_id, index) => `@f57b_load_${index}`);
   const operationKeys = operationIds.map((id) => `f57b-load-operation-${id}`);
-  const commandKeys = commandIds.map((id) => `f57b-load-command-${id}`);
 
   await sql.begin(async (transaction) => {
     await transaction`
@@ -146,22 +144,6 @@ async function seedFixture(sql: Sql, accounts: number): Promise<Fixture> {
           ${transaction.array(operationIds)}::uuid[],
           ${transaction.array(targetRefs)}::text[]
         ) fixture(target_id, operation_id, target_ref)
-    `;
-    await transaction`
-      insert into public.workflow_commands (
-        id, operation_id, account_id, kind, target_id, idempotency_key,
-        payload, broadcast_target_id
-      )
-      select command_id, operation_id, account_id, 'SEND_TEXT', target_ref, command_key,
-             ${transaction.json({ material: { kind: "TEXT", text: "fixture" } })}, target_id
-        from unnest(
-          ${transaction.array(commandIds)}::uuid[],
-          ${transaction.array(operationIds)}::uuid[],
-          ${transaction.array(accountIds)}::uuid[],
-          ${transaction.array(targetRefs)}::text[],
-          ${transaction.array(commandKeys)}::text[],
-          ${transaction.array(targetIds)}::uuid[]
-        ) fixture(command_id, operation_id, account_id, target_ref, command_key, target_id)
     `;
   });
   return Object.freeze({ userIds: Object.freeze(userIds), accountIds: Object.freeze(accountIds) });
@@ -273,14 +255,13 @@ async function executeFixture(
     active_leases: number;
   }[]>`
     select
-      count(*) filter (where command.status = 'SUCCEEDED')::int commands_succeeded,
+      count(*) filter (where target.delivery_status = 'SUCCEEDED')::int commands_succeeded,
       count(distinct operation.id) filter (where operation.status = 'SUCCEEDED')::int operations_succeeded,
       count(distinct target.id) filter (where target.delivery_status = 'SUCCEEDED')::int targets_succeeded,
       (select count(*)::int from public.account_leases lease
         where lease.account_id = any(${sql.array([...fixture.accountIds])}::uuid[])
           and lease.lease_until > now()) active_leases
       from public.workflow_operations operation
-      join public.workflow_commands command on command.operation_id = operation.id
       join public.broadcast_targets target on target.operation_id = operation.id
      where operation.user_id = any(${sql.array([...fixture.userIds])}::uuid[])
   `;

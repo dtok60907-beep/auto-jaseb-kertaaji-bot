@@ -2,6 +2,9 @@ import type { Sql } from "postgres";
 
 import type { RuntimeRepeatingTaskHandle, RuntimeRepeatingTaskScheduler } from "../account-runner/contracts.ts";
 import { SerialRuntimeRepeatingTaskScheduler } from "../account-runner/serial-scheduler.ts";
+import type { RuntimeWakeupSubscription } from "../runtime-accounts/repository.ts";
+
+const CAMPAIGN_WAKEUP_CHANNEL = "jaseb_broadcast_campaigns";
 
 export type DueBroadcastCampaign = Readonly<{
   campaignId: string;
@@ -22,6 +25,8 @@ export interface BroadcastCampaignSource {
   due(limit: number): Promise<readonly DueBroadcastCampaign[]>;
   fail(campaignId: string, errorCode: string): Promise<void>;
   reconcile(limit: number, failureThreshold: number): Promise<readonly CampaignReconciliation[]>;
+  nextDueAt?(): Promise<string | null>;
+  subscribeWakeups?(listener: () => void): Promise<RuntimeWakeupSubscription>;
 }
 
 type DueRow = {
@@ -74,6 +79,22 @@ export class PostgresBroadcastCampaignSource implements BroadcastCampaignSource 
       consecutiveFailures: row.out_consecutive_failures,
     })));
   }
+
+  async nextDueAt(): Promise<string | null> {
+    const rows = await this.sql<{ next_due_at: Date | string | null }[]>`
+      select public.next_broadcast_campaign_due_at() next_due_at
+    `;
+    const value = rows[0]?.next_due_at;
+    if (value === null || value === undefined) return null;
+    const parsed = new Date(value);
+    if (!Number.isFinite(parsed.getTime())) throw new Error("INVALID_CAMPAIGN_DUE_AT");
+    return parsed.toISOString();
+  }
+
+  async subscribeWakeups(listener: () => void): Promise<RuntimeWakeupSubscription> {
+    const handle = await this.sql.listen(CAMPAIGN_WAKEUP_CHANNEL, () => listener());
+    return Object.freeze({ close: () => handle.unlisten() });
+  }
 }
 
 export type BroadcastCampaignCycleRunner = (campaign: DueBroadcastCampaign) => Promise<void>;
@@ -81,10 +102,9 @@ export type BroadcastCampaignCycleRunner = (campaign: DueBroadcastCampaign) => P
 export function createPostgresBroadcastCampaignCycleRunner(sql: Sql): BroadcastCampaignCycleRunner {
   return async (campaign) => {
     await sql`
-      select public.create_broadcast_operation(
-        ${campaign.userId}::uuid, ${campaign.accountMode}, ${campaign.materialId}::uuid,
-        ${sql.array([...campaign.targetIds])}::uuid[],
-        ${`campaign:${campaign.campaignId}:${campaign.cycledAt}`}
+      select public.create_broadcast_campaign_cycle(
+        ${campaign.campaignId}::uuid,
+        ${campaign.cycledAt}::timestamptz
       )
     `;
   };
@@ -93,14 +113,140 @@ export function createPostgresBroadcastCampaignCycleRunner(sql: Sql): BroadcastC
 export type BroadcastCampaignSchedulerHandle = Readonly<{ stop(): Promise<void> }>;
 
 const DEFAULT_TICK_INTERVAL_MILLISECONDS = 15_000;
+const DEFAULT_RECONCILIATION_INTERVAL_MILLISECONDS = 300_000;
+const DEFAULT_SUBSCRIPTION_RETRY_MILLISECONDS = 5_000;
 const DEFAULT_BATCH_LIMIT = 20;
 const DEFAULT_FAILURE_THRESHOLD = 3;
+
+class CoalescingSignal {
+  #pending = false;
+  #waiter: (() => void) | null = null;
+
+  notify(): void {
+    if (this.#waiter) {
+      const waiter = this.#waiter;
+      this.#waiter = null;
+      waiter();
+    } else {
+      this.#pending = true;
+    }
+  }
+
+  async wait(milliseconds: number): Promise<void> {
+    if (this.#pending) {
+      this.#pending = false;
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (this.#waiter === finish) this.#waiter = null;
+        resolve();
+      };
+      const timer = setTimeout(finish, Math.max(1, milliseconds));
+      this.#waiter = finish;
+      if (this.#pending) {
+        this.#pending = false;
+        finish();
+      }
+    });
+  }
+}
+
+async function processCampaigns(
+  source: BroadcastCampaignSource,
+  runCycle: BroadcastCampaignCycleRunner,
+  batchLimit: number,
+  failureThreshold: number,
+): Promise<void> {
+  await source.reconcile(batchLimit, failureThreshold)
+    .catch(() => Object.freeze([] as readonly CampaignReconciliation[]));
+
+  const due = await source.due(batchLimit)
+    .catch(() => Object.freeze([] as readonly DueBroadcastCampaign[]));
+  for (const campaign of due) {
+    try {
+      await runCycle(campaign);
+    } catch (error) {
+      const errorCode = error instanceof Error && error.message
+        ? error.message
+        : "CAMPAIGN_CYCLE_FAILED";
+      await source.fail(campaign.campaignId, errorCode).catch(() => undefined);
+    }
+  }
+}
+
+function startEventDrivenBroadcastCampaignScheduler(input: Readonly<{
+  source: BroadcastCampaignSource & Required<Pick<BroadcastCampaignSource, "nextDueAt" | "subscribeWakeups">>;
+  runCycle: BroadcastCampaignCycleRunner;
+  batchLimit: number;
+  failureThreshold: number;
+  reconciliationIntervalMilliseconds: number;
+  subscriptionRetryMilliseconds: number;
+}>): BroadcastCampaignSchedulerHandle {
+  const signal = new CoalescingSignal();
+  let running = true;
+  let subscription: RuntimeWakeupSubscription | null = null;
+  let nextSubscriptionAttemptAt = 0;
+
+  const ensureSubscription = async (): Promise<void> => {
+    if (!running || subscription || Date.now() < nextSubscriptionAttemptAt) return;
+    try {
+      const connected = await input.source.subscribeWakeups(() => signal.notify());
+      if (!running) {
+        await connected.close().catch(() => undefined);
+        return;
+      }
+      subscription = connected;
+    } catch {
+      nextSubscriptionAttemptAt = Date.now() + input.subscriptionRetryMilliseconds;
+    }
+  };
+
+  const loopPromise = (async () => {
+    while (running) {
+      await ensureSubscription();
+      await processCampaigns(input.source, input.runCycle, input.batchLimit, input.failureThreshold);
+      if (!running) break;
+
+      let delay = input.reconciliationIntervalMilliseconds;
+      try {
+        const dueAt = await input.source.nextDueAt();
+        if (dueAt !== null) {
+          delay = Math.max(1, Math.min(delay, Date.parse(dueAt) - Date.now()));
+        }
+      } catch {
+        // Durable reconciliation remains the fallback if deadline lookup fails.
+      }
+      if (!subscription) {
+        delay = Math.max(1, Math.min(delay, nextSubscriptionAttemptAt - Date.now()));
+      }
+      await signal.wait(delay);
+    }
+  })();
+
+  return Object.freeze({
+    async stop(): Promise<void> {
+      if (!running) return loopPromise;
+      running = false;
+      signal.notify();
+      if (subscription) await subscription.close().catch(() => undefined);
+      subscription = null;
+      await loopPromise;
+    },
+  });
+}
 
 export function startBroadcastCampaignScheduler(input: Readonly<{
   source: BroadcastCampaignSource;
   runCycle: BroadcastCampaignCycleRunner;
   scheduler?: RuntimeRepeatingTaskScheduler;
   tickIntervalMilliseconds?: number;
+  reconciliationIntervalMilliseconds?: number;
+  subscriptionRetryMilliseconds?: number;
   batchLimit?: number;
   failureThreshold?: number;
 }>): BroadcastCampaignSchedulerHandle {
@@ -109,21 +255,21 @@ export function startBroadcastCampaignScheduler(input: Readonly<{
   const batchLimit = input.batchLimit ?? DEFAULT_BATCH_LIMIT;
   const failureThreshold = input.failureThreshold ?? DEFAULT_FAILURE_THRESHOLD;
 
-  let running: RuntimeRepeatingTaskHandle | null = scheduler.start(tickIntervalMilliseconds, async () => {
-    // Fold outcomes of past cycles first, so a campaign whose material keeps
-    // failing delivery (e.g. FORWARD_FORBIDDEN) gets auto-stopped instead of
-    // creating yet another doomed cycle below.
-    await input.source.reconcile(batchLimit, failureThreshold).catch(() => Object.freeze([] as readonly CampaignReconciliation[]));
+  if (input.source.nextDueAt && input.source.subscribeWakeups) {
+    return startEventDrivenBroadcastCampaignScheduler({
+      source: input.source as BroadcastCampaignSource & Required<Pick<BroadcastCampaignSource, "nextDueAt" | "subscribeWakeups">>,
+      runCycle: input.runCycle,
+      batchLimit,
+      failureThreshold,
+      reconciliationIntervalMilliseconds: input.reconciliationIntervalMilliseconds
+        ?? DEFAULT_RECONCILIATION_INTERVAL_MILLISECONDS,
+      subscriptionRetryMilliseconds: input.subscriptionRetryMilliseconds
+        ?? DEFAULT_SUBSCRIPTION_RETRY_MILLISECONDS,
+    });
+  }
 
-    const due = await input.source.due(batchLimit).catch(() => Object.freeze([] as readonly DueBroadcastCampaign[]));
-    for (const campaign of due) {
-      try {
-        await input.runCycle(campaign);
-      } catch (error) {
-        const errorCode = error instanceof Error && error.message ? error.message : "CAMPAIGN_CYCLE_FAILED";
-        await input.source.fail(campaign.campaignId, errorCode).catch(() => undefined);
-      }
-    }
+  let running: RuntimeRepeatingTaskHandle | null = scheduler.start(tickIntervalMilliseconds, async () => {
+    await processCampaigns(input.source, input.runCycle, batchLimit, failureThreshold);
     return "CONTINUE";
   });
 

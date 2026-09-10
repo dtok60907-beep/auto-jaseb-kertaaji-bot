@@ -56,6 +56,9 @@ function validatePolicy(policy: AccountRunnerPolicy): void {
   if (!Number.isInteger(policy.runtimeRetrySeconds) || policy.runtimeRetrySeconds < 1 || policy.runtimeRetrySeconds > 86400) {
     throw new TypeError("INVALID_RUNTIME_RETRY_SECONDS");
   }
+  if (!Number.isInteger(policy.idleGraceMilliseconds) || policy.idleGraceMilliseconds < 0 || policy.idleGraceMilliseconds > 300_000) {
+    throw new TypeError("INVALID_IDLE_GRACE_MILLISECONDS");
+  }
 }
 
 function retrySeconds(value: number | null | undefined, fallback: number): number {
@@ -133,6 +136,7 @@ export async function runBroadcastAccount(
     account: Readonly<{ accountId: string; accountType: "JASEB_WORKER" | "USERBOT" }>;
     leaseOwner: string;
     policy: AccountRunnerPolicy;
+    idleWakeup?: Readonly<{ wait(milliseconds: number): Promise<"WORK_AVAILABLE" | "RELEASE_IDLE"> }>;
   }>,
 ): Promise<AccountRunnerResult> {
   validatePolicy(input.policy);
@@ -268,6 +272,7 @@ export async function runBroadcastAccount(
     if (connectedFailure) return connectedFailure;
 
     let actions = 0;
+    let idleDeadlineAt: number | null = null;
     while (actions < input.policy.maxActionsPerRun) {
       if (leaseLost) return core("FENCED_OUT", actions, heartbeatError ? "LEASE_HEARTBEAT_FAILED" : "ACCOUNT_LEASE_LOST");
       let progressed = false;
@@ -385,7 +390,16 @@ export async function runBroadcastAccount(
         }
       }
 
-      if (!progressed) return core("DRAINED", actions);
+      if (!progressed) {
+        if (!input.idleWakeup || input.policy.idleGraceMilliseconds === 0) return core("DRAINED", actions);
+        idleDeadlineAt ??= Date.now() + input.policy.idleGraceMilliseconds;
+        const remaining = idleDeadlineAt - Date.now();
+        if (remaining <= 0) return core("DRAINED", actions);
+        const wakeup = await input.idleWakeup.wait(remaining);
+        if (wakeup === "RELEASE_IDLE") return core("DRAINED", actions);
+        continue;
+      }
+      idleDeadlineAt = null;
     }
     return core("BUDGET_EXHAUSTED", actions);
   };

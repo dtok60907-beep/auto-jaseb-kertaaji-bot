@@ -3,6 +3,7 @@ export type ClaimedBroadcastPreparation = Readonly<{
   operationId: string;
   telegramTargetRef: string;
   previousStatus: "QUEUED" | "WAITING_APPROVAL";
+  attemptCount: number;
 }>;
 
 export type BroadcastPreparationStatus =

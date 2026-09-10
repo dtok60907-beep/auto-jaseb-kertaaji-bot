@@ -64,6 +64,58 @@ class CoalescingSignal {
   }
 }
 
+class AccountWakeupSignal {
+  #pendingWork = false;
+  #releaseRequested = false;
+  #waiter: ((decision: "WORK_AVAILABLE" | "RELEASE_IDLE") => void) | null = null;
+
+  notifyWork(): void {
+    if (this.#releaseRequested) return;
+    if (this.#waiter) {
+      const waiter = this.#waiter;
+      this.#waiter = null;
+      waiter("WORK_AVAILABLE");
+      return;
+    }
+    this.#pendingWork = true;
+  }
+
+  releaseIdle(): void {
+    this.#releaseRequested = true;
+    this.#pendingWork = false;
+    if (this.#waiter) {
+      const waiter = this.#waiter;
+      this.#waiter = null;
+      waiter("RELEASE_IDLE");
+    }
+  }
+
+  async wait(milliseconds: number): Promise<"WORK_AVAILABLE" | "RELEASE_IDLE"> {
+    if (this.#releaseRequested) return "RELEASE_IDLE";
+    if (this.#pendingWork) {
+      this.#pendingWork = false;
+      return "WORK_AVAILABLE";
+    }
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (decision: "WORK_AVAILABLE" | "RELEASE_IDLE") => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (this.#waiter === finish) this.#waiter = null;
+        resolve(decision);
+      };
+      const timer = setTimeout(() => finish("WORK_AVAILABLE"), Math.max(1, milliseconds));
+      this.#waiter = finish;
+      if (this.#releaseRequested) finish("RELEASE_IDLE");
+      else if (this.#pendingWork) {
+        this.#pendingWork = false;
+        finish("WORK_AVAILABLE");
+      }
+    });
+  }
+}
+
 function validatePolicy(policy: AccountSupervisorPolicy): void {
   if (!Number.isInteger(policy.maxConcurrentAccounts) || policy.maxConcurrentAccounts < 1 || policy.maxConcurrentAccounts > 1000) {
     throw new TypeError("INVALID_MAX_CONCURRENT_ACCOUNTS");
@@ -143,6 +195,7 @@ export async function startBroadcastShardSupervisor(
   const signal = new CoalescingSignal();
   const pending = new Map<string, BroadcastRuntimeAccount>();
   const inFlight = new Map<string, Promise<void>>();
+  const activeWakeups = new Map<string, AccountWakeupSignal>();
   const executions = new Set<Promise<void>>();
   const deferredUntil = new Map<string, number>();
   const cleanupErrorCodes: string[] = [];
@@ -230,8 +283,13 @@ export async function startBroadcastShardSupervisor(
     runsStarted += 1;
     emit({ type: "ACCOUNT_RUN_STARTED", accountId: account.accountId, accountType: account.accountType });
     let execution!: Promise<void>;
+    const accountWakeup = new AccountWakeupSignal();
+    activeWakeups.set(account.accountId, accountWakeup);
     execution = Promise.resolve()
-      .then(() => dependencies.runAccount(Object.freeze({ accountId: account.accountId, accountType: account.accountType })))
+      .then(() => dependencies.runAccount(
+        Object.freeze({ accountId: account.accountId, accountType: account.accountType }),
+        accountWakeup,
+      ))
       .then((rawResult) => {
         runsCompleted += 1;
         if (!validRunnerResult(rawResult, account.accountId)) {
@@ -250,6 +308,7 @@ export async function startBroadcastShardSupervisor(
         emit({ type: "ACCOUNT_RUNNER_FAILED", accountId: account.accountId, errorCode: "ACCOUNT_RUNNER_REJECTED" });
       })
       .finally(() => {
+        activeWakeups.delete(account.accountId);
         inFlight.delete(account.accountId);
         executions.delete(execution);
         signal.notify();
@@ -279,7 +338,6 @@ export async function startBroadcastShardSupervisor(
       if (until <= current) deferredUntil.delete(accountId);
     }
     pump();
-    if (inFlight.size >= input.policy.maxConcurrentAccounts) return;
     const limit = Math.min(1000, input.policy.discoveryBatchSize + inFlight.size + deferredUntil.size);
     let due: readonly BroadcastRuntimeAccount[];
     try {
@@ -295,17 +353,25 @@ export async function startBroadcastShardSupervisor(
       return;
     }
     for (const account of due) {
-      if (rejectDiscovery(account) || inFlight.has(account.accountId) || pending.has(account.accountId)) continue;
+      if (rejectDiscovery(account)) continue;
+      if (inFlight.has(account.accountId)) {
+        activeWakeups.get(account.accountId)?.notifyWork();
+        continue;
+      }
+      if (pending.has(account.accountId)) continue;
       const until = deferredUntil.get(account.accountId) ?? 0;
       if (until > now()) continue;
       pending.set(account.accountId, account);
+    }
+    if (pending.size > 0 && inFlight.size >= input.policy.maxConcurrentAccounts) {
+      for (const wakeup of activeWakeups.values()) wakeup.releaseIdle();
     }
     pump();
   };
 
   const nextDelay = async (): Promise<number> => {
     const fallback = input.policy.reconciliationIntervalMilliseconds;
-    if (state !== "RUNNING" || inFlight.size >= input.policy.maxConcurrentAccounts || pending.size > 0) return fallback;
+    if (state !== "RUNNING" || pending.size > 0) return fallback;
     let next: BroadcastRuntimeAccount | null;
     try {
       next = await dependencies.runtimeAccounts.findNext({ shard });
@@ -314,8 +380,11 @@ export async function startBroadcastShardSupervisor(
       emit({ type: "DISCOVERY_QUERY_FAILED", phase: "FIND_NEXT", errorCode: "DISCOVERY_QUERY_FAILED" });
       return fallback;
     }
-    if (!next || rejectDiscovery(next) || inFlight.has(next.accountId)) return fallback;
+    if (!next || rejectDiscovery(next)) return fallback;
     const current = now();
+    if (inFlight.has(next.accountId)) {
+      return Math.max(1, Math.min(fallback, Date.parse(next.nextDueAt) - current));
+    }
     const deferred = deferredUntil.get(next.accountId) ?? 0;
     if (deferred > current) return Math.max(1, Math.min(fallback, deferred - current));
     return Math.max(1, Math.min(fallback, Date.parse(next.nextDueAt) - current));
@@ -336,6 +405,14 @@ export async function startBroadcastShardSupervisor(
     wakeupsAccepted += 1;
     deferredUntil.delete(accountId);
     emit({ type: "WAKEUP_ACCEPTED", accountId });
+    const activeWakeup = activeWakeups.get(accountId);
+    if (activeWakeup) {
+      activeWakeup.notifyWork();
+      return;
+    }
+    for (const [activeAccountId, wakeup] of activeWakeups) {
+      if (activeAccountId !== accountId) wakeup.releaseIdle();
+    }
     signal.notify();
   };
 
@@ -385,6 +462,7 @@ export async function startBroadcastShardSupervisor(
     if (stopPromise) return stopPromise;
     state = "STOPPING";
     signal.notify();
+    for (const activeWakeup of activeWakeups.values()) activeWakeup.releaseIdle();
     stopPromise = (async () => {
       if (subscription) {
         try { await subscription.close(); }

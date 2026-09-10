@@ -71,26 +71,28 @@ test("PostgreSQL claim → adapter → aggregation and fencing-safe completion",
     assert.equal(calls, 1);
 
     const [persisted] = await sql<{
-      command_status: string;
       target_status: string;
       operation_status: string;
       provider_message_ids: string[];
       attempt_count: number;
+      broadcast_command_count: number;
     }[]>`
-      select command.status command_status, target.delivery_status target_status,
-             operation.status operation_status, command.provider_message_ids,
-             command.attempt_count
-        from public.workflow_commands command
-        join public.broadcast_targets target on target.id = command.broadcast_target_id
-        join public.workflow_operations operation on operation.id = command.operation_id
+      select target.delivery_status target_status,
+             operation.status operation_status,
+             target.last_provider_message_ids provider_message_ids,
+             target.delivery_attempt_count attempt_count,
+             (select count(*)::integer from public.workflow_commands command
+               where command.operation_id = operation.id) broadcast_command_count
+        from public.broadcast_targets target
+        join public.workflow_operations operation on operation.id = target.operation_id
        where operation.idempotency_key = 'f4-integration-operation'
     `;
     assert.deepEqual(persisted, {
-      command_status: "SUCCEEDED",
       target_status: "SUCCEEDED",
       operation_status: "SUCCEEDED",
       provider_message_ids: ["1101", "1102"],
       attempt_count: 1,
+      broadcast_command_count: 0,
     });
 
     const partialTargetA = "36363636-3636-3636-3636-363636363361";
@@ -222,31 +224,29 @@ test("PostgreSQL claim → adapter → aggregation and fencing-safe completion",
     } as const;
     assert.equal(await repository.claimNext(takeoverLease), null);
     const [fencedResult] = await sql<{
-      command_status: string;
-      command_error: string;
       target_status: string;
       target_error: string;
       operation_status: string;
       operation_error: string;
       provider_message_ids: string[];
+      broadcast_command_count: number;
     }[]>`
-      select command.status command_status, command.last_error_code command_error,
-             target.delivery_status target_status, target.last_error_code target_error,
+      select target.delivery_status target_status, target.last_error_code target_error,
              operation.status operation_status, operation.error_code operation_error,
-             command.provider_message_ids
-        from public.workflow_commands command
-        join public.broadcast_targets target on target.id = command.broadcast_target_id
-        join public.workflow_operations operation on operation.id = command.operation_id
+             target.last_provider_message_ids provider_message_ids,
+             (select count(*)::integer from public.workflow_commands command
+               where command.operation_id = operation.id) broadcast_command_count
+        from public.broadcast_targets target
+        join public.workflow_operations operation on operation.id = target.operation_id
        where operation.idempotency_key = 'f4-fenced-operation'
     `;
     assert.deepEqual(fencedResult, {
-      command_status: "SIDE_EFFECT_UNCERTAIN",
-      command_error: "ACCOUNT_LEASE_FENCED",
       target_status: "SIDE_EFFECT_UNCERTAIN",
-      target_error: "COMMAND_LEASE_LOST",
+      target_error: "ACCOUNT_LEASE_FENCED",
       operation_status: "SIDE_EFFECT_UNCERTAIN",
-      operation_error: "COMMAND_LEASE_LOST",
+      operation_error: "ACCOUNT_LEASE_FENCED",
       provider_message_ids: [],
+      broadcast_command_count: 0,
     });
   } finally {
     try { await cleanup(); }

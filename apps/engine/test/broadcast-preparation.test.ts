@@ -28,6 +28,7 @@ class FakeRepository implements BroadcastPreparationRepository {
   }> = [];
   allow = true;
   previousStatus: "QUEUED" | "WAITING_APPROVAL" = "QUEUED";
+  attemptCount = 1;
 
   async claimNext() {
     return {
@@ -35,6 +36,7 @@ class FakeRepository implements BroadcastPreparationRepository {
       operationId: "operation-1",
       telegramTargetRef: "@lpm",
       previousStatus: this.previousStatus,
+      attemptCount: this.attemptCount,
     };
   }
 
@@ -118,7 +120,7 @@ test("approval-required target waits and polling never sends another join reques
     status: "WAITING_APPROVAL",
     targetId: "target-1",
     errorCode: "JOIN_APPROVAL_PENDING",
-    retryAfterSeconds: 30,
+    retryAfterSeconds: 60,
   });
   assert.equal(adapter.joinCalls, 1);
 
@@ -130,7 +132,7 @@ test("approval-required target waits and polling never sends another join reques
     expectedStatus: "CHECKING",
     status: "WAITING_APPROVAL",
     errorCode: "JOIN_APPROVAL_PENDING",
-    retryAfterSeconds: 30,
+    retryAfterSeconds: 60,
     resolvedTitle: null,
   }]);
 });
@@ -143,6 +145,25 @@ test("an approved target becomes ready on the next membership check", async () =
   const result = await prepareNextBroadcastTarget(adapter, repository, lease);
   assert.equal(result.status, "READY");
   assert.equal(adapter.joinCalls, 0);
+});
+
+test("approval membership rechecks back off exponentially and cap at one hour", async () => {
+  const repository = new FakeRepository();
+  repository.previousStatus = "WAITING_APPROVAL";
+  repository.attemptCount = 4;
+  const adapter = new FakeAdapter();
+  adapter.membership = "NOT_MEMBER";
+
+  const result = await prepareNextBroadcastTarget(adapter, repository, lease);
+  assert.equal(result.status, "WAITING_APPROVAL");
+  if (result.status !== "WAITING_APPROVAL") assert.fail("expected approval wait");
+  assert.equal(result.retryAfterSeconds, 480);
+  assert.equal(adapter.joinCalls, 0);
+
+  repository.attemptCount = 100;
+  const capped = await prepareNextBroadcastTarget(adapter, repository, lease);
+  if (capped.status !== "WAITING_APPROVAL") assert.fail("expected capped approval wait");
+  assert.equal(capped.retryAfterSeconds, 3_600);
 });
 
 test("legacy approval error maps to waiting while a channel target still fails clearly", async () => {
@@ -182,4 +203,5 @@ test("approval polling survives a transient provider error without re-enabling j
   assert.equal(result.status, "WAITING_APPROVAL");
   assert.equal(adapter.joinCalls, 0);
   assert.equal(repository.transitions[0]?.status, "WAITING_APPROVAL");
+  assert.equal(repository.transitions[0]?.retryAfterSeconds, 60);
 });

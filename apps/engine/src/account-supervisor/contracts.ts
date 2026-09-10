@@ -1,4 +1,4 @@
-import type { AccountRunnerResult } from "../account-runner/contracts.ts";
+import type { AccountRunnerResult, RuntimeAccountWakeup } from "../account-runner/contracts.ts";
 import type { BroadcastRuntimeAccount, BroadcastRuntimeAccountRepository } from "../runtime-accounts/repository.ts";
 import type { ShardConfig } from "../runtime-sharding/shard.ts";
 
@@ -50,7 +50,10 @@ export type AccountSupervisorObserver = (event: AccountSupervisorEvent) => void 
 
 export type AccountSupervisorDependencies = Readonly<{
   runtimeAccounts: Pick<BroadcastRuntimeAccountRepository, "listDue" | "findNext" | "subscribeWakeups">;
-  runAccount(account: Readonly<Pick<BroadcastRuntimeAccount, "accountId" | "accountType">>): Promise<AccountRunnerResult>;
+  runAccount(
+    account: Readonly<Pick<BroadcastRuntimeAccount, "accountId" | "accountType">>,
+    wakeup: RuntimeAccountWakeup,
+  ): Promise<AccountRunnerResult>;
   observer?: AccountSupervisorObserver;
   now?: () => number;
 }>;

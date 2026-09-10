@@ -203,10 +203,11 @@ export async function startProductionEngineCore(
     supervisorDependencies = Object.freeze({
       runtimeAccounts,
       observer: input.observer,
-      runAccount: (account): Promise<AccountRunnerResult> => factories.runAccount(runnerDependencies, {
+      runAccount: (account, idleWakeup): Promise<AccountRunnerResult> => factories.runAccount(runnerDependencies, {
         account,
         leaseOwner: instanceId,
         policy: config.runnerPolicy,
+        idleWakeup,
       }),
     });
     centralMonitorDependencies = Object.freeze({

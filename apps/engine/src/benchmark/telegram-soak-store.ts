@@ -63,9 +63,7 @@ export function createPostgresTelegramSoakStore(sql: Sql): TelegramSoakStore {
     async enqueueBurst(input) {
       const operationIds = input.accounts.map(() => randomUUID());
       const targetIds = input.accounts.map(() => randomUUID());
-      const commandIds = input.accounts.map(() => randomUUID());
       const operationKeys = input.accounts.map((account) => `f57c-${input.runId}-b${input.burstIndex}-a${account.accountIndex}`);
-      const commandKeys = operationKeys.map((key) => `${key}-cmd`);
       const accountIds = input.accounts.map((account) => account.accountId);
       const userIds = input.accounts.map((account) => account.userId);
       const markers = input.accounts.map((account) => telegramSoakDeliveryMarker(input.runId, input.label, account.accountIndex));
@@ -97,22 +95,6 @@ export function createPostgresTelegramSoakStore(sql: Sql): TelegramSoakStore {
               ${transaction.array(operationIds)}::uuid[]
             ) fixture(target_id, operation_id)
         `;
-        await transaction`
-          insert into public.workflow_commands (
-            id, operation_id, account_id, kind, target_id, idempotency_key,
-            payload, broadcast_target_id
-          )
-          select command_id, operation_id, account_id, 'SEND_TEXT', ${input.targetRef}, command_key,
-                 jsonb_build_object('material', jsonb_build_object('kind', 'TEXT', 'text', marker)), target_id
-            from unnest(
-              ${transaction.array(commandIds)}::uuid[],
-              ${transaction.array(operationIds)}::uuid[],
-              ${transaction.array(accountIds)}::uuid[],
-              ${transaction.array(commandKeys)}::text[],
-              ${transaction.array(markers)}::text[],
-              ${transaction.array(targetIds)}::uuid[]
-            ) fixture(command_id, operation_id, account_id, command_key, marker, target_id)
-        `;
       });
       return input.accounts.length;
     },
@@ -125,8 +107,9 @@ export function createPostgresTelegramSoakStore(sql: Sql): TelegramSoakStore {
             join public.workflow_operations operation on operation.account_id = account.id
            where operation.idempotency_key like ${prefixes.accountPrefix + "%"}
         ), fixture_commands as (
-          select command.id, command.status from public.workflow_commands command
-            join public.workflow_operations operation on operation.id = command.operation_id
+          select target.id, target.delivery_status status
+            from public.broadcast_targets target
+            join public.workflow_operations operation on operation.id = target.operation_id
            where operation.idempotency_key like ${prefixes.commandPrefix + "%"}
         )
         select json_build_object(
@@ -176,9 +159,9 @@ export function createPostgresTelegramSoakStore(sql: Sql): TelegramSoakStore {
                 and seed.idempotency_key like ${prefixes.accountPrefix + "%"}
            )
         ), burst_commands as (
-          select command.account_id, command.status
-            from public.workflow_commands command
-            join public.workflow_operations operation on operation.id = command.operation_id
+          select operation.account_id, target.delivery_status status
+            from public.broadcast_targets target
+            join public.workflow_operations operation on operation.id = target.operation_id
            where operation.idempotency_key like ${prefixes.commandPrefix + "%"}
         )
         select accounts.id::text as account_id, accounts.status as account_status,
@@ -218,15 +201,16 @@ export function createPostgresTelegramSoakStore(sql: Sql): TelegramSoakStore {
            )
         )
         select accounts.id::text as account_id,
-               count(command.id) filter (where command.status = 'SUCCEEDED')::int as succeeded_after
+               count(target.id) filter (where target.delivery_status = 'SUCCEEDED')::int as succeeded_after
           from fixture_accounts accounts
-          left join public.workflow_commands command on command.account_id = accounts.id
-           and command.status = 'SUCCEEDED'
-           and command.provider_sent_at is not null
-           and command.provider_sent_at >= ${afterIso}::timestamptz
-           and command.operation_id in (
+          left join public.workflow_operations operation on operation.account_id = accounts.id
+           and operation.id in (
              select id from public.workflow_operations where idempotency_key like ${prefixes.commandPrefix + "%"}
            )
+          left join public.broadcast_targets target on target.operation_id = operation.id
+           and target.delivery_status = 'SUCCEEDED'
+           and target.last_success_at is not null
+           and target.last_success_at >= ${afterIso}::timestamptz
          group by accounts.id
          order by accounts.id
       `;
@@ -235,13 +219,13 @@ export function createPostgresTelegramSoakStore(sql: Sql): TelegramSoakStore {
 
     async readSendLatencies(commandPrefix) {
       const rows = await sql<{ latencies: number[] | null }[]>`
-        select array_agg(extract(epoch from (command.provider_sent_at - command.created_at)) * 1000
-                         order by extract(epoch from (command.provider_sent_at - command.created_at)) * 1000)::float8[] latencies
-          from public.workflow_commands command
-         where command.operation_id in (
+        select array_agg(extract(epoch from (target.last_success_at - target.created_at)) * 1000
+                         order by extract(epoch from (target.last_success_at - target.created_at)) * 1000)::float8[] latencies
+          from public.broadcast_targets target
+         where target.operation_id in (
                  select id from public.workflow_operations where idempotency_key like ${commandPrefix + "%"}
                )
-           and command.status = 'SUCCEEDED' and command.provider_sent_at is not null
+           and target.delivery_status = 'SUCCEEDED' and target.last_success_at is not null
       `;
       const latencies = [...(rows[0]?.latencies ?? [])].sort((left, right) => left - right);
       if (latencies.length === 0) return EMPTY_LATENCY;
@@ -257,11 +241,11 @@ export function createPostgresTelegramSoakStore(sql: Sql): TelegramSoakStore {
     async readMalformedReceiptCount(commandPrefix) {
       const rows = await sql<{ malformed: number }[]>`
         select count(*)::int malformed
-          from public.workflow_commands command
-          join public.workflow_operations operation on operation.id = command.operation_id
+          from public.broadcast_targets target
+          join public.workflow_operations operation on operation.id = target.operation_id
          where operation.idempotency_key like ${commandPrefix + "%"}
-           and command.status = 'SUCCEEDED'
-           and cardinality(command.provider_message_ids) <> 1
+           and target.delivery_status = 'SUCCEEDED'
+           and cardinality(target.last_provider_message_ids) <> 1
       `;
       return rows[0]?.malformed ?? 0;
     },
@@ -269,11 +253,11 @@ export function createPostgresTelegramSoakStore(sql: Sql): TelegramSoakStore {
     async readSucceededAfter(commandPrefix, afterIso) {
       const rows = await sql<{ succeeded: number }[]>`
         select count(*)::int succeeded
-          from public.workflow_commands command
-          join public.workflow_operations operation on operation.id = command.operation_id
+          from public.broadcast_targets target
+          join public.workflow_operations operation on operation.id = target.operation_id
          where operation.idempotency_key like ${commandPrefix + "%"}
-           and command.status = 'SUCCEEDED'
-           and command.provider_sent_at >= ${afterIso}::timestamptz
+           and target.delivery_status = 'SUCCEEDED'
+           and target.last_success_at >= ${afterIso}::timestamptz
       `;
       return rows[0]?.succeeded ?? 0;
     },

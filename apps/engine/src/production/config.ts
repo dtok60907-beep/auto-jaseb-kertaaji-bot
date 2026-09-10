@@ -156,6 +156,7 @@ export class ProductionEngineConfig {
       maxActionsPerRun: integer(env, "ENGINE_MAX_ACTIONS_PER_RUN", 1, 1_000),
       commandLeaseSeconds,
       runtimeRetrySeconds: integer(env, "ENGINE_RUNTIME_RETRY_SECONDS", 1, 86_400),
+      idleGraceMilliseconds: integer(env, "ENGINE_ACCOUNT_IDLE_GRACE_MS", 0, 300_000),
     });
     const supervisorPolicy: AccountSupervisorPolicy = Object.freeze({
       maxConcurrentAccounts: integer(env, "ENGINE_MAX_CONCURRENT_ACCOUNTS", 1, 1_000),
