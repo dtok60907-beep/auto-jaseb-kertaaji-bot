@@ -70,8 +70,12 @@ class EventDrivenSource extends FakeSource {
   listener: (() => void) | null = null;
   subscriptionClosed = false;
   nextDue: string | null = null;
+  nextDueCalls = 0;
 
-  async nextDueAt(): Promise<string | null> { return this.nextDue; }
+  async nextDueAt(): Promise<string | null> {
+    this.nextDueCalls += 1;
+    return this.nextDue;
+  }
 
   async subscribeWakeups(listener: () => void) {
     this.listener = listener;
@@ -205,4 +209,24 @@ test("event-driven source wakes immediately without starting the fixed-interval 
   assert.equal(source.dueCalls, baselineCalls + 1);
   await handle.stop();
   assert.equal(source.subscriptionClosed, true);
+});
+
+test("event-driven scheduler stays idle after its startup scan when no work or wakeup exists", async () => {
+  const scheduler = new FakeScheduler();
+  const source = new EventDrivenSource();
+  const handle = startBroadcastCampaignScheduler({
+    source,
+    runCycle: async () => {},
+    scheduler,
+    reconciliationIntervalMilliseconds: 60_000,
+  });
+
+  await eventually(() => source.dueCalls === 1 && source.nextDueCalls === 1 && source.listener !== null);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  assert.equal(source.dueCalls, 1);
+  assert.equal(source.reconcileCalls.length, 1);
+  assert.equal(source.nextDueCalls, 1);
+  assert.equal(scheduler.intervalMilliseconds, null);
+  await handle.stop();
 });

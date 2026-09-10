@@ -94,6 +94,26 @@ function divisionAcceptsPostTime(division: CentralMonitorDivision, providerPoste
   return postedAt >= activatedAt - 2_000;
 }
 
+type DivisionMatch = Readonly<{
+  division: CentralMonitorDivision;
+  keywords: readonly string[];
+}>;
+
+function matchingDivisions(
+  source: CentralMonitorSource,
+  post: Pick<CentralMonitorPost, "providerPostId" | "providerPostedAt" | "content">,
+): readonly DivisionMatch[] {
+  if (!post.content.trim()) return Object.freeze([]);
+  const matches: DivisionMatch[] = [];
+  for (const division of source.divisions) {
+    if (division.startAfterPostId !== null && post.providerPostId <= division.startAfterPostId) continue;
+    if (!divisionAcceptsPostTime(division, post.providerPostedAt)) continue;
+    const keywords = matchedKeywords(post.content, division);
+    if (keywords.length > 0) matches.push(Object.freeze({ division, keywords }));
+  }
+  return Object.freeze(matches);
+}
+
 export type CentralMonitorHandle = Readonly<{ stop(): Promise<void> }>;
 
 export type CentralMonitorDependencies = Readonly<{
@@ -210,7 +230,7 @@ class ConnectedMonitorSession {
     }
   }
 
-  async #processEvent(event: CentralMonitorEvent): Promise<void> {
+  async #processEvent(event: CentralMonitorEvent, knownMatches?: readonly DivisionMatch[]): Promise<void> {
     const source = this.#sourcesById.get(event.sourceId);
     if (!source) {
       await this.#dependencies.repository.completeEvent({
@@ -222,12 +242,9 @@ class ConnectedMonitorSession {
     }
     try {
       const notifications: Promise<void>[] = [];
+      const matches = knownMatches ?? matchingDivisions(source, event);
       if (event.content.trim()) {
-        for (const division of source.divisions) {
-          if (division.startAfterPostId !== null && event.providerPostId <= division.startAfterPostId) continue;
-          if (!divisionAcceptsPostTime(division, event.providerPostedAt)) continue;
-          const keywords = matchedKeywords(event.content, division);
-          if (keywords.length === 0) continue;
+        for (const { division, keywords } of matches) {
           const candidate = await this.#dependencies.repository.createCandidate({
             source,
             division,
@@ -254,13 +271,24 @@ class ConnectedMonitorSession {
   }
 
   async #ingest(source: CentralMonitorSource, post: CentralMonitorPost): Promise<void> {
+    const matches = matchingDivisions(source, post);
+    if (matches.length === 0) {
+      // Unmatched traffic has no recovery consumer. Persist only the monotonic
+      // checkpoint so a restart cannot replay it; durable event rows are
+      // reserved for posts that can actually create buyer work.
+      await this.#dependencies.repository.advanceCheckpoint({
+        sourceId: source.sourceId,
+        providerPostId: post.providerPostId,
+      });
+      return;
+    }
     const event = await this.#dependencies.repository.enqueueEvent({
       sourceId: source.sourceId,
       providerPostId: post.providerPostId,
       content: post.content,
       providerPostedAt: post.providerPostedAt,
     });
-    if (event) await this.#processEvent(event);
+    if (event) await this.#processEvent(event, matches);
     else await this.#dependencies.repository.advanceCheckpoint({ sourceId: source.sourceId, providerPostId: post.providerPostId });
   }
 

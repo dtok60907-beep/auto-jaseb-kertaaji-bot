@@ -75,6 +75,7 @@ class FakeRepository implements CentralMonitorRepository {
   });
   candidates: Array<{ accountId: string; keywords: readonly string[] }> = [];
   checkpoints: number[] = [];
+  enqueuedPostIds: number[] = [];
   listener: (() => void) | null = null;
 
   async findActiveAccount() { return { accountId: ACCOUNT }; }
@@ -86,6 +87,7 @@ class FakeRepository implements CentralMonitorRepository {
   async markSourceFailure() {}
   async advanceCheckpoint(input: Parameters<CentralMonitorRepository["advanceCheckpoint"]>[0]) { this.checkpoints.push(input.providerPostId); }
   async enqueueEvent(input: Parameters<CentralMonitorRepository["enqueueEvent"]>[0]) {
+    this.enqueuedPostIds.push(input.providerPostId);
     return {
       eventId: `${input.providerPostId}`.padStart(8, "0") + "-0000-4000-8000-000000000000",
       sourceId: input.sourceId,
@@ -134,8 +136,69 @@ test("one monitor reads a channel once and routes a post only to matching buyer 
     keywords: ["butuh desain"],
   }]);
   assert.ok(repository.checkpoints.includes(11));
+  assert.deepEqual(repository.enqueuedPostIds, [11]);
   await handle.stop();
   assert.equal(client.disconnected, true);
+});
+
+test("unmatched posts advance the source checkpoint without creating durable monitor events", async () => {
+  const repository = new FakeRepository();
+  const client = new FakeClient();
+  const leases: RuntimeAccountLeaseRepository = {
+    acquire: async () => ({ status: "ACQUIRED", lease: { accountId: ACCOUNT, leaseOwner: OWNER, fencingToken: 1n, leaseUntil: "2099-01-01T00:00:00.000Z" } }),
+    renew: async () => ({ accountId: ACCOUNT, leaseOwner: OWNER, fencingToken: 1n, leaseUntil: "2099-01-01T00:00:00.000Z" }),
+    release: async () => true,
+  };
+  const handle = await startCentralAutoCommentMonitor({
+    repository,
+    accountLeases: leases,
+    sessionKeyRing: { decrypt: () => "telegram-session" },
+    clientFactory: { create: () => client },
+  }, { instanceId: OWNER });
+
+  await waitFor(() => client.connected && repository.checkpoints.includes(10));
+  client.emit("pesan biasa tanpa kata target", 11);
+  await waitFor(() => repository.checkpoints.includes(11));
+
+  assert.deepEqual(repository.enqueuedPostIds, []);
+  assert.deepEqual(repository.candidates, []);
+  await handle.stop();
+});
+
+test("backfill posts older than every buyer activation are checkpointed without event rows", async () => {
+  const repository = new FakeRepository();
+  repository.source = Object.freeze({
+    ...repository.source,
+    lastPostId: 9,
+    divisions: Object.freeze(repository.source.divisions.map((division) => Object.freeze({
+      ...division,
+      keywords: Object.freeze(["match"]),
+      activatedAt: "2026-09-10T00:00:10.000Z",
+    }))),
+  });
+  const client = new FakeClient();
+  client.history = [Object.freeze({
+    providerPeerId: "-10042",
+    providerPostId: 10,
+    content: "match",
+    providerPostedAt: "2026-09-10T00:00:00.000Z",
+  })];
+  const leases: RuntimeAccountLeaseRepository = {
+    acquire: async () => ({ status: "ACQUIRED", lease: { accountId: ACCOUNT, leaseOwner: OWNER, fencingToken: 1n, leaseUntil: "2099-01-01T00:00:00.000Z" } }),
+    renew: async () => ({ accountId: ACCOUNT, leaseOwner: OWNER, fencingToken: 1n, leaseUntil: "2099-01-01T00:00:00.000Z" }),
+    release: async () => true,
+  };
+  const handle = await startCentralAutoCommentMonitor({
+    repository,
+    accountLeases: leases,
+    sessionKeyRing: { decrypt: () => "telegram-session" },
+    clientFactory: { create: () => client },
+  }, { instanceId: OWNER });
+
+  await waitFor(() => repository.checkpoints.includes(10));
+  assert.deepEqual(repository.enqueuedPostIds, []);
+  assert.deepEqual(repository.candidates, []);
+  await handle.stop();
 });
 
 test("a matching post created while a new source is preparing is recovered", async () => {
